@@ -86,7 +86,9 @@ let state = {
   status: "All",
   priority: "All",
   selectedId: baseLeads[0]?.id || null,
-  selectedLeadIds: new Set()
+  selectedLeadIds: new Set(),
+  sortField: null,
+  sortOrder: "asc"
 };
 
 const els = {
@@ -138,6 +140,8 @@ function resetAllFilters() {
   state.country = "All";
   state.status = "All";
   state.priority = "All";
+  state.sortField = null;
+  state.sortOrder = "asc";
   if (els.search) els.search.value = "";
   if (els.country) els.country.value = "All";
   if (els.status) els.status.value = "All";
@@ -391,7 +395,10 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
             <th><span class="sr-only">Select</span></th>
             <th></th>
             <th>Company</th>
-            <th>Country</th>
+            <th class="sortable" data-sort="Country" style="cursor: pointer; user-select: none;" title="Sort by Country">
+              Country
+              <span style="color: #999; font-size: 0.8em; margin-left: 4px;">${state.sortField === 'Country' ? (state.sortOrder === 'asc' ? '▲' : '▼') : '⇕'}</span>
+            </th>
             <th>Status</th>
             <th>Priority</th>
             <th>Contact</th>
@@ -414,6 +421,24 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
       visibleIds.forEach((id) => state.selectedLeadIds.add(id));
     }
     render();
+  });
+
+  els.content.querySelectorAll("th.sortable").forEach((th) => {
+    th.addEventListener("click", () => {
+      const field = th.dataset.sort;
+      if (state.sortField === field) {
+        if (state.sortOrder === "asc") {
+          state.sortOrder = "desc";
+        } else {
+          state.sortField = null;
+          state.sortOrder = "asc";
+        }
+      } else {
+        state.sortField = field;
+        state.sortOrder = "asc";
+      }
+      render();
+    });
   });
 
   els.content.querySelector("[data-delete-selected]")?.addEventListener("click", deleteSelectedLeads);
@@ -615,7 +640,7 @@ function getLeads() {
 
 function getFilteredLeads() {
   const query = state.query.toLowerCase();
-  return getLeads().filter((lead) => {
+  let filtered = getLeads().filter((lead) => {
     const haystack = [
       lead.Country,
       lead.Company,
@@ -635,7 +660,20 @@ function getFilteredLeads() {
       && (state.country === "All" || lead.Country === state.country)
       && (state.status === "All" || lead.status === state.status)
       && (state.priority === "All" || lead.Priority === state.priority);
-  }).sort(leadSort);
+  });
+  
+  if (state.sortField) {
+    filtered.sort((a, b) => {
+      const valA = String(a[state.sortField] || '');
+      const valB = String(b[state.sortField] || '');
+      const cmp = valA.localeCompare(valB, undefined, { sensitivity: 'base' });
+      return state.sortOrder === 'asc' ? cmp : -cmp;
+    });
+  } else {
+    filtered.sort(leadSort);
+  }
+  
+  return filtered;
 }
 
 async function updateLead(id, key, value) {
