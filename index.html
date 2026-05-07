@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Yogico Beauty Buyers</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <button id="homeBtn" class="brand" type="button" aria-label="Reset filters and go to Leads">
+        <div class="brand-mark">
+          <img src="./assets/logo.png"
+               alt="Yogico"
+               class="brand-logo"
+               onerror="this.onerror=null;this.src='./assets/logo.png';">
+        </div>
+        <div>
+          <h1>Yogico Beauty Buyers</h1>
+          <p>Importer & buyer pipeline</p>
+        </div>
+      </button>
+
+      <nav class="nav" aria-label="Views">
+        <button class="nav-item active" data-view="leads" type="button">Leads</button>
+        <button class="nav-item" data-view="leads" data-status-filter="New" type="button">New</button>
+        <button class="nav-item" data-view="leads" data-status-filter="Contacted" type="button">Contacted</button>
+        <button class="nav-item" data-view="favorites" type="button">Favorites</button>
+        <button class="nav-item" data-view="countries" type="button">Countries</button>
+        <button class="nav-item" data-view="emails" type="button">Missing Emails</button>
+        <button class="nav-item" data-view="followups" type="button">Follow-ups</button>
+      </nav>
+
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="viewTitle">Leads</h2>
+          <p id="viewSubtitle">Search, qualify, and manage outreach.</p>
+        </div>
+        <div class="top-actions">
+          <button id="addLeadBtn" class="button" type="button">Add Lead</button>
+          <button id="markContactedBtn" class="button secondary" type="button">Mark Contacted</button>
+          <button id="undoContactedBtn" class="button ghost" type="button">Undo</button>
+          <button id="exportCsvBtn" class="button secondary" type="button">Export CSV</button>
+          <button id="resetBtn" class="button ghost" type="button">Reset Edits</button>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Lead filters">
+        <label class="search-box">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="company, country, brand, contact">
+        </label>
+        <label>
+          <span>Country</span>
+          <select id="countryFilter"></select>
+        </label>
+        <label>
+          <span>Status</span>
+          <select id="statusFilter"></select>
+        </label>
+        <label>
+          <span>Priority</span>
+          <select id="priorityFilter"></select>
+        </label>
+      </section>
+
+      <section id="statsGrid" class="stats-grid" aria-label="Summary"></section>
+
+      <section id="content" class="content"></section>
+    </main>
+
+    <div id="detailResizer" class="detail-resizer" role="separator" aria-label="Resize lead detail panel"></div>
+    <aside id="detailPanel" class="detail-panel" aria-label="Lead detail">
+      <div class="empty-detail">
+        <h3>Select a lead</h3>
+        <p>Open a company to update status, notes, and next follow-up.</p>
+      </div>
+    </aside>
+  </div>
+
+  <script src="./assets/data.js"></script>
+  <script src="./assets/uk-japan-extra-leads.js"></script>
+  <script src="./assets/israel-extra-leads.js"></script>
+  <script src="./assets/middleeast-extra-leads.js"></script>
+  <script src="./assets/global-extra-leads.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "name": "verceldata",
+  "version": "1.0.0",
+  "description": "로컬에서 바로 여는 정적 CRM입니다. 서버나 설치 없이 `index.html`을 브라우저로 열면 됩니다.",
+  "main": "app.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "seed": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/seed-leads.ts",
+    "seed:admin": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/seed-admin.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "jose": "^6.2.3",
+    "mongoose": "^9.6.1",
+    "next": "^16.2.5",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.0",
+    "dotenv": "^17.4.2",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^4.2.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
