@@ -32,7 +32,7 @@ export default function Home() {
         <main className="main">
           <header className="topbar">
             <div>
-              <h2 id="viewTitle">Leads</h2>
+              <h2 id="viewTitle" className="">Leads</h2>
               <p id="viewSubtitle">Search, qualify, and manage outreach.</p>
             </div>
             <div className="top-actions">
