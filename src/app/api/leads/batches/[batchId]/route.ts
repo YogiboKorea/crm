@@ -5,10 +5,10 @@ import { Lead } from '@/models/Lead';
 // DELETE /api/leads/batches/[batchId] — delete all leads in a batch
 export async function DELETE(
   req: Request,
-  { params }: { params: { batchId: string } }
+  { params }: { params: Promise<{ batchId: string }> }
 ) {
   try {
-    const { batchId } = params;
+    const { batchId } = await params;
     if (!batchId) {
       return NextResponse.json({ success: false, error: 'batchId is required' }, { status: 400 });
     }
