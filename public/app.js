@@ -130,6 +130,8 @@ async function init() {
   initAddLeadModal();
   initEditModal();
   initSettingsModal();
+  initImportCsvModal();
+  initImportHistoryModal();
   renderFilters();
   bindEvents();
   render();
@@ -205,6 +207,9 @@ function bindEvents() {
   });
 
   els.exportCsv?.addEventListener("click", exportCsv);
+  document.getElementById('importCsvBtn')?.addEventListener('click', () => {
+    openImportCsvModal();
+  });
   els.addLead?.addEventListener("click", addLead);
   els.markContacted?.addEventListener("click", markSelectedContacted);
   els.undoContacted?.addEventListener("click", undoSelectedContacted);
@@ -307,6 +312,13 @@ function render() {
     els.viewTitle.textContent = "Missing Emails";
     els.viewSubtitle.textContent = "Open buyer sites, find a contact email, and save it directly.";
     renderMissingEmails(leads);
+    return;
+  }
+
+  if (state.view === "importHistory") {
+    els.viewTitle.textContent = "Import History";
+    els.viewSubtitle.textContent = "CSV 가져오기 기록을 확인하고 원하는 배치를 롤백할 수 있습니다.";
+    renderImportHistory();
     return;
   }
 
@@ -606,6 +618,122 @@ function renderFollowups(leads) {
     });
   });
 }
+
+// ── Import History View ─────────────────────────────────────────────────────
+
+async function renderImportHistory() {
+  els.content.innerHTML = `
+    <div class="table-wrap">
+      <p style="padding: 16px; color: var(--muted); font-size:14px;" id="importHistoryLoading">⏳ 불러오는 중...</p>
+    </div>
+  `;
+
+  try {
+    const res = await fetch('/api/leads/batches');
+    const data = await res.json();
+
+    if (!data.success) throw new Error(data.error);
+
+    const batches = data.data;
+
+    if (!batches.length) {
+      els.content.innerHTML = emptyState('아직 CSV Import 기록이 없습니다. ⬆ Import CSV 버튼으로 데이터를 가져올 수 있습니다.');
+      return;
+    }
+
+    els.content.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Batch ID</th>
+              <th style="width:160px; text-align:center">가져온 날짜·시각</th>
+              <th style="width:70px; text-align:center">건수</th>
+              <th style="width:120px; text-align:center">롤백 (삭제)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${batches.map(b => {
+              const dateStr = b.importedAt
+                ? new Date(b.importedAt).toLocaleString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+                : '-';
+              return `
+                <tr>
+                  <td><code style="font-size:13px;background:var(--surface2,#f2f5f3);padding:2px 6px;border-radius:4px">${escapeHtml(b.batchId)}</code></td>
+                  <td style="text-align:center;color:var(--muted)">${escapeHtml(dateStr)}</td>
+                  <td style="text-align:center;font-weight:700">${b.count}</td>
+                  <td style="text-align:center">
+                    <button class="button ghost"
+                      style="color:#9f3333;border-color:#9f3333;padding:4px 10px;font-size:13px"
+                      data-rollback-batch="${escapeAttr(b.batchId)}"
+                      data-rollback-count="${b.count}"
+                      type="button">
+                      🗑 삭제
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    els.content.querySelectorAll('[data-rollback-batch]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const batchId = btn.dataset.rollbackBatch;
+        const count = btn.dataset.rollbackCount;
+        const ok = confirm(`"${batchId}" 배치의 리드 ${count}건을 모두 삭제하여 롤백하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`);
+        if (!ok) return;
+
+        btn.disabled = true;
+        btn.textContent = '삭제 중...';
+
+        try {
+          const res = await fetch(`/api/leads/batches/${encodeURIComponent(batchId)}`, { method: 'DELETE' });
+          const result = await res.json();
+          if (result.success) {
+            // Reload baseLeads
+            const leadsRes = await fetch('/api/leads');
+            const leadsResult = await leadsRes.json();
+            if (leadsResult.success) {
+              baseLeads = leadsResult.data.map(lead => ({ ...lead, id: lead.leadId }));
+              renderFilters();
+            }
+            // Re-render history view
+            renderImportHistory();
+          } else {
+            alert('삭제 실패: ' + result.error);
+            btn.disabled = false;
+            btn.textContent = '🗑 삭제';
+          }
+        } catch (err) {
+          alert('오류가 발생했습니다.');
+          btn.disabled = false;
+          btn.textContent = '🗑 삭제';
+        }
+      });
+    });
+
+  } catch (err) {
+    els.content.innerHTML = emptyState('Import 기록을 불러오는 중 오류가 발생했습니다.');
+  }
+}
+
+function initImportHistoryModal() {
+  // Import History is rendered inline (nav view), no separate modal needed.
+  // But we keep the modal for when it's triggered from the import success result.
+  const modal = document.getElementById('importHistoryModal');
+  const closeBtn = document.getElementById('importHistoryCloseBtn');
+  const closeBtn2 = document.getElementById('importHistoryCloseBtn2');
+  if (!modal) return;
+
+  const closeModal = () => { modal.style.display = 'none'; };
+  closeBtn?.addEventListener('click', closeModal);
+  closeBtn2?.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+}
+
 
 
 function rowHtml(lead) {
@@ -1121,6 +1249,407 @@ function exportCsv() {
   link.download = `kbeauty-crm-export-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+// ── CSV Import Modal ────────────────────────────────────────────────────────
+
+let importParsedLeads = [];
+
+function openImportCsvModal() {
+  const modal = document.getElementById('importCsvModal');
+  if (!modal) return;
+  resetImportModal();
+  modal.style.display = 'flex';
+}
+
+function resetImportModal() {
+  importParsedLeads = [];
+  const step1 = document.getElementById('importStep1');
+  const step2 = document.getElementById('importStep2');
+  const progress = document.getElementById('importProgress');
+  const result = document.getElementById('importResult');
+  const submitBtn = document.getElementById('importSubmitBtn');
+  const fileInput = document.getElementById('importFileInput');
+  if (step1) step1.style.display = '';
+  if (step2) step2.style.display = 'none';
+  if (progress) progress.style.display = 'none';
+  if (result) result.style.display = 'none';
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '가져오기'; }
+  if (fileInput) fileInput.value = '';
+  // Reset radio
+  const radios = document.querySelectorAll('input[name="duplicateAction"]');
+  radios.forEach(r => { if (r.value === 'skip') r.checked = true; });
+}
+
+function initImportCsvModal() {
+  const modal = document.getElementById('importCsvModal');
+  const closeBtn = document.getElementById('importModalCloseBtn');
+  const cancelBtn = document.getElementById('importCancelBtn');
+  const submitBtn = document.getElementById('importSubmitBtn');
+  const dropZone = document.getElementById('importDropZone');
+  const fileInput = document.getElementById('importFileInput');
+  const resetBtn = document.getElementById('importResetBtn');
+  if (!modal) return;
+
+  const closeModal = () => { modal.style.display = 'none'; resetImportModal(); };
+  closeBtn?.addEventListener('click', closeModal);
+  cancelBtn?.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  // Drop zone click
+  dropZone?.addEventListener('click', () => fileInput?.click());
+
+  // Drag & drop
+  dropZone?.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--accent)';
+    dropZone.style.background = 'rgba(0,180,120,.06)';
+  });
+  dropZone?.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = '';
+    dropZone.style.background = '';
+  });
+  dropZone?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    dropZone.style.background = '';
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleCsvFile(file);
+  });
+
+  // File input change
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) handleCsvFile(file);
+  });
+
+  // Reset to step 1
+  resetBtn?.addEventListener('click', () => {
+    resetImportModal();
+  });
+
+  // Submit
+  submitBtn?.addEventListener('click', async () => {
+    if (!importParsedLeads.length) return;
+    const duplicateAction = document.querySelector('input[name="duplicateAction"]:checked')?.value || 'skip';
+    await doImport(importParsedLeads, duplicateAction);
+  });
+}
+
+function handleCsvFile(file) {
+  if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+    alert('CSV 파일만 가져올 수 있습니다.');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    alert('파일 크기가 5MB를 초과합니다.');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    const leads = parseCsv(text);
+    if (!leads.length) {
+      alert('CSV 파일에서 데이터를 찾을 수 없습니다. Company와 Country 컬럼이 있는지 확인해주세요.');
+      return;
+    }
+    importParsedLeads = leads;
+    showImportPreview(leads);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function parseCsv(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+
+  const headers = splitCsvLine(lines[0]);
+  const leads = [];
+
+  const FIELD_MAP = {
+    company: 'Company',
+    country: 'Country',
+    priority: 'Priority',
+    type: 'Type',
+    buyercontact: 'BuyerContact',
+    'buyer contact': 'BuyerContact',
+    'buyer name': 'BuyerContact',
+    contact: 'BuyerContact',
+    email: 'Email',
+    phone: 'Phone',
+    website: 'WebsiteContact',
+    websitecontact: 'WebsiteContact',
+    brandschannels: 'BrandsChannels',
+    'brands/channels': 'BrandsChannels',
+    brands: 'BrandsChannels',
+    notes: 'notes',
+    note: 'notes',
+    status: 'status',
+    title: 'Title',
+    evidence: 'Evidence',
+    approach: 'Approach',
+    sources: 'Sources',
+    linkedincompany: 'LinkedInCompany',
+    linkedin: 'LinkedInCompany',
+    owner: 'owner',
+    lastcontact: 'lastContact',
+    'last contact': 'lastContact',
+    nextfollowup: 'nextFollowUp',
+    'next follow-up': 'nextFollowUp',
+    'follow-up': 'nextFollowUp',
+    followup: 'nextFollowUp',
+  };
+
+  const normalizedHeaders = headers.map(h => h.trim().toLowerCase());
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = splitCsvLine(lines[i]);
+    if (!values.length) continue;
+
+    const obj = {};
+    normalizedHeaders.forEach((header, idx) => {
+      const field = FIELD_MAP[header] || headers[idx]; // fallback to original header name
+      obj[field] = (values[idx] || '').trim();
+    });
+
+    if (!obj.Company && !obj.company) continue; // must have company
+
+    // Defaults
+    if (!obj.status) obj.status = 'New';
+    if (!obj.leadId) obj.leadId = `lead-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+    if (!obj.id) obj.id = obj.leadId;
+
+    leads.push(obj);
+  }
+  return leads;
+}
+
+function splitCsvLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function showImportPreview(leads) {
+  const step1 = document.getElementById('importStep1');
+  const step2 = document.getElementById('importStep2');
+  const submitBtn = document.getElementById('importSubmitBtn');
+
+  if (step1) step1.style.display = 'none';
+  if (step2) step2.style.display = '';
+  if (submitBtn) submitBtn.disabled = false;
+
+  _renderPreviewContents(leads);
+
+  // Re-render summary instantly when radio changes
+  document.querySelectorAll('input[name="duplicateAction"]').forEach(radio => {
+    radio.addEventListener('change', () => _renderPreviewContents(importParsedLeads));
+  });
+}
+
+function _isDuplicate(lead) {
+  const co = (lead.Company || '').trim().toLowerCase();
+  const ct = (lead.Country || '').trim().toLowerCase();
+  return baseLeads.some(b =>
+    (b.Company || '').trim().toLowerCase() === co &&
+    (b.Country || '').trim().toLowerCase() === ct
+  );
+}
+
+function _renderPreviewContents(leads, activeTab) {
+  // ── 1. Classify ──────────────────────────────────────────────────
+  const dupes = leads.filter(l => _isDuplicate(l));
+  const newLeads = leads.filter(l => !_isDuplicate(l));
+  const dupAction = document.querySelector('input[name="duplicateAction"]:checked')?.value || 'skip';
+
+  // ── 2. Summary badges ─────────────────────────────────────────────
+  const previewInfo = document.getElementById('importPreviewInfo');
+  if (previewInfo) {
+    const dupeLabel = dupAction === 'overwrite'
+      ? `<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:12px;font-size:13px;font-weight:600">⚠️ 중복 ${dupes.length}건 → 덮어쓰기</span>`
+      : `<span style="background:#fff3cd;color:#856404;padding:2px 8px;border-radius:12px;font-size:13px;font-weight:600">⚠️ 중복 ${dupes.length}건 → 건너뜀</span>`;
+
+    previewInfo.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <span style="font-size:15px;font-weight:700">총 ${leads.length}개</span>
+        <span style="background:#d4edda;color:#155724;padding:2px 8px;border-radius:12px;font-size:13px;font-weight:600">✅ 신규 ${newLeads.length}건</span>
+        ${dupes.length ? dupeLabel : ''}
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:12px;" id="importTabBtns">
+        <button class="button ${!activeTab || activeTab === 'all' ? '' : 'ghost'}" data-preview-tab="all" type="button" style="font-size:12px;padding:3px 10px">전체 ${leads.length}</button>
+        <button class="button ${activeTab === 'new' ? '' : 'ghost'}" data-preview-tab="new" type="button" style="font-size:12px;padding:3px 10px">신규 ${newLeads.length}</button>
+        <button class="button ${activeTab === 'dup' ? '' : 'ghost'}" data-preview-tab="dup" type="button" style="font-size:12px;padding:3px 10px;${dupes.length ? '' : 'opacity:.45;pointer-events:none'}">중복 ${dupes.length}</button>
+      </div>
+    `;
+
+    document.querySelectorAll('[data-preview-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _renderPreviewContents(leads, btn.dataset.previewTab);
+      });
+    });
+  }
+
+  // ── 3. Determine rows to show ──────────────────────────────────────
+  const tab = activeTab || 'all';
+  const displayLeads = tab === 'new' ? newLeads : tab === 'dup' ? dupes : leads;
+
+  // ── 4. Table ───────────────────────────────────────────────────────
+  const PREVIEW_COLS = ['Company', 'Country', 'Priority', 'Type', 'Email', 'Phone', 'status'];
+  const previewHead = document.getElementById('importPreviewHead');
+  const previewBody = document.getElementById('importPreviewBody');
+
+  if (previewHead) {
+    previewHead.innerHTML = `
+      <tr>
+        <th style="width:28px"></th>
+        ${PREVIEW_COLS.map(c => `<th>${escapeHtml(c)}</th>`).join('')}
+      </tr>`;
+  }
+
+  if (previewBody) {
+    previewBody.innerHTML = displayLeads.slice(0, 15).map(lead => {
+      const isDup = _isDuplicate(lead);
+      const rowStyle = isDup ? 'background:#fffbeb;' : '';
+      const badge = isDup
+        ? `<span title="${dupAction === 'overwrite' ? '덮어쓰기' : '건너뜀'}" style="font-size:11px;background:#ffc107;color:#333;border-radius:8px;padding:1px 5px">${dupAction === 'overwrite' ? '↺' : '↷'}</span>`
+        : `<span style="font-size:11px;background:#198754;color:#fff;border-radius:8px;padding:1px 5px">NEW</span>`;
+      return `
+        <tr style="${rowStyle}">
+          <td style="text-align:center">${badge}</td>
+          ${PREVIEW_COLS.map(c => `<td>${escapeHtml(lead[c] || '')}</td>`).join('')}
+        </tr>`;
+    }).join('');
+
+    if (displayLeads.length > 15) {
+      previewBody.innerHTML += `
+        <tr>
+          <td colspan="${PREVIEW_COLS.length + 1}" style="text-align:center;color:var(--muted);font-size:13px;padding:10px">
+            … 외 ${displayLeads.length - 15}건 더 있음
+          </td>
+        </tr>`;
+    }
+
+    if (!displayLeads.length) {
+      previewBody.innerHTML = `
+        <tr>
+          <td colspan="${PREVIEW_COLS.length + 1}" style="text-align:center;color:var(--muted);padding:20px">
+            해당 항목이 없습니다.
+          </td>
+        </tr>`;
+    }
+  }
+}
+
+
+async function doImport(leads, duplicateAction) {
+  const progress = document.getElementById('importProgress');
+  const progressBar = document.getElementById('importProgressBar');
+  const progressText = document.getElementById('importProgressText');
+  const result = document.getElementById('importResult');
+  const resultText = document.getElementById('importResultText');
+  const submitBtn = document.getElementById('importSubmitBtn');
+  const step2 = document.getElementById('importStep2');
+
+  if (progress) progress.style.display = '';
+  if (step2) step2.style.display = 'none';
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '가져오는 중...'; }
+
+  // Animate progress bar
+  let fakeProgress = 0;
+  const progressInterval = setInterval(() => {
+    fakeProgress = Math.min(fakeProgress + 5, 85);
+    if (progressBar) progressBar.style.width = fakeProgress + '%';
+    if (progressText) progressText.textContent = `${Math.round(fakeProgress)}% 처리 중...`;
+  }, 150);
+
+  try {
+    const res = await fetch('/api/leads/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leads, duplicateAction })
+    });
+    const data = await res.json();
+
+    clearInterval(progressInterval);
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressText) progressText.textContent = '완료!';
+
+    if (data.success) {
+      const s = data.summary;
+      if (result) result.style.display = '';
+      if (resultText) {
+        const parts = [];
+        if (s.inserted) parts.push(`✅ ${s.inserted}개 새로 추가`);
+        if (s.updated) parts.push(`🔄 ${s.updated}개 업데이트`);
+        if (s.skipped) parts.push(`⏭ ${s.skipped}개 건너뜀`);
+        if (s.errors) parts.push(`❌ ${s.errors}개 오류`);
+        resultText.textContent = parts.join('  |  ');
+      }
+      if (submitBtn) { submitBtn.textContent = '\uc644\ub8cc \u2713'; }
+
+      // Show quick link to Import History
+      if (result) {
+        const batchId = data.batchId || '';
+        const historyLink = document.createElement('div');
+        historyLink.style.cssText = 'margin-top:10px;';
+        historyLink.innerHTML = `
+          <button class="button ghost" id="goToImportHistoryBtn" type="button"
+            style="font-size:13px;padding:4px 12px">
+            📋 Import History에서 확인 / 롤백하기
+          </button>
+        `;
+        result.appendChild(historyLink);
+        document.getElementById('goToImportHistoryBtn')?.addEventListener('click', () => {
+          // Close modal and navigate to import history view
+          document.getElementById('importCsvModal').style.display = 'none';
+          resetImportModal();
+          state.view = 'importHistory';
+          render();
+        });
+      }
+
+      // Reload leads from server
+      try {
+        const leadsRes = await fetch('/api/leads');
+        const leadsResult = await leadsRes.json();
+        if (leadsResult.success) {
+          baseLeads = leadsResult.data.map(lead => ({ ...lead, id: lead.leadId }));
+          renderFilters();
+        }
+      } catch(e) { console.error(e); }
+
+
+    } else {
+      if (result) { result.style.display = ''; result.style.background = '#fff0f0'; result.style.borderColor = '#f5b8b8'; }
+      if (resultText) resultText.textContent = '오류: ' + (data.error || '가져오기 실패');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '다시 시도'; }
+    }
+  } catch (err) {
+    clearInterval(progressInterval);
+    if (result) { result.style.display = ''; result.style.background = '#fff0f0'; result.style.borderColor = '#f5b8b8'; }
+    if (resultText) resultText.textContent = '네트워크 오류가 발생했습니다. 다시 시도해주세요.';
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '다시 시도'; }
+  }
 }
 
 function makeId(lead, index) {

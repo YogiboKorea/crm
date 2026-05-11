@@ -28,6 +28,10 @@ export interface ILead extends Document {
   nextFollowUp?: string;
   notes?: string;
   favorite?: boolean;
+
+  // Import tracking
+  importBatch?: string;   // e.g. "import-20260511-092006"
+  importedAt?: string;    // ISO date string
 }
 
 const LeadSchema: Schema = new Schema({
@@ -57,6 +61,8 @@ const LeadSchema: Schema = new Schema({
   nextFollowUp: { type: String, default: '' },
   notes: { type: String, default: '' },
   favorite: { type: Boolean, default: false },
+  importBatch: { type: String, default: '' },
+  importedAt: { type: String, default: '' },
 }, { timestamps: true });
 
 export const Lead = mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);
