@@ -10,7 +10,7 @@ export default function Home() {
           <button id="homeBtn" className="brand" type="button" aria-label="Reset filters and go to Leads">
             <div className="brand-mark">
               <img src="/assets/logo.png" alt="Yogico" className="brand-logo"
-                   onError={(e) => { (e.target as HTMLImageElement).src = '/assets/logo.png'; }} />
+                onError={(e) => { (e.target as HTMLImageElement).src = '/assets/logo.png'; }} />
             </div>
             <div>
               <h1>Yogico CRM</h1>
@@ -136,7 +136,7 @@ export default function Home() {
               {/* CRM 관리 필드 */}
               <label><span>Status</span>
                 <select id="el-status">
-                  {['New','Qualified','Contacted','Sample Sent','Negotiating','Won','Lost'].map(s => (
+                  {['New', 'Qualified', 'Contacted', 'Sample Sent', 'Negotiating', 'Won', 'Lost'].map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>
@@ -267,7 +267,7 @@ export default function Home() {
             <button id="settingsCloseBtn" className="modal-close" type="button">&#x2715;</button>
           </div>
           <div className="modal-form">
-            
+
             {/* Password Change Section */}
             <div className="field-block" style={{ borderTop: 'none', paddingTop: 0 }}>
               <h4>비밀번호 변경 (Change Password)</h4>
@@ -282,7 +282,7 @@ export default function Home() {
             <div id="subIdSection" className="field-block" style={{ display: 'none', marginTop: '24px' }}>
               <h4>서브 계정 관리 (Sub-ID Management)</h4>
               <p style={{ marginBottom: '12px', color: 'var(--muted)' }}>마스터 계정 전용 기능입니다. 서브 계정을 생성하거나 삭제할 수 있습니다.</p>
-              
+
               <div className="inline-save" style={{ marginBottom: '16px' }}>
                 <input id="subUsernameInput" type="text" placeholder="새 아이디" />
                 <input id="subPasswordInput" type="password" placeholder="비밀번호" />
