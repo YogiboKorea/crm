@@ -5,6 +5,17 @@ import Script from 'next/script';
 export default function Home() {
   return (
     <>
+      {/* 상단 progress bar (전역 전환 표시) */}
+      <div id="topProgressBar" aria-hidden="true"></div>
+
+      {/* 전체 차단 오버레이 (중요한 작업 진행 중) */}
+      <div id="globalBlocker" role="status" aria-live="polite">
+        <div className="blocker-card">
+          <div className="blocker-spinner"></div>
+          <div className="blocker-text" id="globalBlockerText">불러오는 중...</div>
+        </div>
+      </div>
+
       <div className="app-shell">
         <aside className="sidebar">
           <button id="homeBtn" className="brand" type="button" aria-label="Reset filters and go to Leads">

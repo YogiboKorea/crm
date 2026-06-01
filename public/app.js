@@ -268,6 +268,53 @@ function resetAllFilters() {
   if (els.priority) els.priority.value = "All";
 }
 
+// ── Loading helpers ──────────────────────────────────────────────
+// 상단 가로 progress bar — async 작업 시작/끝에 호출
+let _topBarTimer = null;
+function startTopProgress() {
+  const bar = document.getElementById('topProgressBar');
+  if (!bar) return;
+  if (_topBarTimer) { clearInterval(_topBarTimer); _topBarTimer = null; }
+  bar.style.width = '0%';
+  bar.classList.add('is-active');
+  // 즉시 30%, 이후 슬슬 90%까지 차오르는 페이크 진행
+  requestAnimationFrame(() => { bar.style.width = '30%'; });
+  let pct = 30;
+  _topBarTimer = setInterval(() => {
+    pct = Math.min(pct + (90 - pct) * 0.15, 90);
+    bar.style.width = pct.toFixed(1) + '%';
+  }, 200);
+}
+function finishTopProgress() {
+  const bar = document.getElementById('topProgressBar');
+  if (!bar) return;
+  if (_topBarTimer) { clearInterval(_topBarTimer); _topBarTimer = null; }
+  bar.style.width = '100%';
+  setTimeout(() => {
+    bar.classList.remove('is-active');
+    setTimeout(() => { bar.style.width = '0%'; }, 250);
+  }, 200);
+}
+
+// 콘텐츠 영역 dim + 중앙 스피너 — 뷰 전환용
+function setContentLoading(isLoading) {
+  const content = document.getElementById('content');
+  if (!content) return;
+  content.classList.toggle('content-loading', !!isLoading);
+}
+
+// 전체화면 블로커 — DB 쓰기 같은 차단성 작업
+function showGlobalBlocker(message) {
+  const el = document.getElementById('globalBlocker');
+  const txt = document.getElementById('globalBlockerText');
+  if (txt) txt.textContent = message || '처리 중...';
+  if (el) el.classList.add('is-active');
+}
+function hideGlobalBlocker() {
+  const el = document.getElementById('globalBlocker');
+  if (el) el.classList.remove('is-active');
+}
+
 async function loadLeads() {
   try {
     const res = await fetch('/api/leads');
@@ -298,12 +345,18 @@ function bindEvents() {
         const statusEl = els.status;
         if (statusEl) statusEl.value = targetStatus;
       }
-      
-      // Fetch fresh data from server on tab click
-      await loadLeads();
 
-      state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
-      render();
+      // 로딩 표시 — 사용자가 클릭한 결과로 무거운 데이터 fetch 가 시작됨을 인지
+      startTopProgress();
+      setContentLoading(true);
+      try {
+        await loadLeads();
+        state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
+        render();
+      } finally {
+        setContentLoading(false);
+        finishTopProgress();
+      }
       return;
     }
 
@@ -312,9 +365,16 @@ function bindEvents() {
       state.view = "leads";
       resetAllFilters();
       state.selectedLeadIds = new Set();
-      await loadLeads();
-      state.selectedId = getFilteredLeads()[0]?.id || null;
-      render();
+      startTopProgress();
+      setContentLoading(true);
+      try {
+        await loadLeads();
+        state.selectedId = getFilteredLeads()[0]?.id || null;
+        render();
+      } finally {
+        setContentLoading(false);
+        finishTopProgress();
+      }
       return;
     }
 
@@ -1825,6 +1885,10 @@ async function doImport(leads, duplicateAction) {
   if (step2) step2.style.display = 'none';
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '가져오는 중...'; }
 
+  // 전역 progress bar + 풀스크린 블로커 — 모달 안의 진행바와 별개로 화면 상단에서도 진행 중 표시
+  startTopProgress();
+  showGlobalBlocker(`${leads.length}건 서버에 전송 중...`);
+
   // Animate progress bar
   let fakeProgress = 0;
   const progressInterval = setInterval(() => {
@@ -1918,6 +1982,10 @@ async function doImport(leads, duplicateAction) {
     if (result) { result.style.display = ''; result.style.background = '#fff0f0'; result.style.borderColor = '#f5b8b8'; }
     if (resultText) resultText.textContent = '네트워크 오류가 발생했습니다. 다시 시도해주세요.';
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '다시 시도'; }
+  } finally {
+    // 성공/실패 어느 쪽이든 전역 로딩 인디케이터 정리
+    hideGlobalBlocker();
+    finishTopProgress();
   }
 }
 
