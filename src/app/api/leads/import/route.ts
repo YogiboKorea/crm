@@ -32,10 +32,11 @@ export async function POST(req: Request) {
     let updated = 0;
     const errors: string[] = [];
 
-    for (const lead of leads) {
+    for (let idx = 0; idx < leads.length; idx++) {
+      const lead = leads[idx];
       try {
         if (!lead.leadId) {
-          lead.leadId = `lead-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          lead.leadId = `lead-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`;
         }
 
         // Always tag with batch info
@@ -59,7 +60,12 @@ export async function POST(req: Request) {
           inserted++;
         }
       } catch (err: any) {
-        errors.push(`${lead.Company}: ${err.message}`);
+        // E11000: MongoDB duplicate key error
+        if (err.code === 11000) {
+          errors.push(`${lead.Company || 'Unknown'}: leadId 중복 오류 (이미 존재하는 ID)`);
+        } else {
+          errors.push(`${lead.Company || 'Unknown'}: ${err.message}`);
+        }
       }
     }
 

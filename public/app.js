@@ -1417,7 +1417,7 @@ function parseCsv(text) {
 
     // Defaults
     if (!obj.status) obj.status = 'New';
-    if (!obj.leadId) obj.leadId = `lead-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+    if (!obj.leadId) obj.leadId = `lead-${Date.now()}-${i}-${Math.random().toString(36).slice(2,7)}`;
     if (!obj.id) obj.id = obj.leadId;
 
     leads.push(obj);

@@ -1,0 +1,7 @@
+Company,Country,Priority,Type,BuyerContact,Email,Phone,Website,Notes
+TestCompany Alpha,USA,A-,Distributor,John Smith,john@alpha.com,+1-555-0001,https://alpha.com,Test import row 1
+TestCompany Beta,Germany,B,Retailer,Hans Müller,hans@beta.de,+49-30-0002,https://beta.de,Test import row 2
+TestCompany Gamma,Japan,A-,Distributor,Taro Yamada,taro@gamma.jp,+81-3-0003,https://gamma.jp,Test import row 3
+TestCompany Delta,UAE,C,Retailer,Ahmed Ali,ahmed@delta.ae,+971-50-0004,https://delta.ae,Test import row 4
+TestCompany Epsilon,Australia,B,Distributor,Sarah Lee,sarah@epsilon.au,+61-2-0005,https://epsilon.au,Test import row 5
+,France,A-,Distributor,No Name,noname@test.fr,,, 회사명 없는 잘못된 row (건너뜀 예상)
