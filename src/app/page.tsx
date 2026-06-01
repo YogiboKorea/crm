@@ -209,13 +209,15 @@ export default function Home() {
                 <input id="importFileInput" type="file" accept=".csv,text/csv" style={{ display: 'none' }} />
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' }}>
                 <label style={{ fontWeight: 600, fontSize: '14px', whiteSpace: 'nowrap' }}>중복 처리:</label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-                  <input type="radio" name="duplicateAction" value="skip" defaultChecked /> 건너뛰기 (Skip)
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                  <input type="radio" name="duplicateAction" value="skip" defaultChecked />
+                  <span>건너뛰기 (Skip)</span>
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-                  <input type="radio" name="duplicateAction" value="overwrite" /> 덮어쓰기 (Overwrite)
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                  <input type="radio" name="duplicateAction" value="overwrite" />
+                  <span>덮어쓰기 (Overwrite)</span>
                 </label>
               </div>
 

@@ -22,60 +22,177 @@ const CONTINENT_ORDER = [
 ];
 
 const COUNTRY_CONTINENTS = {
+  // Africa
   Algeria: "Africa",
+  Angola: "Africa",
+  Botswana: "Africa",
+  "Burkina Faso": "Africa",
+  Cameroon: "Africa",
+  "Cote d'Ivoire": "Africa",
   Egypt: "Africa",
+  Ethiopia: "Africa",
+  Gambia: "Africa",
+  Ghana: "Africa",
+  "Ivory Coast": "Africa",
+  Kenya: "Africa",
   Libya: "Africa",
+  Mauritius: "Africa",
+  Morocco: "Africa",
+  Namibia: "Africa",
+  Nigeria: "Africa",
+  Rwanda: "Africa",
+  Senegal: "Africa",
   "South Africa": "Africa",
+  Tanzania: "Africa",
+  Tunisia: "Africa",
+  Uganda: "Africa",
+  Zambia: "Africa",
+  Zimbabwe: "Africa",
+
+  // Asia
   Armenia: "Asia",
+  Azerbaijan: "Asia",
+  Bahrain: "Asia",
+  Bangladesh: "Asia",
+  Bhutan: "Asia",
+  Brunei: "Asia",
+  Cambodia: "Asia",
   China: "Asia",
+  Georgia: "Asia",
   "Hong Kong": "Asia",
   India: "Asia",
   Indonesia: "Asia",
+  Iran: "Asia",
+  Iraq: "Asia",
   Israel: "Asia",
   Japan: "Asia",
   Jordan: "Asia",
   Kazakhstan: "Asia",
+  Korea: "Asia",
   Kuwait: "Asia",
+  Kyrgyzstan: "Asia",
+  Laos: "Asia",
+  Lebanon: "Asia",
   Malaysia: "Asia",
-  Phillippines: "Asia",
+  Maldives: "Asia",
+  Mongolia: "Asia",
+  Myanmar: "Asia",
+  Nepal: "Asia",
+  Oman: "Asia",
+  Pakistan: "Asia",
+  Philippines: "Asia",
+  Phillippines: "Asia", // 흔한 오타
   Qatar: "Asia",
-  Russia: "Europe",
   "Saudi Arabia": "Asia",
   Singapore: "Asia",
+  "South Korea": "Asia",
+  "Sri Lanka": "Asia",
+  Syria: "Asia",
   Taiwan: "Asia",
+  Tajikistan: "Asia",
   Thailand: "Asia",
   Turkey: "Asia",
+  Turkmenistan: "Asia",
   UAE: "Asia",
+  "United Arab Emirates": "Asia",
   Uzbekistan: "Asia",
   Vietnam: "Asia",
+  Yemen: "Asia",
+
+  // Europe
+  Albania: "Europe",
+  Austria: "Europe",
+  Belarus: "Europe",
   Belgium: "Europe",
+  "Bosnia and Herzegovina": "Europe",
+  Bulgaria: "Europe",
+  Croatia: "Europe",
+  Cyprus: "Europe",
   Czech: "Europe",
+  "Czech Republic": "Europe",
+  Czechia: "Europe",
   Denmark: "Europe",
   Estonia: "Europe",
+  Finland: "Europe",
   France: "Europe",
   Germany: "Europe",
   Greece: "Europe",
+  Hungary: "Europe",
+  Iceland: "Europe",
+  Ireland: "Europe",
   Italy: "Europe",
+  Kosovo: "Europe",
+  Latvia: "Europe",
+  Lithuania: "Europe",
+  Luxembourg: "Europe",
+  Malta: "Europe",
+  Moldova: "Europe",
+  Montenegro: "Europe",
   Netherlands: "Europe",
+  "North Macedonia": "Europe",
+  Norway: "Europe",
   Poland: "Europe",
   Portugal: "Europe",
   Romania: "Europe",
+  Russia: "Europe",
+  Serbia: "Europe",
+  Slovakia: "Europe",
   Slovenia: "Europe",
   Spain: "Europe",
+  Sweden: "Europe",
+  Switzerland: "Europe",
   UK: "Europe",
   Ukraine: "Europe",
   "United Kingdom": "Europe",
+
+  // North America
+  Aruba: "North America",
+  Bahamas: "North America",
+  Barbados: "North America",
   Canada: "North America",
+  "Costa Rica": "North America",
+  Cuba: "North America",
+  "Dominican Republic": "North America",
+  "El Salvador": "North America",
+  Guatemala: "North America",
+  Haiti: "North America",
+  Honduras: "North America",
+  Jamaica: "North America",
   Mexico: "North America",
+  Nicaragua: "North America",
+  Panama: "North America",
+  "Puerto Rico": "North America",
+  "Trinidad and Tobago": "North America",
   USA: "North America",
+  "United States": "North America",
+  "United States of America": "North America",
+
+  // South America
+  Argentina: "South America",
+  Bolivia: "South America",
   Brazil: "South America",
   Chile: "South America",
+  Colombia: "South America",
   Ecuador: "South America",
+  Guyana: "South America",
+  Paraguay: "South America",
   Peru: "South America",
-  Australia: "Oceania"
+  Suriname: "South America",
+  Uruguay: "South America",
+  Venezuela: "South America",
+
+  // Oceania
+  Australia: "Oceania",
+  Fiji: "Oceania",
+  "French Polynesia": "Oceania",
+  "New Zealand": "Oceania",
+  "Papua New Guinea": "Oceania",
+  Samoa: "Oceania",
 };
 
 let baseLeads = [];
+let currentUser = null;
+let isMaster = false;
 
 let edits = {};
 let customLeads = [];
@@ -92,24 +209,25 @@ let state = {
 };
 
 const els = {
-  navItems: [...document.querySelectorAll(".nav-item")],
-  viewTitle: document.getElementById("viewTitle"),
-  viewSubtitle: document.getElementById("viewSubtitle"),
-  search: document.getElementById("searchInput"),
-  country: document.getElementById("countryFilter"),
-  status: document.getElementById("statusFilter"),
-  priority: document.getElementById("priorityFilter"),
-  stats: document.getElementById("statsGrid"),
-  content: document.getElementById("content"),
-  detail: document.getElementById("detailPanel"),
-  detailResizer: document.getElementById("detailResizer"),
-  pipeline: document.getElementById("pipelineList"),
-  exportCsv: document.getElementById("exportCsvBtn"),
-  addLead: document.getElementById("addLeadBtn"),
-  markContacted: document.getElementById("markContactedBtn"),
-  undoContacted: document.getElementById("undoContactedBtn"),
-  reset: document.getElementById("resetBtn"),
-  home: document.getElementById("homeBtn")
+  get navItems() { return [...document.querySelectorAll(".nav-item")]; },
+  get viewTitle() { return document.getElementById("viewTitle"); },
+  get viewSubtitle() { return document.getElementById("viewSubtitle"); },
+  get search() { return document.getElementById("searchInput"); },
+  get country() { return document.getElementById("countryFilter"); },
+  get status() { return document.getElementById("statusFilter"); },
+  get priority() { return document.getElementById("priorityFilter"); },
+  get stats() { return document.getElementById("statsGrid"); },
+  get content() { return document.getElementById("content"); },
+  get detail() { return document.getElementById("detailPanel"); },
+  get detailResizer() { return document.getElementById("detailResizer"); },
+  get pipeline() { return document.getElementById("pipelineList"); },
+  get exportCsv() { return document.getElementById("exportCsvBtn"); },
+  get addLead() { return document.getElementById("addLeadBtn"); },
+  get markContacted() { return document.getElementById("markContactedBtn"); },
+  get undoContacted() { return document.getElementById("undoContactedBtn"); },
+  get reset() { return document.getElementById("resetBtn"); },
+  get home() { return document.getElementById("homeBtn"); },
+  get settingsBtn() { return document.getElementById("settingsBtn"); }
 };
 
 init();
@@ -150,79 +268,493 @@ function resetAllFilters() {
   if (els.priority) els.priority.value = "All";
 }
 
+async function loadLeads() {
+  try {
+    const res = await fetch('/api/leads');
+    const result = await res.json();
+    if (result.success) {
+      baseLeads = result.data.map(lead => ({ ...lead, id: lead.leadId }));
+      renderFilters();
+    }
+  } catch(e) {
+    console.error("Failed to load leads:", e);
+  }
+}
+
 function bindEvents() {
-  els.navItems.forEach((button) => {
-    button.addEventListener("click", () => {
-      const targetView = button.dataset.view;
-      const targetStatus = button.dataset.statusFilter;
+  // Click event delegation
+  document.addEventListener("click", async (event) => {
+    // 1. Navigation items
+    const navItem = event.target.closest(".nav-item");
+    if (navItem) {
+      const targetView = navItem.dataset.view;
+      const targetStatus = navItem.dataset.statusFilter;
       state.view = targetView;
-      if (["leads", "favorites"].includes(state.view)) {
-        resetAllFilters();
-        if (targetStatus) {
-          state.status = targetStatus;
-          if (els.status) els.status.value = targetStatus;
+      // 모든 뷰 진입 시 필터 초기화 — 이전 뷰에서 남은 country/status/priority 가
+      // 다음 뷰의 데이터까지 좁히는 문제 방지
+      resetAllFilters();
+      if (targetStatus) {
+        state.status = targetStatus;
+        const statusEl = els.status;
+        if (statusEl) statusEl.value = targetStatus;
+      }
+      
+      // Fetch fresh data from server on tab click
+      await loadLeads();
+
+      state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
+      render();
+      return;
+    }
+
+    // 2. Home Button
+    if (event.target.closest("#homeBtn")) {
+      state.view = "leads";
+      resetAllFilters();
+      state.selectedLeadIds = new Set();
+      await loadLeads();
+      state.selectedId = getFilteredLeads()[0]?.id || null;
+      render();
+      return;
+    }
+
+    // 3. Toolbar / Main action buttons
+    if (event.target.closest("#exportCsvBtn")) {
+      exportCsv();
+      return;
+    }
+    if (event.target.closest("#importCsvBtn")) {
+      openImportCsvModal();
+      return;
+    }
+    if (event.target.closest("#addLeadBtn")) {
+      addLead();
+      return;
+    }
+    if (event.target.closest("#markContactedBtn")) {
+      markSelectedContacted();
+      return;
+    }
+    if (event.target.closest("#undoContactedBtn")) {
+      undoSelectedContacted();
+      return;
+    }
+    if (event.target.closest("#resetBtn")) {
+      resetEdits();
+      return;
+    }
+
+    // 4. Modal Close actions
+    if (event.target.closest("#modalCloseBtn") || event.target.closest("#modalCancelBtn")) {
+      const modal = document.getElementById("addLeadModal");
+      if (modal) modal.style.display = "none";
+      return;
+    }
+    if (event.target.closest("#editModalCloseBtn") || event.target.closest("#editModalCloseBtn2")) {
+      const modal = document.getElementById("editLeadModal");
+      if (modal) modal.style.display = "none";
+      return;
+    }
+    if (event.target.closest("#importModalCloseBtn") || event.target.closest("#importCancelBtn")) {
+      const modal = document.getElementById("importCsvModal");
+      if (modal) modal.style.display = "none";
+      resetImportModal();
+      return;
+    }
+    if (event.target.closest("#settingsCloseBtn")) {
+      const modal = document.getElementById("settingsModal");
+      if (modal) modal.style.display = "none";
+      return;
+    }
+    if (event.target.closest("#importHistoryCloseBtn") || event.target.closest("#importHistoryCloseBtn2")) {
+      const modal = document.getElementById("importHistoryModal");
+      if (modal) modal.style.display = "none";
+      return;
+    }
+
+    // 5. Click outside modal content (backdrop clicks)
+    if (event.target.classList.contains("modal-backdrop")) {
+      event.target.style.display = "none";
+      if (event.target.id === "importCsvModal") resetImportModal();
+      return;
+    }
+
+    // 6. Lead Table & Card selections
+    const row = event.target.closest("tr[data-id]");
+    if (row) {
+      if (state.view === "emails") {
+        if (event.target.closest("input,button,a")) return;
+        state.selectedId = row.dataset.id;
+        render();
+        return;
+      }
+      
+      // Default: click table row opens edit modal
+      if (event.target.closest("input[type='checkbox'], button.favorite-button, a")) return;
+      openEditModal(row.dataset.id);
+      return;
+    }
+
+    // Country card click
+    const countryCard = event.target.closest("[data-country]");
+    if (countryCard && state.view === "countries") {
+      state.country = countryCard.dataset.country;
+      state.view = "leads";
+      const countryFilter = els.country;
+      if (countryFilter) countryFilter.value = state.country;
+      render();
+      return;
+    }
+
+    // Follow up list item click
+    const followupItem = event.target.closest(".followup-item");
+    if (followupItem && state.view === "followups") {
+      state.selectedId = followupItem.dataset.id;
+      state.view = "leads";
+      render();
+      return;
+    }
+
+    // 7. Edit Modal buttons
+    if (event.target.closest("#el-favoriteBtn")) {
+      if (state.selectedId) toggleFavorite(state.selectedId);
+      return;
+    }
+    if (event.target.closest("#el-deleteBtn")) {
+      if (state.selectedId) {
+        deleteLead(state.selectedId);
+        const modal = document.getElementById("editLeadModal");
+        if (modal) modal.style.display = "none";
+      }
+      return;
+    }
+
+    // 8. Settings Button Click
+    if (event.target.closest("#settingsBtn")) {
+      const modal = document.getElementById("settingsModal");
+      if (modal) {
+        modal.style.display = "flex";
+        const newPasswordInput = document.getElementById("newPasswordInput");
+        if (newPasswordInput) newPasswordInput.value = "";
+        if (isMaster) loadSubIds();
+      }
+      return;
+    }
+
+    // Settings Change Password Button
+    if (event.target.closest("#changePasswordBtn")) {
+      const newPasswordInput = document.getElementById("newPasswordInput");
+      const newPassword = newPasswordInput?.value || "";
+      if (newPassword.length < 4) {
+        alert("비밀번호는 최소 4자리 이상이어야 합니다.");
+        return;
+      }
+
+      const btn = event.target.closest("#changePasswordBtn");
+      btn.disabled = true;
+      btn.textContent = "저장 중...";
+
+      try {
+        const res = await fetch("/api/users/password", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newPassword })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert("비밀번호가 성공적으로 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용해주세요.");
+          if (newPasswordInput) newPasswordInput.value = "";
+        } else {
+          alert("오류: " + data.error);
         }
+      } catch (err) {
+        alert("비밀번호 변경 실패");
+      }
+      btn.disabled = false;
+      btn.textContent = "변경하기";
+      return;
+    }
+
+    // Settings Create Sub ID Button
+    if (event.target.closest("#createSubIdBtn")) {
+      const unInput = document.getElementById("subUsernameInput");
+      const pwInput = document.getElementById("subPasswordInput");
+      const username = unInput?.value.trim() || "";
+      const password = pwInput?.value || "";
+
+      if (!username || password.length < 4) {
+        alert("아이디와 4자리 이상의 비밀번호를 입력해주세요.");
+        return;
+      }
+
+      const btn = event.target.closest("#createSubIdBtn");
+      btn.disabled = true;
+      btn.textContent = "생성 중...";
+
+      try {
+        const res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (unInput) unInput.value = "";
+          if (pwInput) pwInput.value = "";
+          loadSubIds();
+        } else {
+          alert("생성 실패: " + data.error);
+        }
+      } catch (err) {
+        alert("생성 중 오류가 발생했습니다.");
+      }
+      btn.disabled = false;
+      btn.textContent = "생성";
+      return;
+    }
+
+    // Settings Delete Sub ID
+    const deleteUserBtn = event.target.closest("[data-delete-user]");
+    if (deleteUserBtn) {
+      const username = deleteUserBtn.dataset.deleteUser;
+      if (confirm(`정말 '${username}' 계정을 삭제하시겠습니까?`)) {
+        try {
+          const res = await fetch("/api/users/" + encodeURIComponent(username), { method: "DELETE" });
+          const data = await res.json();
+          if (data.success) {
+            loadSubIds();
+          } else {
+            alert("삭제 실패: " + data.error);
+          }
+        } catch (err) {
+          alert("삭제 중 오류가 발생했습니다.");
+        }
+      }
+      return;
+    }
+
+    // 9. Import CSV Modal Buttons
+    if (event.target.closest("#importDropZone")) {
+      const fileInput = document.getElementById("importFileInput");
+      if (fileInput) fileInput.click();
+      return;
+    }
+    if (event.target.closest("#importSubmitBtn")) {
+      if (importParsedLeads.length) {
+        const duplicateAction = document.querySelector('input[name="duplicateAction"]:checked')?.value || "skip";
+        const dupes = importParsedLeads.filter(l => _isDuplicate(l));
+        const newOnes = importParsedLeads.length - dupes.length;
+        const actionLabel = duplicateAction === 'overwrite' ? '덮어쓰기' : '건너뜀';
+        const ok = confirm(
+          `최종 완료 처리 하시겠습니까?\n\n` +
+          `· 전체 ${importParsedLeads.length}건\n` +
+          `· 신규 ${newOnes}건\n` +
+          `· 중복 ${dupes.length}건 (${actionLabel})\n\n` +
+          `[확인]을 누르면 서버에 반영됩니다.\n[취소]를 누르면 업로드되지 않습니다.`
+        );
+        if (!ok) return;
+        doImport(importParsedLeads, duplicateAction);
+      }
+      return;
+    }
+
+    // Missing Email Save inline action
+    const saveEmailBtn = event.target.closest("[data-save-email]");
+    if (saveEmailBtn) {
+      const id = saveEmailBtn.dataset.saveEmail;
+      const input = document.querySelector(`[data-email-for="${CSS.escape(id)}"]`);
+      const email = input?.value.trim();
+      if (!email) return;
+      updateLead(id, "Email", email);
+      state.selectedId = id;
+      render();
+      return;
+    }
+
+    // Select Visible toggle
+    if (event.target.closest("[data-select-visible]")) {
+      const visibleIds = getFilteredLeads().map((lead) => lead.id);
+      const selectedVisibleCount = visibleIds.filter((id) => state.selectedLeadIds.has(id)).length;
+      const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+
+      if (allVisibleSelected) {
+        visibleIds.forEach((id) => state.selectedLeadIds.delete(id));
+      } else {
+        visibleIds.forEach((id) => state.selectedLeadIds.add(id));
+      }
+      render();
+      return;
+    }
+
+    // Delete Selected button
+    if (event.target.closest("[data-delete-selected]")) {
+      deleteSelectedLeads();
+      return;
+    }
+
+    // Favorite click (inline)
+    const favoriteBtn = event.target.closest("[data-favorite]");
+    if (favoriteBtn && !event.target.closest("#editLeadModal")) {
+      toggleFavorite(favoriteBtn.dataset.favorite);
+      return;
+    }
+  });
+
+  // Drag & drop event delegation
+  document.addEventListener("dragover", (event) => {
+    const dropZone = event.target.closest("#importDropZone");
+    if (dropZone) {
+      event.preventDefault();
+      dropZone.style.borderColor = "var(--accent)";
+      dropZone.style.background = "rgba(0,180,120,.06)";
+    }
+  });
+
+  document.addEventListener("dragleave", (event) => {
+    const dropZone = event.target.closest("#importDropZone");
+    if (dropZone) {
+      dropZone.style.borderColor = "";
+      dropZone.style.background = "";
+    }
+  });
+
+  document.addEventListener("drop", (event) => {
+    const dropZone = event.target.closest("#importDropZone");
+    if (dropZone) {
+      event.preventDefault();
+      dropZone.style.borderColor = "";
+      dropZone.style.background = "";
+      const file = event.dataTransfer?.files?.[0];
+      if (file) handleCsvFile(file);
+    }
+  });
+
+  // Change event delegation
+  document.addEventListener("change", (event) => {
+    if (event.target.id === "countryFilter") {
+      state.country = event.target.value;
+      render();
+    } else if (event.target.id === "statusFilter") {
+      state.status = event.target.value;
+      render();
+    } else if (event.target.id === "priorityFilter") {
+      state.priority = event.target.value;
+      render();
+    } else if (event.target.id === "importFileInput") {
+      const file = event.target.files?.[0];
+      if (file) handleCsvFile(file);
+    }
+
+    // Inline checkboxes (row selection)
+    if (event.target.closest(".lead-select")) {
+      const checkbox = event.target;
+      const leadId = checkbox.dataset.selectLead;
+      if (checkbox.checked) {
+        state.selectedLeadIds.add(leadId);
+      } else {
+        state.selectedLeadIds.delete(leadId);
+      }
+      render();
+    }
+
+    // Modal Edit Fields Auto-Save
+    if (event.target.id && event.target.id.startsWith("el-")) {
+      const field = event.target.id.slice(3);
+      const fields = ["status", "owner", "lastContact", "nextFollowUp", "notes", "Company", "Country", "Priority", "Type", "BuyerContact", "Title", "Email", "Phone", "WebsiteContact", "LinkedInCompany", "BrandsChannels", "Evidence", "Approach", "Sources"];
+      if (fields.includes(field) && state.selectedId) {
+        updateLead(state.selectedId, field, event.target.value);
+      }
+    }
+  });
+
+  // Input event delegation (Search field)
+  document.addEventListener("input", (event) => {
+    if (event.target.id === "searchInput") {
+      state.query = event.target.value.trim();
+      state.view = "leads";
+      if (state.query) {
+        state.country = "All";
+        state.status = "All";
+        state.priority = "All";
+        const countryFilter = els.country; if (countryFilter) countryFilter.value = "All";
+        const statusFilter = els.status; if (statusFilter) statusFilter.value = "All";
+        const priorityFilter = els.priority; if (priorityFilter) priorityFilter.value = "All";
       }
       state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
       render();
-    });
-  });
-
-  els.home?.addEventListener("click", () => {
-    state.view = "leads";
-    resetAllFilters();
-    state.selectedLeadIds = new Set();
-    state.selectedId = getFilteredLeads()[0]?.id || null;
-    render();
-  });
-
-  els.search.addEventListener("input", (event) => {
-    state.query = event.target.value.trim();
-    state.view = "leads";
-    if (state.query) {
-      state.country = "All";
-      state.status = "All";
-      state.priority = "All";
-      els.country.value = state.country;
-      els.status.value = state.status;
-      els.priority.value = state.priority;
     }
-    state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
-    render();
   });
 
-  els.country.addEventListener("change", (event) => {
-    state.country = event.target.value;
-    render();
-  });
+  // Form submit event delegation
+  document.addEventListener("submit", async (event) => {
+    if (event.target.id === "addLeadForm") {
+      event.preventDefault();
+      const btn = document.getElementById("modalSubmitBtn");
+      if (btn) { btn.disabled = true; btn.textContent = "저장 중..."; }
 
-  els.status.addEventListener("change", (event) => {
-    state.status = event.target.value;
-    render();
-  });
+      const id = "lead-" + Date.now();
+      const getValue = (name) => (document.getElementById("ml-" + name)?.value || "").trim();
+      const lead = {
+        leadId: id, id: id,
+        Company:       getValue("Company") || "New Company",
+        Country:       getValue("Country") || "Unknown",
+        Priority:      getValue("Priority"),
+        Type:          getValue("Type"),
+        BuyerContact:  getValue("BuyerContact"),
+        Email:         getValue("Email"),
+        Phone:         getValue("Phone"),
+        WebsiteContact:getValue("WebsiteContact"),
+        BrandsChannels:getValue("BrandsChannels"),
+        notes:         getValue("notes"),
+        Evidence: "", LinkedInCompany: "", Title: "", favorite: false,
+        ContactLinkedIn: "", RoleMemo: "", Address: "", Approach: "",
+        Sources: "Manual entry",
+        Checked: new Date().toISOString().slice(0, 10),
+        Confidence: "Manual entry",
+        status: "New", owner: "", lastContact: "", nextFollowUp: ""
+      };
 
-  els.priority.addEventListener("change", (event) => {
-    state.priority = event.target.value;
-    render();
-  });
+      baseLeads.unshift(lead);
+      state.selectedId = id;
+      state.view = "leads";
+      state.country = "All";
+      state.status  = "All";
+      state.priority = "All";
+      renderFilters();
+      render();
+      
+      const modal = document.getElementById("addLeadModal");
+      if (modal) modal.style.display = "none";
 
-  els.exportCsv?.addEventListener("click", exportCsv);
-  document.getElementById('importCsvBtn')?.addEventListener('click', () => {
-    openImportCsvModal();
+      try {
+        const res = await fetch("/api/leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(lead)
+        });
+        const result = await res.json();
+        if (result.success) {
+          const idx = baseLeads.findIndex((l) => l.id === id);
+          if (idx !== -1) baseLeads[idx]._id = result.data._id;
+        }
+      } catch (err) {
+        console.error("Failed to save lead:", err);
+      }
+
+      if (btn) { btn.disabled = false; btn.textContent = "저장하기"; }
+    }
   });
-  els.addLead?.addEventListener("click", addLead);
-  els.markContacted?.addEventListener("click", markSelectedContacted);
-  els.undoContacted?.addEventListener("click", undoSelectedContacted);
-  els.reset?.addEventListener("click", resetEdits);
 }
 
 function initDetailResizer() {
   const savedWidth = Number(localStorage.getItem(DETAIL_WIDTH_KEY));
   if (savedWidth) setDetailWidth(savedWidth);
 
-  els.detailResizer?.addEventListener("pointerdown", (event) => {
+  document.addEventListener("pointerdown", (event) => {
+    const resizer = event.target.closest("#detailResizer");
+    if (!resizer) return;
     event.preventDefault();
-    els.detailResizer.setPointerCapture(event.pointerId);
+    resizer.setPointerCapture(event.pointerId);
     document.body.classList.add("is-resizing-detail");
 
     const onPointerMove = (moveEvent) => {
@@ -720,19 +1252,7 @@ async function renderImportHistory() {
   }
 }
 
-function initImportHistoryModal() {
-  // Import History is rendered inline (nav view), no separate modal needed.
-  // But we keep the modal for when it's triggered from the import success result.
-  const modal = document.getElementById('importHistoryModal');
-  const closeBtn = document.getElementById('importHistoryCloseBtn');
-  const closeBtn2 = document.getElementById('importHistoryCloseBtn2');
-  if (!modal) return;
-
-  const closeModal = () => { modal.style.display = 'none'; };
-  closeBtn?.addEventListener('click', closeModal);
-  closeBtn2?.addEventListener('click', closeModal);
-  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-}
+function initImportHistoryModal() {}
 
 
 
@@ -869,107 +1389,9 @@ function addLead() {
   modal.style.display = 'flex';
 }
 
-function initAddLeadModal() {
-  const modal = document.getElementById('addLeadModal');
-  const form  = document.getElementById('addLeadForm');
-  const closeBtn  = document.getElementById('modalCloseBtn');
-  const cancelBtn = document.getElementById('modalCancelBtn');
-  if (!modal || !form) return;
+function initAddLeadModal() {}
 
-  const closeModal = () => { modal.style.display = 'none'; };
-  closeBtn?.addEventListener('click', closeModal);
-  cancelBtn?.addEventListener('click', closeModal);
-  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = document.getElementById('modalSubmitBtn');
-    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
-
-    const id = 'lead-' + Date.now();
-    const getValue = (name) => (document.getElementById('ml-' + name)?.value || '').trim();
-    const lead = {
-      leadId: id, id: id,
-      Company:       getValue('Company') || 'New Company',
-      Country:       getValue('Country') || 'Unknown',
-      Priority:      getValue('Priority'),
-      Type:          getValue('Type'),
-      BuyerContact:  getValue('BuyerContact'),
-      Email:         getValue('Email'),
-      Phone:         getValue('Phone'),
-      WebsiteContact:getValue('WebsiteContact'),
-      BrandsChannels:getValue('BrandsChannels'),
-      notes:         getValue('notes'),
-      Evidence: '', LinkedInCompany: '', Title: '', favorite: false,
-      ContactLinkedIn: '', RoleMemo: '', Address: '', Approach: '',
-      Sources: 'Manual entry',
-      Checked: new Date().toISOString().slice(0, 10),
-      Confidence: 'Manual entry',
-      status: 'New', owner: '', lastContact: '', nextFollowUp: ''
-    };
-
-    baseLeads.unshift(lead);
-    state.selectedId = id;
-    state.view = 'leads';
-    state.country = 'All';
-    state.status  = 'All';
-    state.priority = 'All';
-    renderFilters();
-    render();
-    closeModal();
-
-    try {
-      const res = await fetch('/api/leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(lead)
-      });
-      const result = await res.json();
-      if (result.success) {
-        const idx = baseLeads.findIndex(l => l.id === id);
-        if (idx !== -1) baseLeads[idx]._id = result.data._id;
-      }
-    } catch (err) {
-      console.error('Failed to save lead:', err);
-    }
-
-    if (btn) { btn.disabled = false; btn.textContent = '저장하기'; }
-  });
-}
-
-function initEditModal() {
-  const modal = document.getElementById('editLeadModal');
-  const closeBtn = document.getElementById('editModalCloseBtn');
-  const closeBtn2 = document.getElementById('editModalCloseBtn2');
-  if (!modal) return;
-
-  const closeModal = () => { modal.style.display = 'none'; };
-  closeBtn?.addEventListener('click', closeModal);
-  closeBtn2?.addEventListener('click', closeModal);
-  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-
-  const fields = ["status", "owner", "lastContact", "nextFollowUp", "notes", "Company", "Country", "Priority", "Type", "BuyerContact", "Title", "Email", "Phone", "WebsiteContact", "LinkedInCompany", "BrandsChannels", "Evidence", "Approach", "Sources"];
-  
-  fields.forEach(f => {
-    const el = document.getElementById('el-' + f);
-    if (el) {
-      el.addEventListener('change', () => {
-        if (state.selectedId) updateLead(state.selectedId, f, el.value);
-      });
-    }
-  });
-
-  document.getElementById('el-favoriteBtn')?.addEventListener('click', () => {
-    if (state.selectedId) toggleFavorite(state.selectedId);
-  });
-  
-  document.getElementById('el-deleteBtn')?.addEventListener('click', () => {
-    if (state.selectedId) {
-      deleteLead(state.selectedId);
-      closeModal();
-    }
-  });
-}
+function initEditModal() {}
 
 function openEditModal(id) {
   const lead = getLeads().find(l => l.id === id);
@@ -1020,24 +1442,9 @@ function openEditModal(id) {
 
 function initSettingsModal() {
   const btn = document.getElementById('settingsBtn');
-  const modal = document.getElementById('settingsModal');
-  const closeBtn = document.getElementById('settingsCloseBtn');
   const subIdSection = document.getElementById('subIdSection');
-  const subIdTableBody = document.getElementById('subIdTableBody');
-  const changePasswordBtn = document.getElementById('changePasswordBtn');
-  const newPasswordInput = document.getElementById('newPasswordInput');
-  const createSubIdBtn = document.getElementById('createSubIdBtn');
-  
-  if (!modal || !btn) return;
+  if (!btn) return;
 
-  const closeModal = () => { modal.style.display = 'none'; };
-  closeBtn?.addEventListener('click', closeModal);
-  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-
-  let currentUser = null;
-  let isMaster = false;
-
-  // 1) 권한 확인 (마스터인지 서브계정인지)
   fetch('/api/auth/me').then(res => res.json()).then(data => {
     if (data.authenticated) {
       currentUser = data.username;
@@ -1049,130 +1456,27 @@ function initSettingsModal() {
       }
     }
   }).catch(console.error);
+}
 
-  // 2) 설정 버튼 클릭
-  btn.addEventListener('click', () => {
-    modal.style.display = 'flex';
-    newPasswordInput.value = '';
-    if (isMaster) {
-      loadSubIds();
+async function loadSubIds() {
+  const subIdTableBody = document.getElementById('subIdTableBody');
+  if (!subIdTableBody) return;
+  try {
+    const res = await fetch('/api/users');
+    const data = await res.json();
+    if (data.success) {
+      subIdTableBody.innerHTML = data.data.map(user => `
+        <tr>
+          <td><strong>${escapeHtml(user.username)}</strong>${user.username === currentUser ? ' <span class="badge" style="background:#dceee9;color:#0f5146">Me</span>' : ''}</td>
+          <td style="text-align: center; color: var(--muted);">${new Date(user.createdAt).toISOString().slice(0, 10)}</td>
+          <td style="text-align: center;">
+            <button class="button ghost" data-delete-user="${escapeAttr(user.username)}" style="color: #9f3333; padding: 4px 8px; border-color: #9f3333;" ${user.username === currentUser ? 'disabled' : ''}>삭제</button>
+          </td>
+        </tr>
+      `).join('');
     }
-  });
-
-  // 3) 비밀번호 변경
-  changePasswordBtn?.addEventListener('click', async () => {
-    const newPassword = newPasswordInput.value;
-    if (newPassword.length < 4) {
-      alert('비밀번호는 최소 4자리 이상이어야 합니다.');
-      return;
-    }
-    
-    changePasswordBtn.disabled = true;
-    changePasswordBtn.textContent = '저장 중...';
-
-    try {
-      const res = await fetch('/api/users/password', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPassword })
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('비밀번호가 성공적으로 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용해주세요.');
-        newPasswordInput.value = '';
-      } else {
-        alert('오류: ' + data.error);
-      }
-    } catch (e) {
-      alert('비밀번호 변경 실패');
-    }
-    
-    changePasswordBtn.disabled = false;
-    changePasswordBtn.textContent = '변경하기';
-  });
-
-  // 4) 서브 계정 목록 로드
-  async function loadSubIds() {
-    if (!subIdTableBody) return;
-    try {
-      const res = await fetch('/api/users');
-      const data = await res.json();
-      if (data.success) {
-        subIdTableBody.innerHTML = data.data.map(user => `
-          <tr>
-            <td><strong>${escapeHtml(user.username)}</strong>${user.username === currentUser ? ' <span class="badge" style="background:#dceee9;color:#0f5146">Me</span>' : ''}</td>
-            <td style="text-align: center; color: var(--muted);">${new Date(user.createdAt).toISOString().slice(0, 10)}</td>
-            <td style="text-align: center;">
-              <button class="button ghost" data-delete-user="${escapeAttr(user.username)}" style="color: #9f3333; padding: 4px 8px; border-color: #9f3333;" ${user.username === currentUser ? 'disabled' : ''}>삭제</button>
-            </td>
-          </tr>
-        `).join('');
-
-        subIdTableBody.querySelectorAll('[data-delete-user]').forEach(delBtn => {
-          delBtn.addEventListener('click', async () => {
-            const username = delBtn.dataset.deleteUser;
-            if (confirm(`정말 '${username}' 계정을 삭제하시겠습니까?`)) {
-              await deleteSubId(username);
-            }
-          });
-        });
-      }
-    } catch (e) {
-      console.error('Failed to load sub users', e);
-    }
-  }
-
-  // 5) 서브 계정 생성
-  createSubIdBtn?.addEventListener('click', async () => {
-    const unInput = document.getElementById('subUsernameInput');
-    const pwInput = document.getElementById('subPasswordInput');
-    const username = unInput.value.trim();
-    const password = pwInput.value;
-
-    if (!username || password.length < 4) {
-      alert('아이디와 4자리 이상의 비밀번호를 입력해주세요.');
-      return;
-    }
-
-    createSubIdBtn.disabled = true;
-    createSubIdBtn.textContent = '생성 중...';
-
-    try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        unInput.value = '';
-        pwInput.value = '';
-        loadSubIds(); // 목록 갱신
-      } else {
-        alert('생성 실패: ' + data.error);
-      }
-    } catch (e) {
-      alert('생성 중 오류가 발생했습니다.');
-    }
-
-    createSubIdBtn.disabled = false;
-    createSubIdBtn.textContent = '생성';
-  });
-
-  // 6) 서브 계정 삭제
-  async function deleteSubId(username) {
-    try {
-      const res = await fetch('/api/users/' + encodeURIComponent(username), { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        loadSubIds();
-      } else {
-        alert('삭제 실패: ' + data.error);
-      }
-    } catch (e) {
-      alert('삭제 중 오류가 발생했습니다.');
-    }
+  } catch (e) {
+    console.error('Failed to load sub users', e);
   }
 }
 
@@ -1281,60 +1585,7 @@ function resetImportModal() {
   radios.forEach(r => { if (r.value === 'skip') r.checked = true; });
 }
 
-function initImportCsvModal() {
-  const modal = document.getElementById('importCsvModal');
-  const closeBtn = document.getElementById('importModalCloseBtn');
-  const cancelBtn = document.getElementById('importCancelBtn');
-  const submitBtn = document.getElementById('importSubmitBtn');
-  const dropZone = document.getElementById('importDropZone');
-  const fileInput = document.getElementById('importFileInput');
-  const resetBtn = document.getElementById('importResetBtn');
-  if (!modal) return;
-
-  const closeModal = () => { modal.style.display = 'none'; resetImportModal(); };
-  closeBtn?.addEventListener('click', closeModal);
-  cancelBtn?.addEventListener('click', closeModal);
-  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
-
-  // Drop zone click
-  dropZone?.addEventListener('click', () => fileInput?.click());
-
-  // Drag & drop
-  dropZone?.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.style.borderColor = 'var(--accent)';
-    dropZone.style.background = 'rgba(0,180,120,.06)';
-  });
-  dropZone?.addEventListener('dragleave', () => {
-    dropZone.style.borderColor = '';
-    dropZone.style.background = '';
-  });
-  dropZone?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropZone.style.borderColor = '';
-    dropZone.style.background = '';
-    const file = e.dataTransfer?.files?.[0];
-    if (file) handleCsvFile(file);
-  });
-
-  // File input change
-  fileInput?.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    if (file) handleCsvFile(file);
-  });
-
-  // Reset to step 1
-  resetBtn?.addEventListener('click', () => {
-    resetImportModal();
-  });
-
-  // Submit
-  submitBtn?.addEventListener('click', async () => {
-    if (!importParsedLeads.length) return;
-    const duplicateAction = document.querySelector('input[name="duplicateAction"]:checked')?.value || 'skip';
-    await doImport(importParsedLeads, duplicateAction);
-  });
-}
+function initImportCsvModal() {}
 
 function handleCsvFile(file) {
   if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
@@ -1588,7 +1839,20 @@ async function doImport(leads, duplicateAction) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ leads, duplicateAction })
     });
-    const data = await res.json();
+    const rawText = await res.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (parseErr) {
+      clearInterval(progressInterval);
+      if (progressBar) progressBar.style.width = '100%';
+      if (result) { result.style.display = ''; result.style.background = '#fff0f0'; result.style.borderColor = '#f5b8b8'; }
+      const snippet = (rawText || '').slice(0, 200);
+      if (resultText) resultText.textContent = `서버 응답 오류 (HTTP ${res.status}): ${snippet || '빈 응답'}`;
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '다시 시도'; }
+      console.error('Import response not JSON:', rawText);
+      return;
+    }
 
     clearInterval(progressInterval);
     if (progressBar) progressBar.style.width = '100%';
@@ -1596,16 +1860,21 @@ async function doImport(leads, duplicateAction) {
 
     if (data.success) {
       const s = data.summary;
-      if (result) result.style.display = '';
+      if (result) {
+        result.style.display = '';
+        result.style.background = '#e8f5e9';
+        result.style.borderColor = '#a5d6a7';
+      }
       if (resultText) {
         const parts = [];
         if (s.inserted) parts.push(`✅ ${s.inserted}개 새로 추가`);
         if (s.updated) parts.push(`🔄 ${s.updated}개 업데이트`);
         if (s.skipped) parts.push(`⏭ ${s.skipped}개 건너뜀`);
         if (s.errors) parts.push(`❌ ${s.errors}개 오류`);
-        resultText.textContent = parts.join('  |  ');
+        const detail = parts.length ? '  ·  ' + parts.join('  |  ') : '';
+        resultText.innerHTML = `<strong style="font-size:15px;color:#1b5e20">🎉 적용완료</strong>${detail}`;
       }
-      if (submitBtn) { submitBtn.textContent = '\uc644\ub8cc \u2713'; }
+      if (submitBtn) { submitBtn.textContent = '\uc801\uc6a9\uc644\ub8cc \u2713'; submitBtn.disabled = true; }
 
       // Show quick link to Import History
       if (result) {

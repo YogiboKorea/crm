@@ -1,9 +1,12 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/yogico';
+const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  throw new Error(
+    'MONGODB_URI 환경변수가 설정되지 않았습니다. ' +
+    '로컬: .env.local 파일 / Vercel: Project Settings → Environment Variables에 추가하세요.'
+  );
 }
 
 /**

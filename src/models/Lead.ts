@@ -20,6 +20,7 @@ export interface ILead extends Document {
   Sources: string;
   Checked: string;
   Confidence: string;
+  Title: string;
   
   // Custom CRM fields
   status: string;
@@ -54,6 +55,7 @@ const LeadSchema: Schema = new Schema({
   Sources: { type: String, default: '' },
   Checked: { type: String, default: '' },
   Confidence: { type: String, default: '' },
+  Title: { type: String, default: '' },
   
   status: { type: String, default: 'New' },
   owner: { type: String, default: '' },
