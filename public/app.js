@@ -1414,8 +1414,11 @@ function verifyBucketOf(lead) {
   if (lead?.favorite === true) return 'passed';
   const v = lead?.verification;
   if (!v || !v.verifiedAt) return 'unverified';
-  // 사업관련성 ✅ + 이메일/전화/LinkedIn 중 1개라도 통과 → 컨택 가능한 뷰티 리드 = 통과
-  if (v.businessLevel === 'relevant') {
+  // 사업관련성 ✅ 로 통과 처리하려면:
+  //   (1) 실제로 사이트에 접근해서 분석한 결과여야 (websiteAlive=true)
+  //   (2) 이메일/전화/LinkedIn 중 1개라도 통과 (컨택 가능)
+  // 사이트 health 가 false / null 이면 분석 자체가 의심스러우므로 점수 경로로 떨어뜨림
+  if (v.businessLevel === 'relevant' && v.websiteAlive === true) {
     const hasContact =
       v.emailValid === true ||
       v.phoneMatch === true ||
