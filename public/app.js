@@ -1401,17 +1401,27 @@ function getLeads() {
   return baseLeads.filter(lead => !lead.deleted);
 }
 
-// 검증 버킷 매칭: 종합 score 0~5 기준
-//   즐겨찾기 → 대표가 직접 검증한 것으로 간주, 항상 passed
-//   5점     → passed (모든 정합성 + 뷰티 관련성 통과)
-//   3~4점   → suspicious
-//   0~2점   → invalid
-//   미검증  → unverified
+// 검증 버킷 매칭
+//   즐겨찾기                       → passed (대표 직접 검증)
+//   사업관련성 ✅ + 컨택 수단 1+   → passed
+//     (이메일/전화/LinkedIn 중 한 개라도 통과해야 실제 접근 가능)
+//   종합 5점                       → passed
+//   종합 3~4점                     → suspicious
+//   종합 0~2점                     → invalid
+//   미검증                         → unverified
 function verifyBucketOf(lead) {
   // 즐겨찾기는 대표가 직접 확인한 리드 — 자동 검증과 무관하게 통과 처리
   if (lead?.favorite === true) return 'passed';
   const v = lead?.verification;
   if (!v || !v.verifiedAt) return 'unverified';
+  // 사업관련성 ✅ + 이메일/전화/LinkedIn 중 1개라도 통과 → 컨택 가능한 뷰티 리드 = 통과
+  if (v.businessLevel === 'relevant') {
+    const hasContact =
+      v.emailValid === true ||
+      v.phoneMatch === true ||
+      v.linkedinValid === true;
+    if (hasContact) return 'passed';
+  }
   const s = typeof v.score === 'number' ? v.score : 0;
   if (s >= 5) return 'passed';
   if (s >= 3) return 'suspicious';

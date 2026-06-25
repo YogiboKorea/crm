@@ -50,8 +50,11 @@ export async function POST(req: Request) {
     }
 
     const totalRemaining = await Lead.countDocuments(filter);
+    // 정렬: verifiedAt 오래된 순 → 방금 검증된 건 뒤로 밀려나 다음 청크가 새 리드를 가져옴
+    // (정렬 없으면 매 호출마다 같은 30건만 반복 처리됨)
     const targets = await Lead.find(filter)
-      .select('leadId Email WebsiteContact Phone Country LinkedInCompany ContactLinkedIn')
+      .select('leadId Email WebsiteContact Phone Country LinkedInCompany ContactLinkedIn verification.verifiedAt')
+      .sort({ 'verification.verifiedAt': 1 })
       .limit(limit)
       .lean();
 
