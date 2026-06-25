@@ -34,6 +34,7 @@ export default function Home() {
             <button className="nav-item" data-view="leads" data-status-filter="Contacted" type="button">Contacted</button>
             <button className="nav-item" data-view="favorites" type="button">Favorites</button>
             <button className="nav-item" data-view="countries" type="button">Countries</button>
+            <button className="nav-item" data-view="verification" type="button">🔍 검증 분류</button>
             <button className="nav-item" data-view="emails" type="button">Missing Emails</button>
             <button className="nav-item" data-view="followups" type="button">Follow-ups</button>
             <button className="nav-item" data-view="importHistory" type="button">Import History</button>
@@ -51,6 +52,7 @@ export default function Home() {
               <button id="markContactedBtn" className="button secondary" type="button">Mark Contacted</button>
               <button id="undoContactedBtn" className="button ghost" type="button">Undo</button>
               <button id="importCsvBtn" className="button secondary" type="button">⬆ Import CSV</button>
+              <button id="verifyLeadsBtn" className="button secondary" type="button">🔍 검증</button>
               <button id="exportCsvBtn" className="button secondary" type="button">⬇ Export CSV</button>
               <button id="settingsBtn" className="button secondary" type="button" style={{ display: 'none' }}>설정 (Settings)</button>
               <form action="/api/auth/logout" method="POST" style={{ display: 'inline' }}>
@@ -75,6 +77,16 @@ export default function Home() {
             <label>
               <span>Priority</span>
               <select id="priorityFilter"></select>
+            </label>
+            <label>
+              <span>검증</span>
+              <select id="verifyFilter">
+                <option value="All">All</option>
+                <option value="passed">✅ 통과 (4/4)</option>
+                <option value="suspicious">⚠ 의심 (2~3점)</option>
+                <option value="invalid">❌ 무효 (0~1점)</option>
+                <option value="unverified">⏳ 미검증</option>
+              </select>
             </label>
           </section>
 
@@ -178,6 +190,12 @@ export default function Home() {
               <label className="modal-full"><span>Sources</span><textarea id="el-Sources"></textarea></label>
             </div>
 
+            {/* 자동 검증 결과 — 항목별 실패 사유까지 표시 */}
+            <div className="field-block" style={{ marginTop: '16px' }}>
+              <h4 style={{ marginBottom: '8px', fontSize: '14px' }}>🔍 자동 검증 결과</h4>
+              <div id="el-verification"></div>
+            </div>
+
             <div className="modal-footer" style={{ marginTop: '20px' }}>
               <button type="button" id="editModalCloseBtn2" className="button">저장 및 닫기</button>
             </div>
@@ -268,6 +286,108 @@ export default function Home() {
           <div className="modal-footer">
             <button type="button" id="importCancelBtn" className="button ghost">취소</button>
             <button type="button" id="importSubmitBtn" className="button" disabled>가져오기</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Verify Modal ── */}
+      <div id="verifyModal" className="modal-backdrop" style={{ display: 'none' }}>
+        <div className="modal-card" style={{ maxWidth: '560px' }}>
+          <div className="modal-header">
+            <h3>🔍 리드 자동 검증</h3>
+            <button id="verifyCloseBtn" className="modal-close" type="button">&#x2715;</button>
+          </div>
+          <div className="modal-form">
+            <p style={{ margin: '0 0 12px', fontSize: '14px', color: 'var(--muted)' }}>
+              이메일(MX) · 웹사이트(HTTP) · 전화(국가코드) · LinkedIn(형식) · <strong style={{ color: '#0369a1' }}>K-beauty 사업관련성</strong> 5가지를 확인합니다.
+            </p>
+
+            {/* 검증 방법 안내 (펼치기/접기) */}
+            <details style={{
+              marginBottom: '14px',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              background: '#f0f9ff',
+              padding: '10px 14px',
+            }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: '13px', color: '#0369a1', listStyle: 'revert' }}>
+                ℹ️ 검증 방법 자세히 보기
+              </summary>
+              <div style={{ marginTop: '12px', fontSize: '12.5px', lineHeight: 1.7, color: '#374151' }}>
+                <p style={{ margin: '0 0 10px' }}>
+                  <strong>1. 이메일 검증</strong><br />
+                  · 문법 검사 (예: <code>abc@xxx,com</code>같은 콤마 오타 잡음)<br />
+                  · 도메인이 <strong>메일을 받을 수 있는지 DNS 조회</strong> (MX 레코드)<br />
+                  · 일회용 메일(mailinator 등) 블랙리스트 차단
+                </p>
+                <p style={{ margin: '0 0 10px' }}>
+                  <strong>2. 웹사이트 검증</strong><br />
+                  · 실제 사이트에 <strong>HEAD 요청</strong>을 보내 6초 안에 200~399 응답이 오는지 확인<br />
+                  · 도메인 만료, DNS 실패, 404, 5xx 모두 실패로 분류
+                </p>
+                <p style={{ margin: '0 0 10px' }}>
+                  <strong>3. 전화번호 검증</strong><br />
+                  · 입력된 번호의 <strong>국가코드가 Country 컬럼과 일치하는지</strong> 비교<br />
+                  · 예: Country=UAE 인데 번호가 +82(한국) → 불일치
+                </p>
+                <p style={{ margin: '0 0 10px' }}>
+                  <strong>4. LinkedIn URL 검증</strong><br />
+                  · <code>linkedin.com/in/...</code> 또는 <code>/company/...</code> 표준 형식인지 검사
+                </p>
+                <p style={{ margin: '0 0 10px' }}>
+                  <strong>5. K-beauty 사업관련성 검증</strong><br />
+                  · 회사 웹사이트 본문(최대 600KB) 다운로드 후 텍스트 추출<br />
+                  · 영어/한국어 <strong>뷰티·화장품 키워드 사전</strong>으로 매칭<br />
+                  &nbsp;&nbsp;&nbsp;(beauty, cosmetics, skincare, K-beauty, 뷰티, 화장품, 코스메틱 등)<br />
+                  · 디스트리뷰터·도매 시그널 가중치 + 무관 산업(부동산·금융 등) 감점<br />
+                  · 3점: K-beauty 직결 / 2점: 일반 뷰티 다수 / 1점: 약함 / 0점: 무관
+                </p>
+                <p style={{ margin: '0 0 6px', padding: '8px 10px', background: '#fff', borderRadius: '6px', borderLeft: '3px solid #f59e0b' }}>
+                  <strong style={{ color: '#92400e' }}>종합 점수:</strong> 4개 정합성 항목 + 사업관련성(2점 이상 시 1점) = 최대 5점<br />
+                  <span style={{ color: '#166534' }}>5점</span> 통과 / <span style={{ color: '#92400e' }}>3~4점</span> 의심 / <span style={{ color: '#991b1b' }}>0~2점</span> 무효
+                </p>
+                <p style={{ margin: '8px 0 0', fontSize: '11.5px', color: '#6b7280' }}>
+                  ※ 외부 유료 API 없이 자체 서버에서 무료로 동작. 검증 1회당 비용 $0.<br />
+                  ※ 점수가 낮다고 "그 업체가 가짜"라는 뜻은 아님 — 입력 데이터에 빈칸/오타가 있거나 정보가 불완전하다는 신호로 사용.
+                </p>
+              </div>
+            </details>
+
+            <div id="verifySummary" style={{
+              background: '#f8fafc', padding: '12px 14px', borderRadius: '8px',
+              marginBottom: '14px', fontSize: '13px', lineHeight: 1.6,
+            }}>
+              <div>전체 리드: <strong id="verifyTotalCount">-</strong></div>
+              <div>미검증: <strong id="verifyPendingCount">-</strong></div>
+              <div>검증완료: <strong id="verifyDoneCount">-</strong></div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                <input type="radio" name="verifyScope" value="pending" defaultChecked />
+                <span>미검증 항목만</span>
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                <input type="radio" name="verifyScope" value="all" />
+                <span>전체 다시 검증</span>
+              </label>
+            </div>
+
+            <div id="verifyProgress" style={{ display: 'none', marginBottom: '14px' }}>
+              <div style={{ background: '#e5e7eb', borderRadius: '99px', height: '8px', overflow: 'hidden' }}>
+                <div id="verifyProgressBar" style={{ background: 'linear-gradient(90deg, #4f8cff, #7c4dff)', height: '100%', width: '0%', transition: 'width 0.3s' }}></div>
+              </div>
+              <div id="verifyProgressText" style={{ marginTop: '8px', fontSize: '13px', color: 'var(--muted)' }}>0/0 처리 중...</div>
+            </div>
+
+            <div id="verifyResult" style={{ display: 'none', background: '#e8f5e9', border: '1px solid #a5d6a7', padding: '12px 14px', borderRadius: '8px', marginBottom: '14px', fontSize: '13px', lineHeight: 1.6 }}>
+              <div id="verifyResultText"></div>
+            </div>
+
+            <div className="modal-footer">
+              <button id="verifyCancelBtn" className="button ghost" type="button">닫기</button>
+              <button id="verifyStartBtn" className="button" type="button">검증 시작</button>
+            </div>
           </div>
         </div>
       </div>

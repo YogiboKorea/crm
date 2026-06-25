@@ -202,6 +202,7 @@ let state = {
   country: "All",
   status: "All",
   priority: "All",
+  verify: "All",
   selectedId: baseLeads[0]?.id || null,
   selectedLeadIds: new Set(),
   sortField: null,
@@ -216,6 +217,7 @@ const els = {
   get country() { return document.getElementById("countryFilter"); },
   get status() { return document.getElementById("statusFilter"); },
   get priority() { return document.getElementById("priorityFilter"); },
+  get verify() { return document.getElementById("verifyFilter"); },
   get stats() { return document.getElementById("statsGrid"); },
   get content() { return document.getElementById("content"); },
   get detail() { return document.getElementById("detailPanel"); },
@@ -260,12 +262,14 @@ function resetAllFilters() {
   state.country = "All";
   state.status = "All";
   state.priority = "All";
+  state.verify = "All";
   state.sortField = null;
   state.sortOrder = "asc";
   if (els.search) els.search.value = "";
   if (els.country) els.country.value = "All";
   if (els.status) els.status.value = "All";
   if (els.priority) els.priority.value = "All";
+  if (els.verify) els.verify.value = "All";
 }
 
 // ── Loading helpers ──────────────────────────────────────────────
@@ -385,6 +389,20 @@ function bindEvents() {
     }
     if (event.target.closest("#importCsvBtn")) {
       openImportCsvModal();
+      return;
+    }
+    if (event.target.closest("#verifyLeadsBtn")) {
+      openVerifyModal();
+      return;
+    }
+    if (event.target.closest("#verifyCloseBtn") || event.target.closest("#verifyCancelBtn")) {
+      const modal = document.getElementById("verifyModal");
+      if (modal) modal.style.display = "none";
+      return;
+    }
+    if (event.target.closest("#verifyStartBtn")) {
+      const scope = document.querySelector('input[name="verifyScope"]:checked')?.value || 'pending';
+      startVerification(scope);
       return;
     }
     if (event.target.closest("#addLeadBtn")) {
@@ -700,6 +718,9 @@ function bindEvents() {
     } else if (event.target.id === "priorityFilter") {
       state.priority = event.target.value;
       render();
+    } else if (event.target.id === "verifyFilter") {
+      state.verify = event.target.value;
+      render();
     } else if (event.target.id === "importFileInput") {
       const file = event.target.files?.[0];
       if (file) handleCsvFile(file);
@@ -849,6 +870,8 @@ function renderFilters() {
   els.country.innerHTML = optionHtml(["All", ...countries], state.country);
   els.status.innerHTML = optionHtml(["All", ...STATUSES], state.status);
   els.priority.innerHTML = optionHtml(["All", ...priorities], state.priority);
+  // verify select 는 정적 옵션이 page.tsx 에 박혀있어 value 만 동기화
+  if (els.verify) els.verify.value = state.verify || "All";
 }
 
 function render() {
@@ -914,6 +937,13 @@ function render() {
     return;
   }
 
+  if (state.view === "verification") {
+    els.viewTitle.textContent = "🔍 검증 분류";
+    els.viewSubtitle.textContent = "검증 결과별로 리드를 4그룹으로 묶어 보여줍니다. 각 그룹을 클릭하면 해당 항목만 표 형태로 봅니다.";
+    renderVerificationClassification();
+    return;
+  }
+
   els.viewTitle.textContent = "Leads";
   els.viewSubtitle.textContent = "Edit, qualify, and manage buyer outreach.";
   renderLeadTable(leads);
@@ -926,12 +956,21 @@ function renderStats(leads) {
   const today = new Date().toISOString().slice(0, 10);
   const due = all.filter((lead) => lead.nextFollowUp && lead.nextFollowUp <= today && !["Won", "Lost"].includes(lead.status)).length;
 
+  // 검증 버킷별 카운트 — 전체 리드 기준
+  const verifyCounts = { passed: 0, suspicious: 0, invalid: 0, unverified: 0 };
+  for (const l of all) verifyCounts[verifyBucketOf(l)]++;
+
   els.stats.innerHTML = [
     stat("Visible", leads.length, "leads"),
     stat("Countries", countryCount, "countries"),
     stat("Worked", contacted, "worked"),
     stat("Due", due, "followups"),
-    stat("No Email", all.filter((lead) => !hasEmail(lead)).length, "emails")
+    stat("No Email", all.filter((lead) => !hasEmail(lead)).length, "emails"),
+    // ── 검증 분류 (클릭으로 필터링) ──
+    statVerify("✅ 통과", verifyCounts.passed, "passed"),
+    statVerify("⚠ 의심", verifyCounts.suspicious, "suspicious"),
+    statVerify("❌ 무효", verifyCounts.invalid, "invalid"),
+    statVerify("⏳ 미검증", verifyCounts.unverified, "unverified"),
   ].join("");
 
   els.stats.querySelectorAll("[data-stat-view]").forEach((button) => {
@@ -941,6 +980,20 @@ function renderStats(leads) {
       if (["leads", "worked", "favorites"].includes(targetView)) {
         resetAllFilters();
       }
+      state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
+      render();
+    });
+  });
+
+  // 검증 stat 카드 클릭 → leads 뷰 + 검증 필터 적용
+  els.stats.querySelectorAll("[data-verify-bucket]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const bucket = button.dataset.verifyBucket;
+      state.view = "leads";
+      // 다른 필터는 초기화 (분류 뷰처럼 동작)
+      resetAllFilters();
+      state.verify = bucket;
+      if (els.verify) els.verify.value = bucket;
       state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
       render();
     });
@@ -1005,6 +1058,7 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
             </th>
             <th>Status</th>
             <th>Priority</th>
+            <th>검증</th>
             <th>Contact</th>
             <th>Title</th>
             <th>Email</th>
@@ -1334,6 +1388,7 @@ function rowHtml(lead) {
       <td>${escapeHtml(lead.Country)}</td>
       <td><span class="badge">${escapeHtml(lead.status)}</span></td>
       <td><span class="badge ${badgeClass(lead.Priority)}">${escapeHtml(lead.Priority || "-")}</span></td>
+      <td>${verifyBadgeHtml(lead)}</td>
       <td>${escapeHtml(truncate(lead.BuyerContact || lead.Phone || "No public contact", 70))}</td>
       <td>${escapeHtml(truncate(lead.Title || lead.RoleMemo || "", 70))}</td>
       <td>${emailCell(lead.Email)}</td>
@@ -1344,6 +1399,273 @@ function rowHtml(lead) {
 
 function getLeads() {
   return baseLeads.filter(lead => !lead.deleted);
+}
+
+// 검증 버킷 매칭: 종합 score 0~5 기준
+//   즐겨찾기 → 대표가 직접 검증한 것으로 간주, 항상 passed
+//   5점     → passed (모든 정합성 + 뷰티 관련성 통과)
+//   3~4점   → suspicious
+//   0~2점   → invalid
+//   미검증  → unverified
+function verifyBucketOf(lead) {
+  // 즐겨찾기는 대표가 직접 확인한 리드 — 자동 검증과 무관하게 통과 처리
+  if (lead?.favorite === true) return 'passed';
+  const v = lead?.verification;
+  if (!v || !v.verifiedAt) return 'unverified';
+  const s = typeof v.score === 'number' ? v.score : 0;
+  if (s >= 5) return 'passed';
+  if (s >= 3) return 'suspicious';
+  return 'invalid';
+}
+function verifyBucketMatches(lead, filter) {
+  if (!filter || filter === 'All') return true;
+  return verifyBucketOf(lead) === filter;
+}
+
+// 실패 사유 코드 → 사용자 친화 한국어
+const VERIFY_REASON_KO = {
+  // email
+  'syntax': '형식 오류',
+  'disposable': '일회용 메일',
+  'no-mx': 'MX 레코드 없음',
+  'mx-timeout': 'DNS 타임아웃',
+  'mx-error': '도메인 조회 실패',
+  // phone
+  'too-short': '번호 너무 짧음',
+  'unknown-country': '국가 미매핑',
+  // linkedin
+  'format': 'URL 형식 오류',
+  // business relevance
+  'no-url': '사이트 없음',
+  'fetch-failed': '사이트 접근 실패',
+  'invalid-url': 'URL 형식 오류',
+  'empty-content': '본문 비어있음',
+  // common
+  'empty': '값 없음',
+};
+function businessLevelLabel(level) {
+  return level === 'relevant' ? '✅ 뷰티 관련' :
+         level === 'unclear'  ? '⚠ 모호함' :
+         level === 'unrelated'? '❌ 무관' :
+         '⏳ 미확인';
+}
+function reasonKo(raw) {
+  if (!raw) return '';
+  if (VERIFY_REASON_KO[raw]) return VERIFY_REASON_KO[raw];
+  // "expected +82" 같은 동적 메시지는 그대로 표시
+  if (raw.startsWith('expected +')) return `예상 국가코드 ${raw.replace('expected ', '')}`;
+  return raw;
+}
+
+// 리드 하나의 모든 실패 사유 — [{label, reason}] 형태로 반환
+function verifyFailures(lead) {
+  // 즐겨찾기 = 대표 검증 완료 — 실패 사유 노출 안 함
+  if (lead?.favorite === true) return [];
+  const v = lead?.verification;
+  if (!v || !v.verifiedAt) return [];
+  const out = [];
+  if (v.emailValid === false) {
+    out.push({ label: '이메일', reason: reasonKo(v.emailReason) || '실패' });
+  }
+  if (v.websiteAlive === false) {
+    const status = v.websiteStatus ? ` (HTTP ${v.websiteStatus})` : ' (응답 없음)';
+    out.push({ label: '사이트', reason: '연결 실패' + status });
+  }
+  if (v.phoneMatch === false) {
+    out.push({ label: '전화', reason: reasonKo(v.phoneReason) || '국가코드 불일치' });
+  }
+  if (v.linkedinValid === false) {
+    out.push({ label: 'LinkedIn', reason: reasonKo(v.linkedinReason) || '실패' });
+  }
+  // 사업 관련성 — 무관/모호도 실패로 분류해 사용자에게 노출
+  // 단, 사이트 자체가 없는(no-url) 경우는 웹사이트 체크와 중복이므로 노출 안 함
+  if (v.businessLevel === 'unrelated') {
+    out.push({ label: '사업관련성', reason: '뷰티 키워드 없음' });
+  } else if (v.businessLevel === 'unclear') {
+    out.push({ label: '사업관련성', reason: '뷰티 신호 약함' });
+  } else if (v.businessLevel === null && v.businessReason && v.businessReason !== 'no-url') {
+    out.push({ label: '사업관련성', reason: reasonKo(v.businessReason) });
+  }
+  return out;
+}
+
+// 뱃지 HTML — 테이블 셀에서 사용. invalid/suspicious 면 짧은 사유 같이 표시
+function verifyBadgeHtml(lead) {
+  // 즐겨찾기는 별도 라벨 — 대표 직접 검증
+  if (lead?.favorite === true) {
+    return `<span title="대표가 직접 확인한 리드 (즐겨찾기 등록)" style="display:inline-block;padding:2px 8px;border-radius:99px;background:#fef9c3;color:#854d0e;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid #facc15">⭐ 검증완료</span>`;
+  }
+
+  const bucket = verifyBucketOf(lead);
+  const styles = {
+    passed:      { bg: '#dcfce7', fg: '#166534', label: '✅ 통과' },
+    suspicious:  { bg: '#fef3c7', fg: '#92400e', label: '⚠ 의심' },
+    invalid:     { bg: '#fee2e2', fg: '#991b1b', label: '❌ 무효' },
+    unverified:  { bg: '#f1f5f9', fg: '#64748b', label: '⏳ 미검증' },
+  }[bucket];
+
+  const failures = verifyFailures(lead);
+  const tooltip = failures.length
+    ? `점수 ${lead?.verification?.score ?? '-'}/5\n실패: ${failures.map(f => `${f.label}(${f.reason})`).join(', ')}`
+    : `검증 점수: ${lead?.verification?.score ?? '-'}/5`;
+
+  const badge = `<span title="${escapeAttr(tooltip)}" style="display:inline-block;padding:2px 8px;border-radius:99px;background:${styles.bg};color:${styles.fg};font-size:11px;font-weight:600;white-space:nowrap">${styles.label}</span>`;
+
+  // suspicious / invalid 만 짧은 사유 라벨 같이 표시 (테이블에서 한눈에)
+  if (bucket === 'suspicious' || bucket === 'invalid') {
+    const labels = failures.slice(0, 2).map(f => f.label).join(', ');
+    const more = failures.length > 2 ? ` +${failures.length - 2}` : '';
+    if (labels) {
+      return `${badge}<div style="font-size:10px;color:#6b7280;margin-top:3px;line-height:1.2">${escapeHtml(labels)}${more}</div>`;
+    }
+  }
+  return badge;
+}
+
+// 검증 분류 뷰 — 4개 버킷별로 섹션 카드 + 각 섹션에 대표 리드 상위 10개
+function renderVerificationClassification() {
+  const all = getLeads();
+  const buckets = { passed: [], suspicious: [], invalid: [], unverified: [] };
+  for (const l of all) buckets[verifyBucketOf(l)].push(l);
+
+  const sections = [
+    { key: 'passed',     label: '✅ 통과 (모든 항목 정상)',   bg: '#dcfce7', fg: '#166534', accent: '#22c55e' },
+    { key: 'suspicious', label: '⚠ 의심 (일부 항목 실패)',     bg: '#fef3c7', fg: '#92400e', accent: '#f59e0b' },
+    { key: 'invalid',    label: '❌ 무효 (대부분 실패)',       bg: '#fee2e2', fg: '#991b1b', accent: '#ef4444' },
+    { key: 'unverified', label: '⏳ 미검증 (아직 검사 안 됨)', bg: '#f1f5f9', fg: '#64748b', accent: '#94a3b8' },
+  ];
+
+  const renderPreview = (bucket, items) => {
+    if (items.length === 0) {
+      return `<p style="margin:0;font-size:13px;color:#9ca3af;text-align:center;padding:16px 0">해당 항목이 없습니다</p>`;
+    }
+    const preview = items.slice(0, 6).map((lead) => {
+      const failures = verifyFailures(lead);
+      const failText = failures.length
+        ? failures.slice(0, 2).map(f => `${f.label}(${f.reason})`).join(' · ')
+        : '';
+      return `
+        <button type="button" data-verify-lead-id="${escapeAttr(lead.id)}"
+          style="display:block;width:100%;text-align:left;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;margin-bottom:6px;cursor:pointer;font-size:13px">
+          <strong>${escapeHtml(lead.Company || '(이름 없음)')}</strong>
+          <span style="color:#9ca3af;margin-left:6px">${escapeHtml(lead.Country || '')}</span>
+          ${failText ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${escapeHtml(failText)}</div>` : ''}
+        </button>
+      `;
+    }).join('');
+    const more = items.length > 6
+      ? `<button type="button" data-verify-bucket-jump="${bucket}" style="width:100%;padding:6px;font-size:12px;color:#4f8cff;background:transparent;border:1px dashed #cbd5e1;border-radius:6px;cursor:pointer;margin-top:4px">+ 나머지 ${items.length - 6}건 전체 보기 →</button>`
+      : `<button type="button" data-verify-bucket-jump="${bucket}" style="width:100%;padding:6px;font-size:12px;color:#4f8cff;background:transparent;border:1px dashed #cbd5e1;border-radius:6px;cursor:pointer;margin-top:4px">목록 전체 보기 →</button>`;
+    return preview + more;
+  };
+
+  els.content.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+      ${sections.map(sec => `
+        <section style="background:${sec.bg};border:1px solid ${sec.accent};border-radius:12px;padding:14px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <strong style="color:${sec.fg};font-size:14px">${sec.label}</strong>
+            <span style="color:${sec.fg};font-size:18px;font-weight:800">${buckets[sec.key].length}</span>
+          </div>
+          ${renderPreview(sec.key, buckets[sec.key])}
+        </section>
+      `).join('')}
+    </div>
+  `;
+
+  // 개별 리드 클릭 → edit 모달
+  els.content.querySelectorAll('[data-verify-lead-id]').forEach((btn) => {
+    btn.addEventListener('click', () => openEditModal(btn.dataset.verifyLeadId));
+  });
+
+  // "전체 보기" → leads 뷰 + 해당 버킷 필터
+  els.content.querySelectorAll('[data-verify-bucket-jump]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.view = 'leads';
+      resetAllFilters();
+      state.verify = btn.dataset.verifyBucketJump;
+      if (els.verify) els.verify.value = state.verify;
+      state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
+      render();
+    });
+  });
+}
+
+// edit 모달 등에서 사용할 상세 패널 HTML
+function verifyDetailsHtml(lead) {
+  // 즐겨찾기는 대표가 직접 검증한 리드 — 자동 검증 결과보다 우선 신뢰
+  if (lead?.favorite === true) {
+    const v = lead?.verification;
+    const hasAuto = v && v.verifiedAt;
+    return `
+      <div style="background:#fef9c3;padding:12px 14px;border-radius:8px;border:1px solid #facc15">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:18px">⭐</span>
+          <strong style="font-size:14px;color:#854d0e">대표 직접 검증 완료</strong>
+        </div>
+        <p style="margin:0;font-size:12px;color:#92400e;line-height:1.5">
+          즐겨찾기에 등록된 리드입니다. 자동 검증 결과와 무관하게 신뢰 가능한 항목으로 처리됩니다.
+          ${hasAuto ? `<br><span style="color:#a16207">(참고: 자동 검증 점수 ${v.score ?? 0}/5)</span>` : ''}
+        </p>
+      </div>
+    `;
+  }
+
+  const v = lead?.verification;
+  if (!v || !v.verifiedAt) {
+    return `<div style="font-size:13px;color:#9ca3af">⏳ 아직 검증되지 않았습니다. 툴바의 🔍 검증 버튼으로 실행하세요.</div>`;
+  }
+  const bucket = verifyBucketOf(lead);
+  const headerColor = bucket === 'passed' ? '#166534' : bucket === 'suspicious' ? '#92400e' : bucket === 'invalid' ? '#991b1b' : '#64748b';
+
+  const row = (label, ok, detail) => {
+    const icon = ok === true ? '✅' : ok === false ? '❌' : '⏳';
+    const color = ok === true ? '#166534' : ok === false ? '#991b1b' : '#9ca3af';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:13px">
+        <span style="width:80px;color:#6b7280">${label}</span>
+        <span style="color:${color};font-weight:600">${icon}</span>
+        <span style="color:#374151">${detail}</span>
+      </div>
+    `;
+  };
+
+  const verifiedAt = new Date(v.verifiedAt).toLocaleString('ko-KR');
+
+  // 사업 관련성 — 통과/실패가 boolean 이 아니라 level 기반이라 별도 처리
+  const bizOk = v.businessLevel === 'relevant' ? true
+              : v.businessLevel === 'unrelated' || v.businessLevel === 'unclear' ? false
+              : null;
+  const ev = v.businessEvidence || {};
+  // 사이트가 자기소개로 뭐라고 하는지 (가장 강한 증거)
+  const evidenceHtml = (ev.title || ev.description || ev.h1)
+    ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;padding:6px 8px;background:#f9fafb;border-radius:4px;line-height:1.4">
+         ${ev.title ? `<div><strong>제목:</strong> ${escapeHtml(ev.title)}${ev.titleHit ? ` <span style="color:#16a34a">⊕${escapeHtml(ev.titleHit)}</span>` : ''}</div>` : ''}
+         ${ev.description ? `<div style="margin-top:2px"><strong>소개:</strong> ${escapeHtml(ev.description.slice(0, 150))}${ev.description.length > 150 ? '…' : ''}${ev.metaHit ? ` <span style="color:#16a34a">⊕${escapeHtml(ev.metaHit)}</span>` : ''}</div>` : ''}
+         ${ev.h1 && ev.h1 !== ev.title ? `<div style="margin-top:2px"><strong>대표문구:</strong> ${escapeHtml(ev.h1)}</div>` : ''}
+       </div>`
+    : '';
+  const bizDetail = v.businessLevel
+    ? `${businessLevelLabel(v.businessLevel)} (점수 ${v.businessScore ?? 0}/3)` +
+      (Array.isArray(v.businessKeywords) && v.businessKeywords.length
+        ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">매칭 키워드: ${escapeHtml(v.businessKeywords.slice(0, 8).join(', '))}</div>`
+        : '') +
+      evidenceHtml
+    : (v.businessReason ? reasonKo(v.businessReason) : '미확인');
+
+  return `
+    <div style="background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e5e7eb">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="font-size:14px;color:${headerColor}">검증 점수: ${v.score ?? 0}/5</strong>
+        <span style="font-size:11px;color:#9ca3af">${verifiedAt} 검증</span>
+      </div>
+      ${row('이메일',   v.emailValid,    v.emailValid === false ? reasonKo(v.emailReason) : (lead.Email || '값 없음'))}
+      ${row('웹사이트', v.websiteAlive,  v.websiteAlive === false ? `연결 실패 ${v.websiteStatus ? `(HTTP ${v.websiteStatus})` : '(응답 없음)'}` : (lead.WebsiteContact || '값 없음'))}
+      ${row('전화',     v.phoneMatch,    v.phoneMatch === false ? reasonKo(v.phoneReason) : (lead.Phone || '값 없음'))}
+      ${row('LinkedIn', v.linkedinValid, v.linkedinValid === false ? reasonKo(v.linkedinReason) : (lead.LinkedInCompany || lead.ContactLinkedIn || '값 없음'))}
+      ${row('사업관련성', bizOk, bizDetail)}
+    </div>
+  `;
 }
 
 function getFilteredLeads() {
@@ -1367,7 +1689,8 @@ function getFilteredLeads() {
     return (!query || haystack.includes(query))
       && (state.country === "All" || lead.Country === state.country)
       && (state.status === "All" || lead.status === state.status)
-      && (state.priority === "All" || lead.Priority === state.priority);
+      && (state.priority === "All" || lead.Priority === state.priority)
+      && verifyBucketMatches(lead, state.verify);
   });
   
   if (state.sortField) {
@@ -1496,6 +1819,10 @@ function openEditModal(id) {
     phoneBtn.style.display = lead.Phone ? 'inline-block' : 'none';
     phoneBtn.href = lead.Phone ? 'tel:' + lead.Phone.replace(/[^0-9+]/g, '') : '#';
   }
+
+  // 검증 상세 패널 — 모달 안에 있으면 채워넣고, 없으면 무시
+  const verifyPanel = document.getElementById('el-verification');
+  if (verifyPanel) verifyPanel.innerHTML = verifyDetailsHtml(lead);
 
   modal.style.display = 'flex';
 }
@@ -1872,6 +2199,120 @@ function _renderPreviewContents(leads, activeTab) {
 }
 
 
+// ── Verification flow ─────────────────────────────────────────────
+async function openVerifyModal() {
+  const modal = document.getElementById('verifyModal');
+  if (!modal) return;
+
+  // 기존 진행/결과 초기화
+  const progress = document.getElementById('verifyProgress');
+  const result = document.getElementById('verifyResult');
+  const startBtn = document.getElementById('verifyStartBtn');
+  if (progress) progress.style.display = 'none';
+  if (result) result.style.display = 'none';
+  if (startBtn) { startBtn.disabled = false; startBtn.textContent = '검증 시작'; }
+
+  // 카운트 표시
+  const total = baseLeads.length;
+  const done = baseLeads.filter(l => l.verification && l.verification.verifiedAt).length;
+  const pending = total - done;
+  const totalEl = document.getElementById('verifyTotalCount');
+  const pendingEl = document.getElementById('verifyPendingCount');
+  const doneEl = document.getElementById('verifyDoneCount');
+  if (totalEl) totalEl.textContent = total + '개';
+  if (pendingEl) pendingEl.textContent = pending + '개';
+  if (doneEl) doneEl.textContent = done + '개';
+
+  modal.style.display = 'flex';
+}
+
+async function startVerification(scope) {
+  const progress = document.getElementById('verifyProgress');
+  const progressBar = document.getElementById('verifyProgressBar');
+  const progressText = document.getElementById('verifyProgressText');
+  const result = document.getElementById('verifyResult');
+  const resultText = document.getElementById('verifyResultText');
+  const startBtn = document.getElementById('verifyStartBtn');
+
+  if (progress) progress.style.display = '';
+  if (result) result.style.display = 'none';
+  if (startBtn) { startBtn.disabled = true; startBtn.textContent = '검증 중...'; }
+
+  const onlyUnverified = scope !== 'all';
+  const CHUNK = 30;
+
+  // 시작 시점 카운트 — 진행률 계산용
+  let totalToProcess = 0;
+  let processed = 0;
+  const tallies = { ok: 0, partial: 0, fail: 0, emailBad: 0, siteBad: 0, phoneBad: 0, liBad: 0 };
+
+  try {
+    while (true) {
+      const res = await fetch('/api/leads/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onlyUnverified, limit: CHUNK }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || '검증 실패');
+
+      // 첫 응답에서 전체 작업량 계산
+      if (totalToProcess === 0) {
+        totalToProcess = data.processed + data.remaining;
+      }
+      processed += data.processed;
+
+      // 결과 집계
+      for (const r of (data.results || [])) {
+        const score = r.score ?? 0;
+        if (score === 4) tallies.ok++;
+        else if (score >= 2) tallies.partial++;
+        else tallies.fail++;
+        if (r.emailValid === false) tallies.emailBad++;
+        if (r.websiteAlive === false) tallies.siteBad++;
+        if (r.phoneMatch === false) tallies.phoneBad++;
+        if (r.linkedinValid === false) tallies.liBad++;
+      }
+
+      const pct = totalToProcess > 0 ? Math.min(100, Math.round(processed / totalToProcess * 100)) : 0;
+      if (progressBar) progressBar.style.width = pct + '%';
+      if (progressText) progressText.textContent = `${processed}/${totalToProcess} 처리 중... (${pct}%)`;
+
+      if (!data.hasMore) break;
+    }
+
+    // 완료 표시
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressText) progressText.textContent = `${processed}/${processed} 완료`;
+    if (result) result.style.display = '';
+    if (resultText) {
+      resultText.innerHTML = `
+        <strong style="font-size:15px;color:#1b5e20">🎉 검증 완료</strong><br>
+        ✅ 모두 통과 ${tallies.ok}건  ·  ⚠ 일부 의심 ${tallies.partial}건  ·  ❌ 다수 무효 ${tallies.fail}건<br>
+        <span style="color:#6b7280;font-size:12px">
+          이메일 실패 ${tallies.emailBad}  ·  사이트 실패 ${tallies.siteBad}  ·  전화 불일치 ${tallies.phoneBad}  ·  LinkedIn 실패 ${tallies.liBad}
+        </span>
+      `;
+    }
+    if (startBtn) { startBtn.textContent = '검증 완료 ✓'; }
+
+    // 리드 새로고침 (verification 결과 반영)
+    try {
+      const leadsRes = await fetch('/api/leads');
+      const leadsResult = await leadsRes.json();
+      if (leadsResult.success) {
+        baseLeads = leadsResult.data.map(lead => ({ ...lead, id: lead.leadId }));
+        renderFilters();
+        render();
+      }
+    } catch {}
+  } catch (err) {
+    if (result) { result.style.display = ''; result.style.background = '#fff0f0'; result.style.borderColor = '#f5b8b8'; }
+    if (resultText) resultText.textContent = '오류: ' + (err?.message || '네트워크 오류');
+    if (startBtn) { startBtn.disabled = false; startBtn.textContent = '다시 시도'; }
+  }
+}
+
 async function doImport(leads, duplicateAction) {
   const progress = document.getElementById('importProgress');
   const progressBar = document.getElementById('importProgressBar');
@@ -2062,6 +2503,24 @@ function stat(label, value, view = "") {
     `;
   }
   return `<div class="stat"><strong>${escapeHtml(String(value))}</strong><span>${escapeHtml(label)}</span></div>`;
+}
+
+// 검증 버킷용 stat 카드 — 색상 강조 + 클릭 시 검증 필터 적용
+function statVerify(label, value, bucket) {
+  const colors = {
+    passed:     { bg: '#dcfce7', fg: '#166534', accent: '#22c55e' },
+    suspicious: { bg: '#fef3c7', fg: '#92400e', accent: '#f59e0b' },
+    invalid:    { bg: '#fee2e2', fg: '#991b1b', accent: '#ef4444' },
+    unverified: { bg: '#f1f5f9', fg: '#64748b', accent: '#94a3b8' },
+  }[bucket];
+  const active = state.view === 'leads' && state.verify === bucket ? `box-shadow:0 0 0 2px ${colors.accent} inset;` : '';
+  return `
+    <button class="stat stat-button" data-verify-bucket="${escapeAttr(bucket)}" type="button"
+      style="background:${colors.bg};color:${colors.fg};border-color:${colors.accent};${active}">
+      <strong style="color:${colors.fg}">${escapeHtml(String(value))}</strong>
+      <span style="color:${colors.fg};opacity:0.85">${escapeHtml(label)}</span>
+    </button>
+  `;
 }
 
 function emptyState(text) {
