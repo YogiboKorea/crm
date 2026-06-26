@@ -1779,7 +1779,7 @@ function verifyDetailsHtml(lead) {
       <div style="background:#fef9c3;padding:12px 14px;border-radius:8px;border:1px solid #facc15">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span style="font-size:18px">⭐</span>
-          <strong style="font-size:14px;color:#854d0e">대표 직접 검증 완료</strong>
+          <strong style="font-size:14px;color:#854d0e">직접 검증 완료</strong>
         </div>
         <p style="margin:0;font-size:12px;color:#92400e;line-height:1.5">
           즐겨찾기에 등록된 리드입니다. 자동 검증 결과와 무관하게 신뢰 가능한 항목으로 처리됩니다.
