@@ -35,6 +35,7 @@ export default function Home() {
             <button className="nav-item" data-view="favorites" type="button">Favorites</button>
             <button className="nav-item" data-view="countries" type="button">Countries</button>
             <button className="nav-item" data-view="verification" type="button">🔍 검증 분류</button>
+            <button className="nav-item" data-view="recommended" type="button">💎 추천 리스트</button>
             <button className="nav-item" data-view="emails" type="button">Missing Emails</button>
             <button className="nav-item" data-view="followups" type="button">Follow-ups</button>
             <button className="nav-item" data-view="importHistory" type="button">Import History</button>

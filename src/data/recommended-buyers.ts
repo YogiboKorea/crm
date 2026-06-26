@@ -1,0 +1,673 @@
+/**
+ * K-beauty 해외 진출 — 우리(한국 브랜드)가 컨택할 글로벌 바이어/디스트리뷰터/리테일러 시드.
+ *
+ * 시각: 우리는 K-beauty 공급자 → 이들은 우리 브랜드를 사서 자국 시장에서 판매할 채널.
+ * 각 항목은 "그들이 어떻게 우리에게 도움이 되는가 (왜 컨택해야 하는가)"를 명시.
+ *
+ * 발굴 방식: 2026-06 웹 검색 (산업 매체 + 공식 사이트)
+ */
+
+export interface RecommendedBuyer {
+  company: string;
+  country: string;
+  region: 'Europe' | 'North America' | 'Middle East' | 'Asia' | 'Latin America' | 'Oceania' | 'Africa' | 'Global';
+  website: string;
+  type: string;                // 그들의 비즈니스 유형 (Distributor/Retailer/Wholesaler/Marketplace 등)
+  brandsChannels: string;      // 그들이 취급하는 한국 브랜드 / 채널 / 시장
+  evidence: string;            // 우리가 왜 컨택해야 하는가 (왜 좋은 타겟인가)
+  priority: 'A-' | 'B' | 'C';
+  source: string;
+  linkedin?: string;
+}
+
+export const RECOMMENDED_BUYERS: RecommendedBuyer[] = [
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🌐 GLOBAL B2B 플랫폼 — 한 번에 글로벌 노출, 입점 우선 검토        ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Q-Depot',
+    country: 'Global (100+ countries)',
+    region: 'Global',
+    website: 'https://wholesale.q-depot.com/',
+    type: 'K-beauty B2B Marketplace',
+    brandsChannels: '500+ 한국 브랜드 입점 · 100개국 80,000+ B2B 리셀러가 발주하는 도매 플랫폼.',
+    evidence: '입점만 성공해도 글로벌 80K 리셀러에게 즉시 노출. K-beauty 해외 진출 최우선 입점 채널. Trustpilot/Google 평점 1위.',
+    priority: 'A-',
+    source: 'https://wholesale.q-depot.com/',
+  },
+  {
+    company: 'B Futurist',
+    country: 'Global',
+    region: 'Global',
+    website: 'https://bfuturist.com/',
+    type: 'K-beauty Global Distributor',
+    brandsChannels: '현재 50+ 한국 브랜드 취급 중. 미국/UAE/사우디/브라질 등 거의 전 세계 출하 가능.',
+    evidence: '브랜드 추가 입점에 적극적. 글로벌 출하 인프라 보유 → 신규 브랜드의 글로벌 진출 발판으로 적합.',
+    priority: 'A-',
+    source: 'https://bfuturist.com/korean-cosmetics-skincare-wholesale/',
+  },
+  {
+    company: 'UMMA',
+    country: 'Global (70+ countries)',
+    region: 'Global',
+    website: 'https://umma.io/',
+    type: 'K-Beauty Wholesale Marketplace (Curated)',
+    brandsChannels: '180+ 큐레이션 한국 브랜드. 온라인 리셀러/리테일러/숍 오너 대상 70개국 출하.',
+    evidence: '큐레이션 모델 — 입점 자격 통과 시 노출도 높음. 글로벌 리셀러망 활용 가능.',
+    priority: 'A-',
+    source: 'https://umma.io/about/location/',
+  },
+  {
+    company: 'YESBEE',
+    country: 'Global',
+    region: 'Global',
+    website: 'https://www.yesbee.com/',
+    type: 'K-Brand Global Connector',
+    brandsChannels: '"K-Brand 글로벌 커넥터" — 한국 화장품 포함 K-제품 글로벌 도매.',
+    evidence: 'K-카테고리 통합 도매 채널. 입점/제휴 양방향 가능.',
+    priority: 'B',
+    source: 'https://www.yesbee.com/',
+  },
+  {
+    company: 'K Beauty Hub',
+    country: 'Global',
+    region: 'Global',
+    website: 'https://k-beauty-hub.com/',
+    type: 'K-Beauty Wholesale Platform',
+    brandsChannels: 'K-beauty 글로벌 도매 플랫폼. 카탈로그 다양.',
+    evidence: '글로벌 출하 채널 다양화. 입점 검토 가치 있음.',
+    priority: 'B',
+    source: 'https://k-beauty-hub.com/',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇪🇺 유럽 — 국가별 디스트리뷰터/도매 (한국 브랜드를 매입함)         ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Kosmos Beauty Lab',
+    country: 'Netherlands / Finland',
+    region: 'Europe',
+    website: 'https://kosmosbeautyb2b.com/',
+    type: 'European K-beauty Distributor',
+    brandsChannels: '유럽 전역 도매 — 살롱/리테일러/온라인 스토어에 K-beauty 공급.',
+    evidence: '유럽 1위 K-beauty 디스트리뷰터. 우리 브랜드를 유럽 채널에 안착시킬 핵심 파트너 후보.',
+    priority: 'A-',
+    source: 'https://knokglobal.com/blog/k-beauty-market-size-2026-global-growth-data',
+  },
+  {
+    company: 'MiiN Trade',
+    country: 'Spain',
+    region: 'Europe',
+    website: 'https://www.miintrade.com/',
+    type: 'Exclusive Korean Cosmetics Importer',
+    brandsChannels: '한국에서 직수입한 독점 브랜드 라인업. 유럽 리테일러 채널 강함.',
+    evidence: '유럽 최대 K-beauty 수입사. 독점 계약 모델 → 우리 브랜드 유럽 독점권 협상 가능.',
+    priority: 'A-',
+    source: 'https://www.miintrade.com/',
+  },
+  {
+    company: 'Kencana GmbH',
+    country: 'Germany',
+    region: 'Europe',
+    website: 'https://kencana.de/',
+    type: 'Curated K-beauty Distributor (Germany/DACH)',
+    brandsChannels: '독일 거점 큐레이션형 K-beauty 디스트리뷰터.',
+    evidence: '독일/DACH 진입 시 1순위. 큐레이션이라 선별 노출 — 우리 브랜드 정체성 보호.',
+    priority: 'A-',
+    source: 'https://kencana.de/',
+  },
+  {
+    company: 'Myskin / MS Wholesale',
+    country: 'Denmark',
+    region: 'Europe',
+    website: 'https://ms-wholesale.eu/',
+    type: 'K-Beauty B2B (Low MOQ)',
+    brandsChannels: 'Anua, Biodance, Medicube, SKIN1004, Dr. Althea 등 핫 브랜드 취급. 낮은 MOQ.',
+    evidence: '핫 브랜드 라인업 보유 → 우리 브랜드도 비슷한 포지션에 입점 가능. 낮은 MOQ로 소규모 테스트 적합.',
+    priority: 'A-',
+    source: 'https://ms-wholesale.eu/',
+  },
+  {
+    company: 'Qudo Beauty',
+    country: 'Romania',
+    region: 'Europe',
+    website: 'https://qudobeauty.com/',
+    type: 'K-beauty Wholesale Supplier',
+    brandsChannels: '루마니아 창고 → 프랑스/스페인/영국/그리스/이탈리아/독일 빠른 배송.',
+    evidence: '동유럽 거점 — 유럽 핵심국 다 커버. 신규 브랜드 입점 활발.',
+    priority: 'B',
+    source: 'https://qudobeauty.com/',
+  },
+  {
+    company: 'Korean Skincare Supply',
+    country: 'Europe (regional)',
+    region: 'Europe',
+    website: 'https://koreanskincaresupply.com/',
+    type: 'K-beauty Distributor (B2B Long-term)',
+    brandsChannels: '리테일러/스파/클리닉/온라인 뷰티 스토어 장기 파트너.',
+    evidence: '장기 파트너십 모델 — 일회성 거래 아닌 지속 채널 확보 가능.',
+    priority: 'B',
+    source: 'https://koreanskincaresupply.com/',
+  },
+  {
+    company: 'LW-Wholesale',
+    country: 'Europe',
+    region: 'Europe',
+    website: 'https://www.lw-wholesale.com/skincare/',
+    type: 'Korean Skincare Wholesale (Europe)',
+    brandsChannels: '유럽 한국 스킨케어 도매. 다양한 한국 브랜드 취급.',
+    evidence: '유럽 채널 옵션 다양화 — 추가 입점 검토.',
+    priority: 'C',
+    source: 'https://www.lw-wholesale.com/skincare/',
+  },
+  {
+    company: 'Asian Beauty Trade',
+    country: 'Europe',
+    region: 'Europe',
+    website: 'https://asianbeautytrade.com/en',
+    type: 'Korean & Japanese Cosmetics Wholesale (Pro)',
+    brandsChannels: '한국+일본 화장품 전문가 채널 도매. 살롱/스파 전문가 대상.',
+    evidence: '전문가 채널(살롱/스파) 진입 시 의미 있음. J-beauty와 같이 노출되는 게 단점일 수 있음.',
+    priority: 'B',
+    source: 'https://asianbeautytrade.com/en',
+  },
+  {
+    company: 'CosmeticIndex (European Directory)',
+    country: 'Europe (all countries)',
+    region: 'Europe',
+    website: 'https://www.cosmeticindex.com/~cosmetic-distributors-wholesalers_Europe',
+    type: 'Cosmetics Distributor Directory',
+    brandsChannels: '유럽 전체 국가별 화장품 디스트리뷰터 검색 디렉토리.',
+    evidence: '유럽 신규 국가 진입 시 현지 바이어 발굴 1차 검색 허브.',
+    priority: 'B',
+    source: 'https://www.cosmeticindex.com/~cosmetic-distributors-wholesalers_Europe',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇺🇸 북미 — 미국 리테일 + 진출 파트너                              ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Ulta Beauty',
+    country: 'USA / UAE / Saudi / Kuwait',
+    region: 'North America',
+    website: 'https://www.ulta.com/',
+    type: 'Major Beauty Retail Chain',
+    brandsChannels: '미국 최대 뷰티 리테일 체인. K-beauty 셀렉션 적극 확장 중. UAE/사우디/쿠웨이트 매장 오픈 발표.',
+    evidence: '입점 시 미국 + 중동 동시 매장 노출. 최상위 채널 — 컨택 난이도 높지만 보상 큼.',
+    priority: 'A-',
+    source: 'https://www.arabnews.com/node/2616526/lifestyle',
+  },
+  {
+    company: 'Mattson',
+    country: 'USA',
+    region: 'North America',
+    website: 'https://mattsonstrategy.com/',
+    type: 'US Market Entry Partner for Korean Brands',
+    brandsChannels: '한국 브랜드를 미국 시장에 진출시키는 전문 파트너. 미국 바이어/리테일러 컨택 대행.',
+    evidence: '직접 바이어가 아닌 "미국 진출 컨설팅". 우리가 미국 시장 진입할 때 영업 대행 → 미국 리테일러 라인업 빠르게 확보 가능.',
+    priority: 'A-',
+    source: 'https://mattsonstrategy.com/',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🕌 중동 — 진입 장벽 낮고 K-beauty 수요 급증 지역                  ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'K-SECRET',
+    country: 'UAE / GCC',
+    region: 'Middle East',
+    website: 'https://www.ksecret.com/en/whole-sale',
+    type: 'K-beauty Distributor (Middle East/Africa/India)',
+    brandsChannels: 'UAE/GCC에 50+ K-beauty 브랜드 이미 출시. 중동/아프리카/인도까지 출하.',
+    evidence: '중동 시장 진입 No.1 옵션. 이미 50+ 브랜드 입점 성공 트랙 → 우리 브랜드 입점 검증된 채널.',
+    priority: 'A-',
+    source: 'https://www.ksecret.com/en/whole-sale',
+  },
+  {
+    company: 'Official K-Beauty (OKB)',
+    country: 'UAE',
+    region: 'Middle East',
+    website: 'https://www.officialkbeauty.com/',
+    type: 'Leading K-beauty Distributor (UAE/MENA)',
+    brandsChannels: 'UAE/MENA K-beauty 선두 디스트리뷰터. 2020 설립.',
+    evidence: 'K-SECRET과 양강. 신생 (2020)이라 신규 브랜드 입점에 더 적극적일 가능성.',
+    priority: 'A-',
+    source: 'https://www.officialkbeauty.com/pages/wholesale',
+  },
+  {
+    company: 'OG Global Import',
+    country: 'UAE / Saudi Arabia',
+    region: 'Middle East',
+    website: 'https://ogglobalimport.com/',
+    type: 'Wholesale Skincare Distributor (Middle East)',
+    brandsChannels: '중동 스킨케어 도매 — UAE/사우디 양국 채널.',
+    evidence: '사우디 채널까지 동시 — 단일 컨택으로 두 국가 진입.',
+    priority: 'B',
+    source: 'https://ogglobalimport.com/wholesale-skincare-distributor/',
+  },
+  {
+    company: 'MinMax Deals',
+    country: 'UAE',
+    region: 'Middle East',
+    website: 'https://minmaxdeals.com/',
+    type: 'Middle East FMCG Distribution',
+    brandsChannels: '중동 도매 화장품/FMCG 유통 전반.',
+    evidence: 'K-beauty 전문은 아니지만 FMCG 채널력 강함 → 마트/약국 채널 확보 가능.',
+    priority: 'B',
+    source: 'https://minmaxdeals.com/what-we-do/regions/middle-east/',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇮🇱 이스라엘                                                     ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Personal Care 1 (Israel Distributor Directory)',
+    country: 'Israel',
+    region: 'Middle East',
+    website: 'https://www.personalcare1.com/cosmetic-distributors/israel',
+    type: 'Israel Cosmetics Distributor Directory',
+    brandsChannels: '이스라엘 화장품 디스트리뷰터 디렉토리. 텔아비브 + 전국.',
+    evidence: '이스라엘 시장 진입 1차 발굴 — 현지 바이어 리스트업 출발점.',
+    priority: 'B',
+    source: 'https://www.personalcare1.com/cosmetic-distributors/israel',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇦🇺 오세아니아                                                   ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Pharmacoo Wholesale',
+    country: 'Australia',
+    region: 'Oceania',
+    website: 'https://pharmacoo.com.au/',
+    type: 'Official K-Beauty Distributor (Australia)',
+    brandsChannels: '50+ K-beauty 브랜드 호주 공식 디스트리뷰터. Medi-Peel/Derma Maison/ISOV/Cell Fusion C/Too Cool For School 호주 독점권.',
+    evidence: '호주 시장 No.1 K-beauty 채널. 독점권 모델 — 우리 브랜드 호주 독점 협상 가능.',
+    priority: 'A-',
+    source: 'https://pharmacoo.com.au/',
+  },
+  {
+    company: 'BONIIK',
+    country: 'Australia',
+    region: 'Oceania',
+    website: 'https://boniik.com.au/pages/wholesale',
+    type: 'Leading K-Beauty Distributor (Australia)',
+    brandsChannels: '호주 K-beauty 선두 디스트리뷰터. 100+ 브랜드 취급. 10년+ 경력. B2B + B2C.',
+    evidence: 'Pharmacoo와 호주 양강. B2C 매장도 운영 → 신규 브랜드 빠른 노출/검증 가능.',
+    priority: 'A-',
+    source: 'https://boniik.com.au/pages/wholesale',
+  },
+  {
+    company: 'Makeup2Beauty',
+    country: 'Australia',
+    region: 'Oceania',
+    website: 'https://www.makeup2beauty.com.au/',
+    type: 'Korean Beauty Supplier (Australia)',
+    brandsChannels: '호주 K-beauty 공급사 — 메이크업 카테고리 강점.',
+    evidence: '메이크업 라인 보유 시 적합. Pharmacoo/BONIIK 외 호주 옵션.',
+    priority: 'B',
+    source: 'https://www.makeup2beauty.com.au/',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🌍 아프리카                                                      ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Glow Theory',
+    country: 'South Africa',
+    region: 'Africa',
+    website: 'https://glowtheory.com/pages/k-beauty-wholesale',
+    type: 'K-Beauty Wholesale (South Africa)',
+    brandsChannels: '남아공 K-beauty 도매. 선별 리테일 파트너에게 도매가.',
+    evidence: '남아공 = 아프리카 시장 게이트웨이. 선별 모델 → 우리 브랜드 가치 보호.',
+    priority: 'A-',
+    source: 'https://glowtheory.com/pages/k-beauty-wholesale',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🌏 동남아 (ASEAN) — K-beauty 수요 급증, 진입 적기                  ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'BELECO',
+    country: 'Vietnam / Philippines / Indonesia',
+    region: 'Asia',
+    website: 'https://www.belecobeauty.com/',
+    type: 'K-beauty Wholesaler (Southeast Asia)',
+    brandsChannels: '베트남 본거지 + 마닐라/인도네시아 3년+ 디스트리뷰션. K-beauty 2년+ 판매.',
+    evidence: '동남아 3개국 한 번에 커버 가능. 베트남/필리핀/인도네시아 동시 진입 시 1순위.',
+    priority: 'A-',
+    source: 'https://www.belecobeauty.com/',
+  },
+  {
+    company: 'COMMALAX PH',
+    country: 'Philippines',
+    region: 'Asia',
+    website: 'https://commalax.ph/pages/wholesale',
+    type: 'K-Beauty B2B Supplier (Philippines)',
+    brandsChannels: '마닐라 거점 K-beauty 전문 B2B 공급사. 친환경/지속가능 컨셉.',
+    evidence: '필리핀 시장 특화. 친환경 컨셉 보유 → 비건/클린 라인 우리 브랜드와 적합.',
+    priority: 'A-',
+    source: 'https://commalax.ph/pages/wholesale',
+  },
+  {
+    company: 'Q-Depot Philippines',
+    country: 'Philippines (local office)',
+    region: 'Asia',
+    website: 'https://www.q-depot.com/korean-cosmetics-wholesale-philippines',
+    type: 'K-beauty Local Distributor (Philippines)',
+    brandsChannels: 'Q-Depot 필리핀 현지 사무소. 4년+ 운영.',
+    evidence: '필리핀에서 K-beauty 1위 공급. 현지 사무소 보유로 직접 컨택 + AS 가능.',
+    priority: 'A-',
+    source: 'https://www.q-depot.com/korean-cosmetics-wholesale-philippines',
+  },
+  {
+    company: 'CIRS Group (ASEAN Registration)',
+    country: 'ASEAN (regulatory)',
+    region: 'Asia',
+    website: 'https://www.cirs-group.com/en/cosmetics/asean-cosmetics-registration-thailand-vietnam-philippines-malaysia-singapore-indonesia',
+    type: 'ASEAN Cosmetics Registration Consulting',
+    brandsChannels: '태국/베트남/필리핀/말레이/싱가포르/인니 화장품 등록 컨설팅.',
+    evidence: '동남아 6개국 진입 전 필수 거쳐야 할 등록 절차 전문. 디스트리뷰터 컨택 전 사전 작업.',
+    priority: 'B',
+    source: 'https://www.cirs-group.com/en/cosmetics/asean-cosmetics-registration-thailand-vietnam-philippines-malaysia-singapore-indonesia',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇧🇷 중남미 — Sephora + 현지 디스트리뷰터                          ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Sephora Brazil',
+    country: 'Brazil',
+    region: 'Latin America',
+    website: 'https://www.sephora.com.br/',
+    type: 'Major Beauty Retail Chain (Brazil)',
+    brandsChannels: '브라질 최대 뷰티 리테일. 이미 일부 K-beauty 브랜드 입점.',
+    evidence: '브라질 진입 최상위 채널. 입점 난이도 높지만 단일 채널로 시장 절반 확보.',
+    priority: 'A-',
+    source: 'https://knokglobal.com/blog/k-beauty-latin-america-brazil-mexico-wholesale-market',
+  },
+  {
+    company: 'O Boticário',
+    country: 'Brazil',
+    region: 'Latin America',
+    website: 'https://www.boticario.com.br/',
+    type: 'Major Brazilian Beauty Retailer',
+    brandsChannels: '브라질 현지 뷰티 체인 거인. K-beauty 셀렉션 확장 중.',
+    evidence: '현지 No.1 — Sephora보다 진입 장벽 다르지만 채널 규모 비슷. 동시 노려볼 가치.',
+    priority: 'A-',
+    source: 'https://knokglobal.com/blog/k-beauty-latin-america-brazil-mexico-wholesale-market',
+  },
+  {
+    company: 'Sephora Mexico / Liverpool',
+    country: 'Mexico',
+    region: 'Latin America',
+    website: 'https://www.sephora.com.mx/',
+    type: 'Major Beauty Retail (Mexico)',
+    brandsChannels: 'Sephora 멕시코 + Liverpool 백화점. K-beauty 셀렉션 보유.',
+    evidence: '멕시코 시장 양대 산맥. 동시 입점 시 시장 커버리지 60%+.',
+    priority: 'A-',
+    source: 'https://knokglobal.com/blog/k-beauty-latin-america-brazil-mexico-wholesale-market',
+  },
+  {
+    company: 'DBS Beauty Store',
+    country: 'Chile',
+    region: 'Latin America',
+    website: 'https://www.dbs.cl/',
+    type: 'Leading Beauty Distributor (Chile)',
+    brandsChannels: '칠레 메인 디스트리뷰터 — 국내외 화장품 브랜드 유통.',
+    evidence: '칠레 진입 시 1순위. 지역/국제 브랜드 동시 취급으로 K-beauty 셀렉션 확장 의지 있음.',
+    priority: 'A-',
+    source: 'https://www.modaes.com/global/companies/skincare-local-brands-and-retail-cosmetics-find-the-perfect-refuge-in-latin-america',
+  },
+  {
+    company: 'Trendy Shop',
+    country: 'Colombia',
+    region: 'Latin America',
+    website: 'https://www.trendyshop.com.co/',
+    type: 'Omnichannel Beauty Retailer (Colombia)',
+    brandsChannels: '콜롬비아 뷰티 붐 리더. 옴니채널 — 자체 PB + 외부 브랜드 입점.',
+    evidence: '젊은 소비자 타겟. 콜롬비아 시장 진입 시 1순위 — 옴니채널 노출 확보.',
+    priority: 'A-',
+    source: 'https://www.modaes.com/global/companies/skincare-local-brands-and-retail-cosmetics-find-the-perfect-refuge-in-latin-america',
+  },
+  {
+    company: 'MinMaxDeals Latin America',
+    country: 'Latin America (regional)',
+    region: 'Latin America',
+    website: 'https://minmaxdeals.com/what-we-do/regions/latin-america/',
+    type: 'LatAm Wholesale Cosmetics/FMCG',
+    brandsChannels: '중남미 화장품/FMCG 도매. 다지역 동시 채널.',
+    evidence: '중남미 여러 국가 한 번에 노려볼 수 있는 도매 채널.',
+    priority: 'B',
+    source: 'https://minmaxdeals.com/what-we-do/regions/latin-america/',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇵🇱 동유럽                                                       ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Lenzer Trade OÜ',
+    country: 'Estonia / Eastern Europe',
+    region: 'Europe',
+    website: 'https://koreancosmetics.eu/',
+    type: 'Korean Cosmetics B2B Wholesale (Europe)',
+    brandsChannels: '에스토니아 거점 한국 화장품 도매. 폴란드/체코/헝가리 등 동유럽 커버.',
+    evidence: '동유럽 진입 거점 — 폴란드/체코/헝가리 시장 동시 접근.',
+    priority: 'A-',
+    source: 'https://koreancosmetics.eu/',
+  },
+  {
+    company: 'Perfume Europe (K-Beauty)',
+    country: 'Europe',
+    region: 'Europe',
+    website: 'https://perfumeeurope.com/en/product-tag/kbeauty/',
+    type: 'European Wholesale (K-Beauty section)',
+    brandsChannels: '유럽 도매 — K-beauty 카테고리 운영. 향수+화장품 동시.',
+    evidence: '향수 채널과 동시 노출. 우리 브랜드가 향수/뷰티 크로스오버 라인 보유 시 시너지.',
+    priority: 'B',
+    source: 'https://perfumeeurope.com/en/product-tag/kbeauty/',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇯🇵 일본 — 메이저 리테일 체인 (K-beauty 적극 입점 중)               ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Don Quijote (Pan Pacific International Holdings)',
+    country: 'Japan',
+    region: 'Asia',
+    website: 'https://ppih.co.jp/en/',
+    type: 'Major Discount Megastore (K-beauty hub)',
+    brandsChannels: '일본 1위 디스카운트 메가스토어. K-beauty 미니 사이즈 셀렉션 풍부. Shin-Okubo 외 K-beauty 최대 채널.',
+    evidence: '일본 시장 진입 최대 단일 채널. 디스카운트 모델 → 합리적 가격대 우리 브랜드와 적합. 모기업 PPIH는 K-소비재 적극 수입 중.',
+    priority: 'A-',
+    source: 'https://en.sedaily.com/finance/2026/04/16/don-quijote-aeon-lead-japanese-retail-giants-to-k-consumer',
+  },
+  {
+    company: 'Kira Kira Donki (K-beauty Specialized)',
+    country: 'Japan',
+    region: 'Asia',
+    website: 'https://www.donki.com/kirakira/',
+    type: 'K-beauty Specialty Store (Donki sub-brand)',
+    brandsChannels: 'Don Quijote의 K-beauty 전문 매장 라인. K-beauty 큐레이션만.',
+    evidence: 'K-beauty만 다루는 전문 라인 → 우리 브랜드 노출 깊이 가장 좋음. Donki 모기업 라인 진입의 정문.',
+    priority: 'A-',
+    source: 'https://savvytokyo.com/10-korean-skincare-brands-you-can-find-in-japan/',
+  },
+  {
+    company: 'Loft Japan',
+    country: 'Japan',
+    region: 'Asia',
+    website: 'https://www.loft.co.jp/',
+    type: 'Major Lifestyle/Beauty Retail Chain',
+    brandsChannels: '일본 라이프스타일 체인. K-beauty 전용 코너 운영. 매년 한국 브랜드 페스티벌 개최(수백 브랜드 시연).',
+    evidence: '일본 젊은층 핵심 채널. 한국 브랜드 페스티벌이 큐레이션 입점 게이트 — 입점 채널 명확.',
+    priority: 'A-',
+    source: 'https://savvytokyo.com/10-korean-skincare-brands-you-can-find-in-japan/',
+  },
+  {
+    company: 'Matsumoto Kiyoshi (Drugstore)',
+    country: 'Japan',
+    region: 'Asia',
+    website: 'https://www.matsukiyo.co.jp/',
+    type: 'Major Drugstore Chain (Imported Cosmetics)',
+    brandsChannels: '일본 최대 드럭스토어 체인. 수입 화장품 전용 섹션에 한국 브랜드 포함.',
+    evidence: '일본 전국 드럭스토어 채널 — Donki와 다른 소비자층(주부/중장년) 동시 확보 가능.',
+    priority: 'A-',
+    source: 'https://savvytokyo.com/10-korean-skincare-brands-you-can-find-in-japan/',
+  },
+  {
+    company: 'AEON Retail',
+    country: 'Japan',
+    region: 'Asia',
+    website: 'https://www.aeonretail.jp/',
+    type: 'Major Hypermarket Chain',
+    brandsChannels: '일본 1위 종합 리테일. K-소비재 적극 수입 중.',
+    evidence: '하이퍼마켓 채널 진입 시 일본 전국 노출. Donki/Loft와 다른 채널 — 마트 라인.',
+    priority: 'B',
+    source: 'https://en.sedaily.com/finance/2026/04/16/don-quijote-aeon-lead-japanese-retail-giants-to-k-consumer',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇮🇳 인도 — K-beauty 폭발적 성장 (글래스 스킨, K-선스크린)            ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Nykaa',
+    country: 'India',
+    region: 'Asia',
+    website: 'https://www.nykaa.com/skin/korean-beauty/c/30710',
+    type: "India's Largest Beauty E-commerce (K-beauty section)",
+    brandsChannels: '인도 No.1 뷰티 이커머스 + 오프라인. K-beauty 전용 섹션 운영. 이미 Sulwhasoo/Innisfree/Cosrx/TonyMoly 입점.',
+    evidence: '인도 진입 No.1 채널. Nykaa-KK Beauty Pvt Ltd 통해 직접 수입 활성. 인도 K-beauty 콘텐츠/이벤트 큐레이션 적극.',
+    priority: 'A-',
+    source: 'https://www.cosmeticsdesign-asia.com/Article/2023/12/13/India-embraces-K-beauty-Korean-sunscreen-glass-skin-among-top-searches-by-consumers/',
+  },
+  {
+    company: 'Limese India',
+    country: 'India',
+    region: 'Asia',
+    website: 'https://limese.com/pages/b2b',
+    type: 'Exclusive K-beauty Distributor (India)',
+    brandsChannels: '2016 서울 본사. 40+ 한국 브랜드 인도 독점 대리. Cosrx, Rom&nd, I\'m From 등.',
+    evidence: '한국 본사 + 인도 풀필먼트 — 우리에게 가장 친숙한 파트너 형태. 40+ 브랜드 라인업 입증 트랙.',
+    priority: 'A-',
+    source: 'https://limese.com/',
+  },
+  {
+    company: 'CEPA India (New Delhi Business Centre)',
+    country: 'India',
+    region: 'Asia',
+    website: 'https://cepaindia.com/',
+    type: 'Korea-India SME Connection Center',
+    brandsChannels: '한국 충남도 SME 인도 진출 지원. 2020 설립. 화장품 OEM/도매 매칭.',
+    evidence: '인도 진입 시 한국 지자체 지원 채널 — 컨택/협상 비용 절감. SME 우대.',
+    priority: 'B',
+    source: 'https://cepaindia.com/korean-cosmetics-wholesale/',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🇷🇺 러시아 — 제재 우회 경로 (CIS 경유, 대형 글로벌 거치기)          ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Russia/CIS via Global Distributors',
+    country: 'Russia / CIS',
+    region: 'Europe',
+    website: 'https://bfuturist.com/',
+    type: 'Cross-border Channel (B Futurist/Q-Depot)',
+    brandsChannels: '러시아 직접 진입은 제재 + 결제 문제로 제한. B Futurist, Q-Depot 등 글로벌 디스트리뷰터 통한 간접 채널.',
+    evidence: '러시아 시장은 직거래 위험 — 글로벌 도매 통한 우회 권장. 글로벌 플랫폼 입점 시 러시아 리셀러가 자체 매입.',
+    priority: 'B',
+    source: 'https://bfuturist.com/korean-cosmetics-skincare-wholesale/',
+  },
+  {
+    company: 'Lenzer Trade (Russian-speaking channel)',
+    country: 'Estonia / Russian-speaking markets',
+    region: 'Europe',
+    website: 'https://koreancosmetics.eu/',
+    type: 'Korean Cosmetics B2B (Russian-language)',
+    brandsChannels: '에스토니아 거점이지만 러시아어 사이트 운영 — CIS 지역(러시아/벨라루스/카자흐스탄) 리셀러 흡수.',
+    evidence: '러시아어 권 시장 진입의 안전한 우회로. 정치적 리스크 없음.',
+    priority: 'A-',
+    source: 'https://koreancosmetics.eu/',
+  },
+
+  // ╔════════════════════════════════════════════════════════════════╗
+  // ║ 🕌 GCC 심화 — 단일 컨택으로 다국가 동시 진입                       ║
+  // ╚════════════════════════════════════════════════════════════════╝
+  {
+    company: 'Al Jamal Enterprises',
+    country: 'UAE / Saudi / MENA',
+    region: 'Middle East',
+    website: 'https://aljamalenterprises.com/',
+    type: 'Major Beauty/FMCG Distributor (MENA)',
+    brandsChannels: 'UAE/KSA/MENA Top 디스트리뷰터. 백화점/약국/하이퍼마켓/호텔/스파/살롱/이커머스(Amazon, Noon, Boots, UnionCoop, Brands For Less).',
+    evidence: '단일 컨택으로 중동 모든 채널(B2B+B2C) 진입. MENA 시장 No.1 옵션 — 컨택 우선순위 매우 높음.',
+    priority: 'A-',
+    source: 'https://aljamalenterprises.com/',
+  },
+  {
+    company: 'BAHEYA',
+    country: 'UAE / Qatar / Kuwait / Oman / Saudi',
+    region: 'Middle East',
+    website: 'https://baheya.com/',
+    type: 'International Beauty Distributor (GCC 5 countries)',
+    brandsChannels: 'UAE/카타르/쿠웨이트/오만/사우디 5개국 동시 디스트리뷰션.',
+    evidence: 'GCC 5개국 단일 컨택. 사우디+쿠웨이트+카타르 동시 진입 시 최적.',
+    priority: 'A-',
+    source: 'https://aljamalenterprises.com/',
+  },
+  {
+    company: 'HECA Corp',
+    country: 'Saudi Arabia (Riyadh)',
+    region: 'Middle East',
+    website: 'https://www.hecacorp.com/',
+    type: 'Professional Beauty Importer (Saudi)',
+    brandsChannels: '리야드 거점 화장품 수입사. 스킨케어/퍼스널케어/메이크업/헤어 카테고리.',
+    evidence: '사우디 단독 시장 집중 진입. 전문 뷰티 카테고리 풀라인 취급.',
+    priority: 'A-',
+    source: 'https://www.hecacorp.com/',
+  },
+  {
+    company: 'Nabska',
+    country: 'UAE / Gulf / MENA',
+    region: 'Middle East',
+    website: 'https://nabska.com/',
+    type: 'European Cosmetics Wholesale (Gulf focus)',
+    brandsChannels: '유럽 화장품 → 걸프/MENA 도매. 한국 카테고리 추가 가능성.',
+    evidence: '주력은 유럽이지만 K-beauty 입점 협상 가능 — 신생 카테고리 확장 의지 있는 디스트리뷰터.',
+    priority: 'B',
+    source: 'https://nabska.com/',
+  },
+  {
+    company: 'Chemico Middle East FZCO',
+    country: 'UAE / Saudi / Egypt / Turkey / Oman / Qatar',
+    region: 'Middle East',
+    website: 'https://chemicogroup.com/',
+    type: 'Cosmetics Raw Material + Brand Distributor',
+    brandsChannels: '2016 두바이 설립. 화장품 원료 + 완제품 수입/유통. 6개국 커버.',
+    evidence: '6개국 단일 컨택. 원료/완제품 양방향 — 우리 브랜드 OEM 기회까지 협상 가능.',
+    priority: 'B',
+    source: 'https://chemicogroup.com/page-company/32/Chemico-Middle-East-FZCO.html',
+  },
+  {
+    company: 'Beautyworld Saudi Arabia (Trade Show)',
+    country: 'Saudi Arabia',
+    region: 'Middle East',
+    website: 'https://beautyworld-saudi-arabia.ae.messefrankfurt.com/',
+    type: 'Major Beauty Trade Show (Messe Frankfurt)',
+    brandsChannels: '사우디 최대 뷰티 박람회. 현지 디스트리뷰터/리테일러 한자리. 한국관 운영.',
+    evidence: '단일 이벤트로 사우디 + 걸프 바이어 한 번에 컨택. 부스 참가 검토 — 입점 가속 가능.',
+    priority: 'A-',
+    source: 'https://beautyworld-saudi-arabia.ae.messefrankfurt.com/ksa/en/planning-preparation/featured-exhibitors.html',
+  },
+  {
+    company: 'Cosmetics Distributors USA (Middle East)',
+    country: 'Middle East (multi-country)',
+    region: 'Middle East',
+    website: 'https://www.cosmeticsdistributorsusa.com/middle-east',
+    type: 'Brand-Distributor Matching Service',
+    brandsChannels: '사우디/UAE/카타르/쿠웨이트/바레인/오만/요르단/레바논/시리아/이라크/팔레스타인/예멘/이란/터키/이집트 13개국 디스트리뷰터 매칭.',
+    evidence: '중동 13개국 디스트리뷰터 한 곳에서 매칭. 한 컨택으로 다국가 후보 동시 발굴.',
+    priority: 'A-',
+    source: 'https://www.cosmeticsdistributorsusa.com/middle-east',
+  },
+];

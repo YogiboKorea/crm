@@ -944,6 +944,13 @@ function render() {
     return;
   }
 
+  if (state.view === "recommended") {
+    els.viewTitle.textContent = "💎 K-beauty 추천 리스트";
+    els.viewSubtitle.textContent = "글로벌 K-beauty 디스트리뷰터/도매/리테일러 시드 발굴 결과. 카드를 골라서 내 리드로 추가하세요.";
+    renderRecommendedBuyers();
+    return;
+  }
+
   els.viewTitle.textContent = "Leads";
   els.viewSubtitle.textContent = "Edit, qualify, and manage buyer outreach.";
   renderLeadTable(leads);
@@ -1602,6 +1609,160 @@ function renderVerificationClassification() {
       render();
     });
   });
+}
+
+// K-beauty 추천 리스트 — 글로벌 발굴 시드 표시 + 선택 후 leads 로 import
+let _recommendedCache = null;
+async function renderRecommendedBuyers() {
+  els.content.innerHTML = `<div style="padding:32px;text-align:center;color:#6b7280">불러오는 중...</div>`;
+  if (!_recommendedCache) {
+    try {
+      const res = await fetch('/api/recommended-buyers');
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'load failed');
+      _recommendedCache = data.data;
+    } catch (e) {
+      els.content.innerHTML = emptyState('추천 리스트를 불러오지 못했습니다: ' + (e?.message || ''));
+      return;
+    }
+  }
+
+  const buyers = _recommendedCache;
+  // 지역별 그룹핑
+  const byRegion = {};
+  for (const b of buyers) {
+    byRegion[b.region] = byRegion[b.region] || [];
+    byRegion[b.region].push(b);
+  }
+  const regionOrder = ['Global', 'Europe', 'Middle East', 'North America', 'Asia', 'Oceania', 'Africa', 'Latin America'];
+  const regionLabels = {
+    Global: '🌐 글로벌 플랫폼',
+    Europe: '🇪🇺 유럽',
+    'Middle East': '🕌 중동',
+    'North America': '🇺🇸 북미',
+    Asia: '🌏 아시아',
+    Oceania: '🇦🇺 오세아니아',
+    Africa: '🌍 아프리카',
+    'Latin America': '🇧🇷 중남미',
+  };
+
+  const totalCount = buyers.length;
+  const importedCount = buyers.filter(b => b.imported).length;
+  const availableCount = totalCount - importedCount;
+
+  els.content.innerHTML = `
+    <div style="margin-bottom:20px;padding:14px 16px;background:#fef9c3;border:1px solid #facc15;border-radius:10px;font-size:13px;line-height:1.6;color:#854d0e">
+      <strong>📋 추천 리스트 안내</strong><br>
+      웹 검색으로 발굴한 글로벌 K-beauty B2B 디스트리뷰터/도매/리테일러 ${totalCount}건 (발굴 시점: 2026-06).
+      산업 매체(knokglobal, kbeautyproduction, cosmeticindex 등) + 각 회사 공식 사이트 기반.
+      "내 리드로 추가" 시 기존 검증 파이프라인을 그대로 통과시킬 수 있습니다.
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+      <span style="font-size:14px"><strong>${totalCount}</strong>개 시드</span>
+      <span style="background:#dcfce7;color:#166534;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600">✅ 이미 등록 ${importedCount}</span>
+      <span style="background:#f1f5f9;color:#475569;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600">⭕ 추가 가능 ${availableCount}</span>
+      <div style="flex:1"></div>
+      <button id="recImportSelected" class="button" type="button" disabled style="padding:8px 16px;font-size:13px;font-weight:700">선택 항목 추가 (0)</button>
+      <button id="recImportAll" class="button secondary" type="button" style="padding:8px 16px;font-size:13px">미등록 ${availableCount}건 일괄 추가</button>
+    </div>
+
+    ${regionOrder.filter(r => byRegion[r]).map(region => `
+      <section style="margin-bottom:24px">
+        <h3 style="margin:0 0 12px;font-size:15px;color:#0f172a">${regionLabels[region]}  <span style="color:#9ca3af;font-weight:400">${byRegion[region].length}</span></h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+          ${byRegion[region].map(b => recommendedCardHtml(b)).join('')}
+        </div>
+      </section>
+    `).join('')}
+  `;
+
+  // 카드 체크박스 동기화
+  const updateSelectedCount = () => {
+    const n = els.content.querySelectorAll('[data-rec-select]:checked').length;
+    const btn = document.getElementById('recImportSelected');
+    if (btn) {
+      btn.textContent = `선택 항목 추가 (${n})`;
+      btn.disabled = n === 0;
+    }
+  };
+  els.content.querySelectorAll('[data-rec-select]').forEach(cb => {
+    cb.addEventListener('change', updateSelectedCount);
+  });
+
+  // 선택 import
+  document.getElementById('recImportSelected')?.addEventListener('click', async () => {
+    const companies = [...els.content.querySelectorAll('[data-rec-select]:checked')]
+      .map(cb => cb.dataset.recSelect);
+    if (!companies.length) return;
+    await importRecommended(companies);
+  });
+
+  // 전체 미등록 import
+  document.getElementById('recImportAll')?.addEventListener('click', async () => {
+    const ok = confirm(`미등록 ${availableCount}건을 모두 내 리드로 추가하시겠습니까?`);
+    if (!ok) return;
+    const companies = buyers.filter(b => !b.imported).map(b => b.company);
+    await importRecommended(companies);
+  });
+}
+
+function recommendedCardHtml(b) {
+  const prioColor = b.priority === 'A-' ? '#dc2626' : b.priority === 'B' ? '#f59e0b' : '#64748b';
+  const importedBadge = b.imported
+    ? `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">✅ 등록완료</span>`
+    : '';
+  return `
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;${b.imported ? 'opacity:0.7' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap">
+            <strong style="font-size:14px;color:#0f172a">${escapeHtml(b.company)}</strong>
+            <span style="background:${prioColor};color:#fff;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700">${b.priority}</span>
+            ${importedBadge}
+          </div>
+          <div style="font-size:12px;color:#6b7280">${escapeHtml(b.country)} · ${escapeHtml(b.type)}</div>
+        </div>
+        ${b.imported ? '' : `<label style="display:flex;align-items:center;cursor:pointer"><input type="checkbox" data-rec-select="${escapeAttr(b.company)}" style="width:18px;height:18px;cursor:pointer"></label>`}
+      </div>
+      <div style="font-size:12px;color:#374151;line-height:1.5">${escapeHtml(b.brandsChannels)}</div>
+      <div style="font-size:11px;color:#6b7280;line-height:1.5;padding:6px 8px;background:#f9fafb;border-radius:6px;border-left:3px solid #4f8cff">
+        <strong>왜 추천:</strong> ${escapeHtml(b.evidence)}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <a href="${escapeAttr(b.website)}" target="_blank" rel="noreferrer" style="font-size:12px;color:#4f8cff">🔗 사이트 열기</a>
+        <a href="${escapeAttr(b.source)}" target="_blank" rel="noreferrer" style="font-size:11px;color:#9ca3af">출처</a>
+      </div>
+    </div>
+  `;
+}
+
+async function importRecommended(companies) {
+  startTopProgress();
+  showGlobalBlocker(`${companies.length}건 내 리드로 추가 중...`);
+  try {
+    const res = await fetch('/api/recommended-buyers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companies }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'import failed');
+    alert(`✅ 추가 완료\n\n신규: ${data.summary.inserted}건\n이미 존재: ${data.summary.skipped}건`);
+    _recommendedCache = null;
+    // baseLeads 새로고침
+    try {
+      const r = await fetch('/api/leads');
+      const lr = await r.json();
+      if (lr.success) baseLeads = lr.data.map(lead => ({ ...lead, id: lead.leadId }));
+    } catch {}
+    render();
+  } catch (e) {
+    alert('추가 실패: ' + (e?.message || e));
+  } finally {
+    hideGlobalBlocker();
+    finishTopProgress();
+  }
 }
 
 // edit 모달 등에서 사용할 상세 패널 HTML

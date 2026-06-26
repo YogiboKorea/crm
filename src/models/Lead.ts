@@ -58,6 +58,12 @@ export interface ILead extends Document {
     };
     score?: number;                  // 종합 0~5 (4 정합성 + 1 관련성)
     verifiedAt?: string;             // ISO
+    // AI 정밀 검증 (Claude API)
+    aiVerdict?: 'beauty-buyer' | 'maybe' | 'not-buyer' | null;
+    aiConfidence?: 'high' | 'medium' | 'low' | null;
+    aiReasoning?: string;            // 한국어 1~2문장
+    aiSignals?: string[];            // 판단 근거
+    aiVerifiedAt?: string;           // ISO
   };
 }
 
@@ -114,6 +120,11 @@ const LeadSchema: Schema = new Schema({
     },
     score: { type: Number, default: 0 },
     verifiedAt: { type: String, default: '' },
+    aiVerdict: { type: Schema.Types.Mixed, default: null },
+    aiConfidence: { type: Schema.Types.Mixed, default: null },
+    aiReasoning: { type: String, default: '' },
+    aiSignals: { type: [String], default: [] },
+    aiVerifiedAt: { type: String, default: '' },
   },
 }, { timestamps: true });
 
