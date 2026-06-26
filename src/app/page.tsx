@@ -385,6 +385,44 @@ export default function Home() {
               <div id="verifyResultText"></div>
             </div>
 
+            {/* AI 정밀 검증 (Claude API) — 룰 기반 검증 위에 얹는 2차 검증 */}
+            <div style={{
+              marginTop: '14px',
+              padding: '12px 14px',
+              border: '1px solid #c7d2fe',
+              borderRadius: '8px',
+              background: '#eef2ff',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '16px' }}>🧠</span>
+                <strong style={{ fontSize: '13px', color: '#3730a3' }}>AI 정밀 검증 (Claude API)</strong>
+                <span style={{ fontSize: '10px', color: '#6366f1', background: '#fff', padding: '2px 6px', borderRadius: '99px', border: '1px solid #c7d2fe' }}>Haiku 4.5</span>
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#4338ca', lineHeight: 1.5 }}>
+                룰 기반 검증이 끝난 <strong>의심 (3~4점)</strong> 케이스를 LLM이 한 번 더 판단합니다.
+                회사명/사이트 메타/우리 메모를 종합해 <code>beauty-buyer</code> / <code>maybe</code> / <code>not-buyer</code>로 분류 + 한국어 근거 제공.
+              </p>
+              <div id="verifyAISummary" style={{
+                fontSize: '12px', color: '#1e1b4b', background: '#fff', padding: '8px 10px', borderRadius: '6px', marginBottom: '8px',
+              }}>
+                <div>의심 미검증 대상: <strong id="verifyAITargetCount">-</strong>건</div>
+                <div>예상 비용: <strong id="verifyAICostEstimate">-</strong> (건당 약 $0.0005)</div>
+              </div>
+              <div id="verifyAIProgress" style={{ display: 'none', marginBottom: '8px' }}>
+                <div style={{ background: '#e5e7eb', borderRadius: '99px', height: '8px', overflow: 'hidden' }}>
+                  <div id="verifyAIProgressBar" style={{ background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', height: '100%', width: '0%', transition: 'width 0.3s' }}></div>
+                </div>
+                <div id="verifyAIProgressText" style={{ marginTop: '6px', fontSize: '12px', color: '#6366f1' }}>0/0 처리 중...</div>
+              </div>
+              <div id="verifyAIResult" style={{ display: 'none', fontSize: '12px', color: '#1e1b4b', padding: '8px 10px', background: '#fff', border: '1px solid #c7d2fe', borderRadius: '6px', marginBottom: '8px' }}></div>
+              <button id="verifyAIStartBtn" className="button" type="button" style={{
+                padding: '7px 14px', fontSize: '12px', fontWeight: 700,
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer',
+                width: '100%',
+              }}>🧠 AI 정밀 검증 시작</button>
+            </div>
+
             <div className="modal-footer">
               <button id="verifyCancelBtn" className="button ghost" type="button">닫기</button>
               <button id="verifyStartBtn" className="button" type="button">검증 시작</button>

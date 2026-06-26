@@ -405,6 +405,10 @@ function bindEvents() {
       startVerification(scope);
       return;
     }
+    if (event.target.closest("#verifyAIStartBtn")) {
+      startAIVerification();
+      return;
+    }
     if (event.target.closest("#addLeadBtn")) {
       addLead();
       return;
@@ -1838,6 +1842,32 @@ function verifyDetailsHtml(lead) {
       ${row('전화',     v.phoneMatch,    v.phoneMatch === false ? reasonKo(v.phoneReason) : (lead.Phone || '값 없음'))}
       ${row('LinkedIn', v.linkedinValid, v.linkedinValid === false ? reasonKo(v.linkedinReason) : (lead.LinkedInCompany || lead.ContactLinkedIn || '값 없음'))}
       ${row('사업관련성', bizOk, bizDetail)}
+      ${v.aiVerifiedAt ? aiVerdictRowHtml(v) : ''}
+    </div>
+  `;
+}
+
+// AI 판단 결과 행 — verifyDetailsHtml 안에서 사용
+function aiVerdictRowHtml(v) {
+  const verdictMap = {
+    'beauty-buyer': { icon: '✅', label: '진성 K-beauty 바이어', color: '#166534', bg: '#dcfce7' },
+    'maybe':        { icon: '⚠',  label: '모호 / 가능성 있음',  color: '#92400e', bg: '#fef3c7' },
+    'not-buyer':    { icon: '❌', label: '무관 산업',           color: '#991b1b', bg: '#fee2e2' },
+  };
+  const m = verdictMap[v.aiVerdict] || { icon: '⏳', label: '미확인', color: '#64748b', bg: '#f1f5f9' };
+  const conf = v.aiConfidence ? `<span style="font-size:10px;color:#9ca3af;margin-left:4px">(신뢰도 ${v.aiConfidence})</span>` : '';
+  const signals = Array.isArray(v.aiSignals) && v.aiSignals.length
+    ? `<div style="font-size:11px;color:#6b7280;margin-top:3px">근거 키워드: ${v.aiSignals.slice(0, 6).map(escapeHtml).join(', ')}</div>`
+    : '';
+  return `
+    <div style="padding:8px 0;border-top:1px dashed #c7d2fe;margin-top:6px">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <span style="font-size:14px">🧠</span>
+        <span style="background:${m.bg};color:${m.color};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${m.icon} ${m.label}</span>
+        ${conf}
+      </div>
+      ${v.aiReasoning ? `<div style="font-size:12px;color:#1e1b4b;margin-top:6px;line-height:1.5;padding:6px 8px;background:#eef2ff;border-radius:6px;border-left:3px solid #6366f1">${escapeHtml(v.aiReasoning)}</div>` : ''}
+      ${signals}
     </div>
   `;
 }
@@ -2397,7 +2427,125 @@ async function openVerifyModal() {
   if (pendingEl) pendingEl.textContent = pending + '개';
   if (doneEl) doneEl.textContent = done + '개';
 
+  // AI 정밀 검증 — 의심 케이스 카운트 + 비용 예상
+  const aiTarget = baseLeads.filter(l => {
+    const v = l.verification;
+    if (!v || !v.verifiedAt) return false;          // 룰 기반 검증 끝난 것만
+    if (v.aiVerifiedAt) return false;                 // 아직 AI 검증 안 된 것만
+    const s = typeof v.score === 'number' ? v.score : 0;
+    return s >= 3 && s <= 4;                          // 의심 (3~4점)
+  }).length;
+  const aiTargetEl = document.getElementById('verifyAITargetCount');
+  const aiCostEl = document.getElementById('verifyAICostEstimate');
+  if (aiTargetEl) aiTargetEl.textContent = aiTarget;
+  if (aiCostEl) {
+    const cost = (aiTarget * 0.0005).toFixed(3);
+    aiCostEl.textContent = aiTarget > 0 ? `약 $${cost}` : '0건이라 호출 안 함';
+  }
+  const aiStartBtn = document.getElementById('verifyAIStartBtn');
+  const aiProgress = document.getElementById('verifyAIProgress');
+  const aiResult = document.getElementById('verifyAIResult');
+  if (aiProgress) aiProgress.style.display = 'none';
+  if (aiResult) aiResult.style.display = 'none';
+  if (aiStartBtn) {
+    aiStartBtn.disabled = aiTarget === 0;
+    aiStartBtn.textContent = aiTarget === 0
+      ? '🧠 AI 검증 — 대상 없음'
+      : `🧠 AI 정밀 검증 시작 (${aiTarget}건)`;
+    aiStartBtn.style.opacity = aiTarget === 0 ? '0.5' : '1';
+  }
+
   modal.style.display = 'flex';
+}
+
+// AI 정밀 검증 — 의심 케이스만 Claude API 로 청크 호출
+async function startAIVerification() {
+  const startBtn = document.getElementById('verifyAIStartBtn');
+  const progress = document.getElementById('verifyAIProgress');
+  const progressBar = document.getElementById('verifyAIProgressBar');
+  const progressText = document.getElementById('verifyAIProgressText');
+  const result = document.getElementById('verifyAIResult');
+
+  const targetCountEl = document.getElementById('verifyAITargetCount');
+  const targetCount = parseInt(targetCountEl?.textContent || '0', 10);
+  if (targetCount === 0) return;
+
+  const ok = confirm(
+    `🧠 AI 정밀 검증 — Claude API 호출\n\n` +
+    `대상: 의심 ${targetCount}건\n` +
+    `예상 비용: 약 $${(targetCount * 0.0005).toFixed(3)} (Haiku 4.5)\n` +
+    `예상 시간: 약 ${Math.ceil(targetCount / 20 * 8)}초\n\n` +
+    `진행하시겠습니까?`,
+  );
+  if (!ok) return;
+
+  if (progress) progress.style.display = '';
+  if (result) result.style.display = 'none';
+  if (startBtn) { startBtn.disabled = true; startBtn.textContent = '진행 중...'; }
+
+  const CHUNK = 20;
+  let processed = 0;
+  const tallies = { 'beauty-buyer': 0, maybe: 0, 'not-buyer': 0, failed: 0 };
+
+  try {
+    while (true) {
+      const res = await fetch('/api/leads/verify-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'suspicious', limit: CHUNK }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'AI 검증 실패');
+
+      processed += data.processed;
+      for (const r of (data.results || [])) {
+        if (r.verdict === 'beauty-buyer') tallies['beauty-buyer']++;
+        else if (r.verdict === 'maybe') tallies.maybe++;
+        else if (r.verdict === 'not-buyer') tallies['not-buyer']++;
+        else tallies.failed++;
+      }
+
+      const pct = Math.min(100, Math.round(processed / targetCount * 100));
+      if (progressBar) progressBar.style.width = pct + '%';
+      if (progressText) progressText.textContent = `${processed}/${targetCount} 처리 중... (${pct}%)`;
+
+      if (!data.hasMore || data.processed === 0) break;
+    }
+
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressText) progressText.textContent = `${processed}/${processed} 완료`;
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = `
+        <strong style="color:#1e1b4b">🎉 AI 정밀 검증 완료</strong><br>
+        ✅ 진성 바이어 ${tallies['beauty-buyer']}건  ·
+        ⚠ 모호 ${tallies.maybe}건  ·
+        ❌ 무관 ${tallies['not-buyer']}건
+        ${tallies.failed > 0 ? `<br><span style="color:#dc2626">⚠ API 호출 실패 ${tallies.failed}건 — 환경변수/네트워크 확인</span>` : ''}
+        <br><span style="color:#64748b;font-size:11px">대략 비용: $${(processed * 0.0005).toFixed(3)}</span>
+      `;
+    }
+    if (startBtn) { startBtn.textContent = '✓ 완료'; }
+
+    // 리드 새로고침
+    try {
+      const r = await fetch('/api/leads');
+      const lr = await r.json();
+      if (lr.success) {
+        baseLeads = lr.data.map(lead => ({ ...lead, id: lead.leadId }));
+        renderFilters();
+        render();
+      }
+    } catch {}
+  } catch (e) {
+    if (result) {
+      result.style.display = '';
+      result.style.background = '#fee2e2';
+      result.style.borderColor = '#fca5a5';
+      result.innerHTML = `<strong style="color:#991b1b">오류:</strong> ${e?.message || '네트워크 오류'}`;
+    }
+    if (startBtn) { startBtn.disabled = false; startBtn.textContent = '다시 시도'; }
+  }
 }
 
 async function startVerification(scope) {
