@@ -2727,8 +2727,10 @@ async function doImport(leads, duplicateAction) {
 
       // Show quick link to Import History
       if (result) {
-        const batchId = data.batchId || '';
+        // 이전 import 결과에서 남은 history 링크 제거 (중복 표시 방지)
+        result.querySelectorAll('[data-import-history-link]').forEach(el => el.remove());
         const historyLink = document.createElement('div');
+        historyLink.dataset.importHistoryLink = 'true';
         historyLink.style.cssText = 'margin-top:10px;';
         historyLink.innerHTML = `
           <button class="button ghost" id="goToImportHistoryBtn" type="button"
