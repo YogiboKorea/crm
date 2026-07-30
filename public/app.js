@@ -2259,8 +2259,14 @@ function parseCsv(text) {
 
     // Defaults
     if (!obj.status) obj.status = 'New';
-    if (!obj.leadId) obj.leadId = `lead-${Date.now()}-${i}-${Math.random().toString(36).slice(2,7)}`;
-    if (!obj.id) obj.id = obj.leadId;
+
+    // Export/Import 왕복 시 원본 leadId 보존:
+    //   CSV의 'id' 컬럼 = 원본 leadId → obj.leadId 로 승격.
+    //   이렇게 하면 서버가 leadId 기반으로 정확히 dedup 가능해서,
+    //   같은 Company+Country 여러 담당자 케이스가 손실되지 않음.
+    if (!obj.leadId && obj.id) obj.leadId = obj.id;
+    // leadId 완전히 없으면 클라이언트에서 임시 생성하지 않음 — 서버가 새 lead 로 판단하고 새 leadId 부여함
+    if (!obj.id && obj.leadId) obj.id = obj.leadId;
 
     leads.push(obj);
   }
@@ -2699,7 +2705,23 @@ async function doImport(leads, duplicateAction) {
         if (s.skipped) parts.push(`⏭ ${s.skipped}개 건너뜀`);
         if (s.errors) parts.push(`❌ ${s.errors}개 오류`);
         const detail = parts.length ? '  ·  ' + parts.join('  |  ') : '';
-        resultText.innerHTML = `<strong style="font-size:15px;color:#1b5e20">🎉 적용완료</strong>${detail}`;
+        // Skip 사유 분해 표시 — 데이터 손실 오해 방지 (Export→Import 왕복 시 원본 leadId 중복은 정상 케이스)
+        let skipBreakdown = '';
+        if (s.skipped && data.skipReasons) {
+          const parts2 = [];
+          if (data.skipReasons['leadId-duplicate']) {
+            parts2.push(`동일 leadId 재업로드 ${data.skipReasons['leadId-duplicate']}건 (Export→Import 정상 케이스)`);
+          }
+          if (data.skipReasons['company-country-duplicate']) {
+            parts2.push(`Company+Country 중복 ${data.skipReasons['company-country-duplicate']}건`);
+          }
+          if (parts2.length) {
+            skipBreakdown = `<div style="margin-top:6px;font-size:12px;color:#555;background:#fff7e6;padding:6px 10px;border-left:3px solid #f59e0b;border-radius:4px">
+              ⏭ 건너뛴 사유: ${parts2.join(' · ')}
+            </div>`;
+          }
+        }
+        resultText.innerHTML = `<strong style="font-size:15px;color:#1b5e20">🎉 적용완료</strong>${detail}${skipBreakdown}`;
       }
       if (submitBtn) { submitBtn.textContent = '\uc801\uc6a9\uc644\ub8cc \u2713'; submitBtn.disabled = true; }
 
