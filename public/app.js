@@ -948,10 +948,50 @@ function render() {
     return;
   }
 
-  if (state.view === "recommended") {
+  if (state.view === "recommended" || state.view === "tool-recommended") {
     els.viewTitle.textContent = "💎 K-beauty 추천 리스트";
     els.viewSubtitle.textContent = "글로벌 K-beauty 디스트리뷰터/도매/리테일러 시드 발굴 결과. 카드를 골라서 내 리드로 추가하세요.";
     renderRecommendedBuyers();
+    return;
+  }
+
+  // ── 새 파이프라인 뷰 (stage 기반) ─────────────────────────────
+  const stageMap = {
+    'pipeline-import':      { stage: 'imported',    title: '📥 가져오기 (Import)',  sub: '엑셀에서 새로 업로드된 회사들. 검증 진행 대기.' },
+    'pipeline-verifying':   { stage: 'verifying',   title: '🔍 검증 대기',          sub: '검증 진행 중이거나 필요한 회사들.' },
+    'pipeline-verified':    { stage: 'verified',    title: '✅ 검증 완료',          sub: '검증 통과 = B2B 메일 컨택 대상. 발송 승인 후 자동 발송.' },
+    'pipeline-contacted':   { stage: 'contacted',   title: '📨 컨택 중',            sub: '첫 메일 발송 완료. 응답 대기 중.' },
+    'pipeline-replied':     { stage: 'replied',     title: '💬 응답 옴',            sub: '상대방 답장 옴. 팔로우업 필요.' },
+    'pipeline-negotiating': { stage: 'negotiating', title: '🤝 협상 중',            sub: '미팅/샘플/조건 협상 단계.' },
+    'pipeline-partner':     { stage: 'partner',     title: '⭐ 파트너 (최종 완료)', sub: '계약 성사된 파트너. 자동 메일 발송 대상에서 자동 제외됨.' },
+    'pipeline-archived':    { stage: 'archived',    title: '📦 보관함',             sub: '검증 무효 또는 폐기된 리드. 필요 시 복구 가능.' },
+  };
+  if (stageMap[state.view]) {
+    const s = stageMap[state.view];
+    els.viewTitle.textContent = s.title;
+    els.viewSubtitle.textContent = s.sub;
+    const stageLeads = leads.filter(l => (l.stage || 'imported') === s.stage);
+    renderLeadTable(stageLeads, `${s.title}에 해당하는 리드가 없습니다.`);
+    return;
+  }
+
+  // ── 새 부가 도구 페이지 스켈레톤 ──────────────────────────────
+  if (state.view === "tool-b2b-email") {
+    els.viewTitle.textContent = "📤 B2B 메일 관리";
+    els.viewSubtitle.textContent = "템플릿 편집 · 예약 발송 · 발송 이력. 파트너는 자동 제외.";
+    renderB2BEmailManager();
+    return;
+  }
+  if (state.view === "tool-crawler") {
+    els.viewTitle.textContent = "🕷 이메일 크롤링";
+    els.viewSubtitle.textContent = "웹사이트에서 컨택 이메일 자동 수집.";
+    renderCrawlerTool();
+    return;
+  }
+  if (state.view === "tool-import-history") {
+    els.viewTitle.textContent = "📋 Import History";
+    els.viewSubtitle.textContent = "CSV 가져오기 기록. 배치별 롤백 가능.";
+    renderImportHistory();
     return;
   }
 
@@ -1617,6 +1657,105 @@ function renderVerificationClassification() {
 
 // K-beauty 추천 리스트 — 글로벌 발굴 시드 표시 + 선택 후 leads 로 import
 let _recommendedCache = null;
+// ── Phase 1 스켈레톤: B2B 메일 관리 ──────────────────────────
+function renderB2BEmailManager() {
+  const verifiedCount = baseLeads.filter(l => l.stage === 'verified' && l.readyForOutreach).length;
+  const pendingApproval = baseLeads.filter(l => l.stage === 'verified' && !l.readyForOutreach).length;
+  const contactedCount = baseLeads.filter(l => l.stage === 'contacted').length;
+  const partnerCount = baseLeads.filter(l => l.stage === 'partner').length;
+
+  els.content.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+      <div style="background:#dcfce7;padding:14px;border-radius:8px;border:1px solid #86efac">
+        <div style="font-size:11px;color:#166534;margin-bottom:4px">발송 승인 완료</div>
+        <div style="font-size:22px;font-weight:800;color:#166534">${verifiedCount}</div>
+      </div>
+      <div style="background:#fef3c7;padding:14px;border-radius:8px;border:1px solid #fcd34d">
+        <div style="font-size:11px;color:#92400e;margin-bottom:4px">승인 대기</div>
+        <div style="font-size:22px;font-weight:800;color:#92400e">${pendingApproval}</div>
+      </div>
+      <div style="background:#dbeafe;padding:14px;border-radius:8px;border:1px solid #93c5fd">
+        <div style="font-size:11px;color:#1e40af;margin-bottom:4px">이미 컨택 중</div>
+        <div style="font-size:22px;font-weight:800;color:#1e40af">${contactedCount}</div>
+      </div>
+      <div style="background:#f3e8ff;padding:14px;border-radius:8px;border:1px solid #c4b5fd">
+        <div style="font-size:11px;color:#6b21a8;margin-bottom:4px">파트너 (자동 제외)</div>
+        <div style="font-size:22px;font-weight:800;color:#6b21a8">${partnerCount}</div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;font-size:16px">📝 이메일 템플릿</h3>
+      <p style="margin:0 0 12px;font-size:13px;color:#6b7280">한/영 템플릿 편집 · 변수 지원 ({{Company}}, {{Country}}, {{BuyerContact}}, {{Title}})</p>
+      <div style="padding:24px;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;text-align:center;color:#6b7280;font-size:14px">
+        🚧 Phase 2 에서 구현 예정: 템플릿 CRUD + 미리보기 + 변수 치환
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;font-size:16px">📅 예약 발송</h3>
+      <p style="margin:0 0 12px;font-size:13px;color:#6b7280">발송 승인된 리드에게 정해진 시각/주기로 자동 발송. 파트너는 자동 제외.</p>
+      <div style="padding:24px;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;text-align:center;color:#6b7280;font-size:14px">
+        🚧 Phase 2 에서 구현 예정: 스케줄 큐 + 크론 트리거
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px">
+      <h3 style="margin:0 0 8px;font-size:16px">📊 발송 이력</h3>
+      <p style="margin:0 0 12px;font-size:13px;color:#6b7280">누구에게 · 언제 · 어떤 템플릿으로 보냈는지 이력 관리</p>
+      <div style="padding:24px;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;text-align:center;color:#6b7280;font-size:14px">
+        🚧 Phase 2 에서 구현 예정: 리드별 emailHistory 타임라인
+      </div>
+    </div>
+  `;
+}
+
+// ── Phase 1 스켈레톤: 이메일 크롤링 ─────────────────────────
+function renderCrawlerTool() {
+  const noEmailCount = baseLeads.filter(l => !hasEmail(l) && l.WebsiteContact).length;
+  const withUrlNoEmail = baseLeads.filter(l =>
+    !hasEmail(l) &&
+    (!Array.isArray(l.crawledEmails) || l.crawledEmails.length === 0) &&
+    l.WebsiteContact
+  ).length;
+
+  els.content.innerHTML = `
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:20px">🕷</span>
+        <strong style="font-size:15px;color:#1e40af">이메일 크롤링이란</strong>
+      </div>
+      <p style="margin:0;font-size:13px;color:#1e3a8a;line-height:1.6">
+        회사 홈페이지 → <code>/contact</code>, <code>/about</code>, <code>/team</code> 등 하위 페이지 접근 →
+        <code>mailto:</code> 링크 + 텍스트에서 이메일 추출 → <code>info@</code>, <code>ceo@</code> 등 신뢰도 스코어링.
+      </p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px">
+      <div style="background:#fff;padding:16px;border:1px solid #e5e7eb;border-radius:8px">
+        <div style="font-size:11px;color:#6b7280;margin-bottom:4px">이메일 없는 리드</div>
+        <div style="font-size:22px;font-weight:800;color:#111">${noEmailCount}</div>
+      </div>
+      <div style="background:#fef3c7;padding:16px;border:1px solid #fcd34d;border-radius:8px">
+        <div style="font-size:11px;color:#92400e;margin-bottom:4px">크롤링 대상 (URL 있음, 미크롤링)</div>
+        <div style="font-size:22px;font-weight:800;color:#92400e">${withUrlNoEmail}</div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px;text-align:center">
+      <div style="padding:32px;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;color:#6b7280;font-size:14px">
+        🚧 Phase 2 에서 구현 예정<br>
+        <span style="font-size:12px;margin-top:8px;display:block">
+          • 사이트 다중 페이지 크롤링 (contact/about/team/impressum)<br>
+          • 다국어 서브패스 지원 (/en, /ko, /de)<br>
+          • 신뢰도 스코어링 (실무 담당자 우선)<br>
+          • 청크 처리 + 진행률 표시
+        </span>
+      </div>
+    </div>
+  `;
+}
+
 async function renderRecommendedBuyers() {
   els.content.innerHTML = `<div style="padding:32px;text-align:center;color:#6b7280">불러오는 중...</div>`;
   if (!_recommendedCache) {
