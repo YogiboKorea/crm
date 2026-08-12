@@ -13,6 +13,9 @@ const themeInitScript = `
     var stored = localStorage.getItem('theme');
     var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', theme);
+    // 사이드바 접힘 상태도 FOUC 방지 위해 미리 반영
+    var collapsed = localStorage.getItem('sidebar-collapsed') === 'true';
+    if (collapsed) document.documentElement.setAttribute('data-sidebar-collapsed', 'true');
   } catch (e) {
     document.documentElement.setAttribute('data-theme', 'light');
   }

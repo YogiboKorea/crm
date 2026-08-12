@@ -166,6 +166,87 @@ code {
   flex-direction: column;
   gap: var(--sp-3);
   flex-shrink: 0;
+  position: relative;
+  transition: width 0.2s ease;
+}
+
+/* ── 사이드바 접기 토글 버튼 (사이드바 상단 오른쪽 원형) ──────── */
+.sidebar-toggle {
+  position: absolute;
+  top: 12px;
+  right: -12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 0;
+  transition: all 0.15s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.sidebar-toggle:hover {
+  background: var(--brand-primary, #4338ca);
+  color: white;
+  transform: scale(1.1);
+}
+.sidebar-toggle-icon {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.2s;
+}
+:root[data-sidebar-collapsed="true"] .sidebar-toggle-icon {
+  transform: rotate(180deg);
+}
+
+/* ── 접힘 상태: 사이드바 축소 + 라벨/서브텍스트 숨김 ─────────── */
+:root[data-sidebar-collapsed="true"] .sidebar {
+  width: 68px;
+  padding-left: var(--sp-2);
+  padding-right: var(--sp-2);
+}
+:root[data-sidebar-collapsed="true"] .brand {
+  padding: var(--sp-2);
+  justify-content: center;
+}
+:root[data-sidebar-collapsed="true"] .brand-text {
+  display: none;
+}
+:root[data-sidebar-collapsed="true"] .nav-label {
+  display: none;
+}
+:root[data-sidebar-collapsed="true"] .nav-item {
+  justify-content: center;
+  padding: 9px 0;
+}
+:root[data-sidebar-collapsed="true"] .nav-icon {
+  margin-right: 0;
+  font-size: 18px;
+}
+.nav-icon {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 14px;
+  min-width: 20px;
+  text-align: center;
+}
+.nav-label {
+  transition: opacity 0.15s;
+}
+.nav-divider {
+  border-top: 1px solid var(--border-subtle);
+  margin: 10px 0;
+}
+
+/* ── 다크 테마: 로고 이미지 자동 화이트 반전 ─────────────────── */
+:root[data-theme="dark"] .brand-logo {
+  filter: brightness(0) invert(1);
 }
 .main {
   flex: 1;

@@ -278,9 +278,44 @@ async function init() {
   initImportCsvModal();
   initImportHistoryModal();
   initThemeToggle();
+  initSidebarToggle();
   renderFilters();
   bindEvents();
   render();
+}
+
+// ── 사이드바 접기/펴기 ────────────────────────────────────
+function initSidebarToggle() {
+  const btn = document.getElementById('sidebarToggleBtn');
+  const apply = (collapsed) => {
+    if (collapsed) {
+      document.documentElement.setAttribute('data-sidebar-collapsed', 'true');
+    } else {
+      document.documentElement.removeAttribute('data-sidebar-collapsed');
+    }
+  };
+  // 초기 상태는 layout.tsx init 스크립트가 처리 → 여기선 저장된 값만 반영 확인
+  const stored = localStorage.getItem('sidebar-collapsed') === 'true';
+  apply(stored);
+
+  const toggle = () => {
+    const cur = document.documentElement.getAttribute('data-sidebar-collapsed') === 'true';
+    const next = !cur;
+    localStorage.setItem('sidebar-collapsed', String(next));
+    apply(next);
+  };
+
+  btn?.addEventListener('click', toggle);
+  // Ctrl+B / Cmd+B 단축키
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && !e.altKey && !e.shiftKey) {
+      // input/textarea 안에서 눌린 경우는 무시 (텍스트 볼드 단축키 방해 방지)
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      toggle();
+    }
+  });
 }
 
 function resetAllFilters() {

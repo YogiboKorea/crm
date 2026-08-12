@@ -18,32 +18,61 @@ export default function Home() {
 
       <div className="app-shell">
         <aside className="sidebar">
+          {/* 사이드바 접기/펴기 토글 */}
+          <button id="sidebarToggleBtn" className="sidebar-toggle" type="button"
+            title="사이드바 접기/펴기 (Ctrl+B)" aria-label="사이드바 접기/펴기">
+            <span className="sidebar-toggle-icon">‹</span>
+          </button>
           <button id="homeBtn" className="brand" type="button" aria-label="Reset filters and go to Leads">
             <div className="brand-mark">
               <img src="/assets/logo.png" alt="Yogico" className="brand-logo"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/assets/logo.png'; }} />
             </div>
-            <div>
+            <div className="brand-text">
               <h1>Yogico CRM</h1>
               <p>Importer &amp; buyer pipeline</p>
             </div>
           </button>
           <nav className="nav" aria-label="Pipeline">
-            {/* ── 새 파이프라인 (좌 → 우 순서) ─────────────────── */}
-            <button className="nav-item active" data-view="pipeline-import" type="button">📥 가져오기 (Import)</button>
-            <button className="nav-item" data-view="pipeline-verifying" type="button">🔍 검증 대기</button>
-            <button className="nav-item" data-view="pipeline-verified" type="button">✅ 검증 완료</button>
-            <button className="nav-item" data-view="pipeline-contacted" type="button">📨 컨택 중</button>
-            <button className="nav-item" data-view="pipeline-replied" type="button">💬 응답 옴</button>
-            <button className="nav-item" data-view="pipeline-negotiating" type="button">🤝 협상 중</button>
-            <button className="nav-item" data-view="pipeline-partner" type="button">⭐ 파트너 (완료)</button>
-            <button className="nav-item" data-view="pipeline-archived" type="button">📦 보관함</button>
-            <div style={{ borderTop: '1px solid #333', margin: '10px 0' }}></div>
+            {/* ── 새 파이프라인 (좌 → 우 순서) ─ 접힘 상태에서 아이콘만 보이도록 span 분리 ─ */}
+            <button className="nav-item active" data-view="pipeline-import" type="button" title="가져오기 (Import)">
+              <span className="nav-icon">📥</span><span className="nav-label">가져오기 (Import)</span>
+            </button>
+            <button className="nav-item" data-view="pipeline-verifying" type="button" title="검증 대기">
+              <span className="nav-icon">🔍</span><span className="nav-label">검증 대기</span>
+            </button>
+            <button className="nav-item" data-view="pipeline-verified" type="button" title="검증 완료">
+              <span className="nav-icon">✅</span><span className="nav-label">검증 완료</span>
+            </button>
+            <button className="nav-item" data-view="pipeline-contacted" type="button" title="컨택 중">
+              <span className="nav-icon">📨</span><span className="nav-label">컨택 중</span>
+            </button>
+            <button className="nav-item" data-view="pipeline-replied" type="button" title="응답 옴">
+              <span className="nav-icon">💬</span><span className="nav-label">응답 옴</span>
+            </button>
+            <button className="nav-item" data-view="pipeline-negotiating" type="button" title="협상 중">
+              <span className="nav-icon">🤝</span><span className="nav-label">협상 중</span>
+            </button>
+            <button className="nav-item" data-view="pipeline-partner" type="button" title="파트너 (완료)">
+              <span className="nav-icon">⭐</span><span className="nav-label">파트너 (완료)</span>
+            </button>
+            <button className="nav-item" data-view="pipeline-archived" type="button" title="보관함">
+              <span className="nav-icon">📦</span><span className="nav-label">보관함</span>
+            </button>
+            <div className="nav-divider"></div>
             {/* ── 부가 도구 ────────────────────────────────── */}
-            <button className="nav-item" data-view="tool-b2b-email" type="button">📤 B2B 메일 관리</button>
-            <button className="nav-item" data-view="tool-crawler" type="button">🕷 이메일 크롤링</button>
-            <button className="nav-item" data-view="tool-recommended" type="button">💎 추천 리스트</button>
-            <button className="nav-item" data-view="tool-import-history" type="button">📋 Import History</button>
+            <button className="nav-item" data-view="tool-b2b-email" type="button" title="B2B 메일 관리">
+              <span className="nav-icon">📤</span><span className="nav-label">B2B 메일 관리</span>
+            </button>
+            <button className="nav-item" data-view="tool-crawler" type="button" title="이메일 크롤링">
+              <span className="nav-icon">🕷</span><span className="nav-label">이메일 크롤링</span>
+            </button>
+            <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트">
+              <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>
+            </button>
+            <button className="nav-item" data-view="tool-import-history" type="button" title="Import History">
+              <span className="nav-icon">📋</span><span className="nav-label">Import History</span>
+            </button>
           </nav>
         </aside>
 
