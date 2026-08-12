@@ -8,10 +8,19 @@ export const maxDuration = 60;
 
 /**
  * POST /api/leads/verify-ai
- * Body: { scope?: 'suspicious' | 'all-unverified' | 'leadIds', leadIds?: string[], limit?: number }
+ * Body: {
+ *   scope?: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'leadIds',
+ *   leadIds?: string[],
+ *   limit?: number,
+ *   excludeKorea?: boolean,     // default true (한국 기업 제외)
+ *   autoMoveStage?: boolean,    // default true — AI 결과에 따라 stage 자동 이동
+ * }
  *
- * 휴리스틱이 '의심(suspicious)'으로 분류한 케이스만 LLM 정밀 검증.
- * onlyUnverified 옵션처럼 hasMore=true 면 다음 청크 호출.
+ * scope='verifying-stage' → stage='verifying' 이고 AI 미검증인 리드 대상 (검증 대기 파이프라인)
+ * autoMoveStage=true 면:
+ *   beauty-buyer → stage='verified'
+ *   not-buyer    → stage='archived'
+ *   maybe        → stage='verifying' 유지 (사람이 판단)
  */
 export async function POST(req: Request) {
   let body: any;
@@ -21,9 +30,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: '잘못된 요청 본문' }, { status: 400 });
   }
 
-  const scope: 'suspicious' | 'all-unverified' | 'leadIds' = body?.scope || 'suspicious';
+  const scope: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'leadIds' = body?.scope || 'suspicious';
   const leadIds: string[] | undefined = body?.leadIds;
   const limit = Math.min(Math.max(parseInt(body?.limit, 10) || 20, 1), 50);
+  const excludeKorea: boolean = body?.excludeKorea !== false;
+  const autoMoveStage: boolean = body?.autoMoveStage !== false;
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
@@ -46,6 +57,13 @@ export async function POST(req: Request) {
     const filter: any = {};
     if (Array.isArray(leadIds) && leadIds.length) {
       filter.leadId = { $in: leadIds };
+    } else if (scope === 'verifying-stage') {
+      // stage='verifying' 이고 AI 미검증 — 새 파이프라인의 1차 검증 대기 풀
+      filter.stage = 'verifying';
+      filter.$or = [
+        { 'verification.aiVerifiedAt': { $exists: false } },
+        { 'verification.aiVerifiedAt': '' },
+      ];
     } else if (scope === 'suspicious') {
       // 자동 검증 끝났고(verifiedAt 있음) AI 검증 안 된(aiVerifiedAt 비어있음) 의심 케이스
       filter['verification.verifiedAt'] = { $exists: true, $ne: '' };
@@ -60,6 +78,11 @@ export async function POST(req: Request) {
         { 'verification.aiVerifiedAt': { $exists: false } },
         { 'verification.aiVerifiedAt': '' },
       ];
+    }
+
+    // 한국 기업 제외 (사용자 요청)
+    if (excludeKorea) {
+      filter.Country = { $not: /korea|^kr$|대한민국|한국/i };
     }
 
     const totalRemaining = await Lead.countDocuments(filter);
@@ -102,24 +125,43 @@ export async function POST(req: Request) {
       }),
     );
 
-    // DB 일괄 업데이트
+    // DB 일괄 업데이트 — AI 결과 저장 + stage 자동 이동
     const now = new Date().toISOString();
+    const stageMoves = { verified: 0, archived: 0, kept: 0 };
     const ops = results
       .filter((r) => r.verdict)
-      .map((r) => ({
-        updateOne: {
-          filter: { leadId: r.leadId },
-          update: {
-            $set: {
-              'verification.aiVerdict': r.verdict!.verdict,
-              'verification.aiConfidence': r.verdict!.confidence,
-              'verification.aiReasoning': r.verdict!.reasoning,
-              'verification.aiSignals': r.verdict!.signals,
-              'verification.aiVerifiedAt': now,
-            },
+      .map((r) => {
+        const set: any = {
+          'verification.aiVerdict': r.verdict!.verdict,
+          'verification.aiConfidence': r.verdict!.confidence,
+          'verification.aiReasoning': r.verdict!.reasoning,
+          'verification.aiSignals': r.verdict!.signals,
+          'verification.aiVerifiedAt': now,
+          updatedInfoAt: now,
+        };
+        // AI 판정에 따라 stage 자동 이동 (요청: 검증대기 → AI 통과 → 검증완료)
+        if (autoMoveStage) {
+          if (r.verdict!.verdict === 'beauty-buyer') {
+            set.stage = 'verified';
+            set.stageChangedAt = now;
+            stageMoves.verified++;
+          } else if (r.verdict!.verdict === 'not-buyer') {
+            set.stage = 'archived';
+            set.stageChangedAt = now;
+            set.readyForOutreach = false;
+            stageMoves.archived++;
+          } else {
+            // maybe → 검증대기 유지
+            stageMoves.kept++;
+          }
+        }
+        return {
+          updateOne: {
+            filter: { leadId: r.leadId },
+            update: { $set: set },
           },
-        },
-      }));
+        };
+      });
 
     if (ops.length > 0) {
       await Lead.bulkWrite(ops, { ordered: false });
@@ -132,6 +174,8 @@ export async function POST(req: Request) {
       processed: results.length,
       remaining,
       hasMore: remaining > 0,
+      autoMoveStage,
+      stageMoves: autoMoveStage ? stageMoves : undefined,
       results: results.map((r) => ({
         leadId: r.leadId,
         company: r.company,

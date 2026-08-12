@@ -7,14 +7,17 @@ export const maxDuration = 60;
 
 /**
  * POST /api/leads/migrate-stage
- * 기존 2500건에 stage 값 부여 (1회성).
+ * 리드에 stage 값 부여/재매핑.
  *
- * 매핑 규칙:
- *   favorite === true                                             → 'partner' (대표가 직접 파트너 등록)
- *   verification.aiVerdict === 'beauty-buyer'                     → 'verified'
- *   passed 로직 (사업관련성 + 사이트 alive + 컨택 1개+)          → 'verified'
- *   verifiedAt 있음 + 위 조건 안 됨                                → 'archived' (검증했으나 무효)
- *   verifiedAt 없음                                                → 'imported' (미검증)
+ * 매핑 규칙 (v2 — 사용자 멘탈모델 반영):
+ *   favorite === true                                → 'partner'  (대표가 파트너 확정)
+ *   aiVerdict === 'beauty-buyer'                     → 'verified' (AI 정밀검증 통과)
+ *   aiVerdict === 'not-buyer'                        → 'archived' (AI 판정 무관)
+ *   businessLevel === 'unrelated'                    → 'archived' (룰 판정 무관)
+ *   룰기반 통과 + AI 아직 안 봄                       → 'verifying' (검증 대기 = AI 재검토 pool)
+ *   aiVerdict === 'maybe'                            → 'verifying'
+ *   verifiedAt 있으나 어느 조건에도 안 맞음           → 'verifying'
+ *   verifiedAt 없음 (미검증)                          → 'imported'
  *
  * 이미 stage 값 있으면 덮어쓰지 않음 (idempotent). ?force=true 로 강제 재매핑 가능.
  */
@@ -56,23 +59,37 @@ export async function POST(req: Request) {
       const v = l.verification || {};
 
       if (l.favorite === true) {
+        // 대표가 즐겨찾기 → 파트너 성사
         newStage = 'partner';
       } else if (v.aiVerdict === 'beauty-buyer') {
+        // AI 정밀 검증에서 진성 바이어 판정
         newStage = 'verified';
+      } else if (v.aiVerdict === 'not-buyer') {
+        // AI 가 명확히 무관 산업 판정
+        newStage = 'archived';
+      } else if (v.businessLevel === 'unrelated') {
+        // 룰기반이 명확히 뷰티 무관 → archived
+        newStage = 'archived';
       } else if (
         v.verifiedAt &&
         v.businessLevel === 'relevant' &&
         v.websiteAlive === true &&
         (v.emailValid === true || v.phoneMatch === true || v.linkedinValid === true)
       ) {
-        newStage = 'verified';
+        // 룰기반은 통과했으나 AI 아직 안 봄 → 검증 대기 (재검토 필요)
+        newStage = 'verifying';
+      } else if (v.aiVerdict === 'maybe') {
+        // AI가 모호 판정 → 검증 대기
+        newStage = 'verifying';
       } else if (v.verifiedAt) {
-        newStage = 'archived';
+        // 검증은 됐으나 어느 조건에도 안 맞음 → 대기열
+        newStage = 'verifying';
       } else {
+        // 아직 검증 안 됨
         newStage = 'imported';
       }
 
-      tally[newStage as keyof typeof tally]++;
+      tally[newStage as keyof typeof tally] = (tally[newStage as keyof typeof tally] || 0) + 1;
 
       if (!dryRun) {
         const update: any = {

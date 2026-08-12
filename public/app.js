@@ -355,6 +355,16 @@ function initThemeToggle() {
 function bindEvents() {
   // Click event delegation
   document.addEventListener("click", async (event) => {
+    // 0. Stage 원클릭 이동 버튼 (가장 우선 처리 — row 클릭보다 먼저)
+    const quickBtn = event.target.closest(".stage-quick-move");
+    if (quickBtn) {
+      event.stopPropagation();
+      const leadId = quickBtn.dataset.quickLead;
+      const target = quickBtn.dataset.quickTarget;
+      handleStageChange(leadId, target, quickBtn);
+      return;
+    }
+
     // 1. Navigation items
     const navItem = event.target.closest(".nav-item");
     if (navItem) {
@@ -1143,6 +1153,40 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     content.parentNode.insertBefore(wrap, content);
     return wrap;
   })();
+
+  // stage 별 컨텍스트 액션 버튼 (한국 기업 자동 제외 표시)
+  let actionButtons = '';
+  if (stageInfo.stage === 'verifying') {
+    actionButtons = `
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <div style="display:flex;gap:8px">
+          <button id="runAiVerifyOnVerifyingBtn" class="button primary" type="button" style="font-size:13px;padding:8px 14px">
+            🧠 AI 1차 검증 실행
+          </button>
+          <button id="runCrawlOnVerifyingBtn" class="button secondary" type="button" style="font-size:13px;padding:8px 14px">
+            🔍 메일 크롤링
+          </button>
+        </div>
+        <span style="font-size:11px;color:var(--text-tertiary)">
+          🇰🇷 한국 기업 자동 제외 · AI 통과 시 자동 → 검증완료로 이동
+        </span>
+      </div>
+    `;
+  } else if (stageInfo.stage === 'verified') {
+    actionButtons = `
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <div style="display:flex;gap:8px">
+          <button id="runCrawlOnVerifiedBtn" class="button primary" type="button" style="font-size:13px;padding:8px 14px">
+            🔍 메일 크롤링 (사이트 → 이메일 자동 수집)
+          </button>
+        </div>
+        <span style="font-size:11px;color:var(--text-tertiary)">
+          🇰🇷 한국 기업 자동 제외 · 메일 발견 시 자동으로 Email 필드에 채워짐
+        </span>
+      </div>
+    `;
+  }
+
   container.innerHTML = `
     <div class="stage-banner">
       <div class="stage-info">
@@ -1152,9 +1196,147 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
           <div class="stage-label">${stageInfo.title.replace(/^[^\s]+\s*/, '')} ${filterHint}</div>
         </div>
       </div>
-      <div class="stage-hint">${stageInfo.sub}</div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div class="stage-hint">${stageInfo.sub}</div>
+        ${actionButtons}
+      </div>
     </div>
   `;
+
+  // 액션 버튼 핸들러 바인딩
+  document.getElementById('runAiVerifyOnVerifyingBtn')?.addEventListener('click', () => runVerifyingStageAi());
+  document.getElementById('runCrawlOnVerifyingBtn')?.addEventListener('click', () => runCrawlEmails('verifying-no-email'));
+  document.getElementById('runCrawlOnVerifiedBtn')?.addEventListener('click', () => runCrawlEmails('verified-no-email'));
+}
+
+// ── AI 1차 검증 (verifying stage 파이프라인) ─────────────────
+async function runVerifyingStageAi() {
+  const btn = document.getElementById('runAiVerifyOnVerifyingBtn');
+  const ok = confirm(
+    '🧠 검증 대기 파이프라인 AI 1차 검증\n\n' +
+    '조건: stage=검증대기 + AI 미검증 + 한국 기업 제외\n' +
+    '진행: 청크당 20건씩 순차 처리 (예상 대상 4,000+ 건)\n' +
+    '결과: beauty-buyer → 검증완료로 자동 이동 / not-buyer → 보관함\n' +
+    '비용: 약 $2 (Claude Haiku 4.5)\n\n' +
+    '계속하시겠습니까?'
+  );
+  if (!ok) return;
+
+  if (btn) { btn.disabled = true; btn.textContent = '🧠 AI 검증 중...'; }
+
+  let totalProcessed = 0;
+  let totalMoved = { verified: 0, archived: 0, kept: 0 };
+  let iterations = 0;
+
+  try {
+    while (iterations < 250) {  // 안전장치 최대 250 chunk (=5000건)
+      const res = await fetch('/api/leads/verify-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'verifying-stage',
+          limit: 20,
+          excludeKorea: true,
+          autoMoveStage: true,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'AI 검증 실패');
+
+      totalProcessed += data.processed || 0;
+      if (data.stageMoves) {
+        totalMoved.verified += data.stageMoves.verified || 0;
+        totalMoved.archived += data.stageMoves.archived || 0;
+        totalMoved.kept += data.stageMoves.kept || 0;
+      }
+      iterations++;
+
+      if (btn) btn.textContent = `🧠 ${totalProcessed}건 완료 (남은: ${data.remaining || 0})`;
+
+      if (!data.hasMore) break;
+      // API 부하 완화 — 짧게 쉬기
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    alert(
+      `✅ AI 검증 완료\n\n` +
+      `총 처리: ${totalProcessed}건\n` +
+      `→ 검증완료: ${totalMoved.verified}건\n` +
+      `→ 보관함: ${totalMoved.archived}건\n` +
+      `→ 대기 유지 (모호): ${totalMoved.kept}건`
+    );
+    await loadLeads();
+    render();
+  } catch (e) {
+    alert(`❌ AI 검증 실패: ${e.message || 'unknown'}\n\n지금까지 처리: ${totalProcessed}건`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🧠 AI 1차 검증 실행'; }
+  }
+}
+
+// ── 메일 크롤링 ─────────────────────────────────────
+async function runCrawlEmails(scope) {
+  const label = scope === 'verified-no-email' ? '검증 완료' : '검증 대기';
+  const ok = confirm(
+    `🔍 ${label} 리드 메일 크롤링\n\n` +
+    `조건: stage=${label} + Email 비어있음 + 사이트 있음 + 한국 제외\n` +
+    `진행: 청크당 50건씩, 사이트당 홈+/contact+/about 순회\n` +
+    `결과: 최우선 후보 자동으로 Email 필드에 채움\n\n` +
+    `계속하시겠습니까?`
+  );
+  if (!ok) return;
+
+  const btnId = scope === 'verified-no-email' ? 'runCrawlOnVerifiedBtn' : 'runCrawlOnVerifyingBtn';
+  const btn = document.getElementById(btnId);
+  const origText = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = '🔍 크롤링 중...'; }
+
+  let totalProcessed = 0;
+  let totalFound = 0;
+  let totalPromoted = 0;
+  let iterations = 0;
+
+  try {
+    while (iterations < 40) {  // 40*50 = 2000건 상한
+      const res = await fetch('/api/leads/crawl-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          limit: 50,
+          excludeKorea: true,
+          promoteToEmail: true,
+          skipAlreadyCrawled: true,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || '크롤링 실패');
+
+      totalProcessed += data.processed || 0;
+      totalFound += data.foundCount || 0;
+      totalPromoted += data.promotedCount || 0;
+      iterations++;
+
+      if (btn) btn.textContent = `🔍 ${totalProcessed}건 처리 (메일 ${totalFound}건 발견)`;
+
+      // 처리 건수 0 이면 대상 소진
+      if (!data.processed) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    alert(
+      `✅ 메일 크롤링 완료\n\n` +
+      `총 처리: ${totalProcessed}건\n` +
+      `메일 발견: ${totalFound}건\n` +
+      `Email 필드 자동 승격: ${totalPromoted}건`
+    );
+    await loadLeads();
+    render();
+  } catch (e) {
+    alert(`❌ 크롤링 실패: ${e.message || 'unknown'}\n\n지금까지 처리: ${totalProcessed}건`);
+  } finally {
+    if (btn) { btn.disabled = false; if (origText) btn.textContent = origText; }
+  }
 }
 
 // 파이프라인/도구 페이지에서는 stage 배너로 대체하므로 stat grid 는 숨김
@@ -1518,6 +1700,18 @@ const STAGE_STYLE = {
 };
 const STAGE_ORDER = ['imported','verifying','verified','contacted','replied','negotiating','partner','archived'];
 
+// 각 stage 에서 실무적으로 자주 이동하는 다음 단계들 (원클릭 버튼)
+const STAGE_QUICK_MOVES = {
+  imported:    ['verifying', 'archived'],
+  verifying:   ['verified', 'archived'],
+  verified:    ['contacted', 'partner', 'archived'],
+  contacted:   ['replied', 'archived'],
+  replied:     ['negotiating', 'partner', 'archived'],
+  negotiating: ['partner', 'archived'],
+  partner:     ['negotiating', 'archived'],
+  archived:    ['imported', 'verifying'],
+};
+
 function stageCellHtml(lead) {
   const cur = lead.stage || 'imported';
   const style = STAGE_STYLE[cur] || STAGE_STYLE.imported;
@@ -1525,14 +1719,34 @@ function stageCellHtml(lead) {
     const st = STAGE_STYLE[s];
     return `<option value="${s}" ${s === cur ? 'selected' : ''}>${st.label}</option>`;
   }).join('');
-  // click stopPropagation 방지 필요 — select 클릭 시 row 클릭(edit modal) 안 열리게
-  return `
-    <select
-      class="stage-select"
-      data-stage-lead="${escapeAttr(lead.id)}"
+
+  // 원클릭 이동 버튼 (현재 stage 에서 실무적으로 자주 가는 다음 단계들)
+  const quickTargets = STAGE_QUICK_MOVES[cur] || [];
+  const quickBtns = quickTargets.map(target => {
+    const t = STAGE_STYLE[target];
+    // 짧은 라벨 (이모지 + 첫 단어)
+    const shortLabel = t.label.replace(/^([^\s]+)\s(.+)$/, '$1 $2');
+    return `<button
+      type="button"
+      class="stage-quick-move"
+      data-quick-lead="${escapeAttr(lead.id)}"
+      data-quick-target="${target}"
       onclick="event.stopPropagation()"
-      style="padding:4px 6px;font-size:11px;border:1px solid ${style.fg}40;border-radius:6px;background:${style.bg};color:${style.fg};font-weight:600;cursor:pointer;min-width:120px"
-    >${options}</select>
+      title="${t.label}로 이동"
+      style="padding:2px 6px;font-size:10px;border:1px solid ${t.fg}30;border-radius:99px;background:${t.bg};color:${t.fg};font-weight:600;cursor:pointer;white-space:nowrap;line-height:1.4"
+    >→ ${shortLabel}</button>`;
+  }).join('');
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+      <select
+        class="stage-select"
+        data-stage-lead="${escapeAttr(lead.id)}"
+        onclick="event.stopPropagation()"
+        style="padding:4px 6px;font-size:11px;border:1px solid ${style.fg}40;border-radius:6px;background:${style.bg};color:${style.fg};font-weight:600;cursor:pointer;min-width:120px"
+      >${options}</select>
+      ${quickBtns ? `<div style="display:flex;gap:3px;flex-wrap:wrap;max-width:180px">${quickBtns}</div>` : ''}
+    </div>
   `;
 }
 
@@ -1562,6 +1776,50 @@ function outreachApprovalCellHtml(lead) {
   `;
 }
 
+// 상대 시간 포맷 ("3일 전" / "5시간 전")
+function formatRelativeKo(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const now = Date.now();
+  const diff = Math.max(0, now - d.getTime());
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return '방금 전';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}일 전`;
+  const month = Math.floor(day / 30);
+  if (month < 12) return `${month}달 전`;
+  const year = Math.floor(day / 365);
+  return `${year}년 전`;
+}
+function formatDateKo(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);  // YYYY-MM-DD
+}
+
+function updatedInfoBadgeHtml(lead) {
+  // updatedInfoAt > stageChangedAt > registeredAt 우선순위로 가장 최근 활동 시각 표시
+  const iso = lead.updatedInfoAt || lead.stageChangedAt || lead.registeredAt || lead.importedAt;
+  if (!iso) return '';
+  const rel = formatRelativeKo(iso);
+  const abs = formatDateKo(iso);
+  if (!rel) return '';
+  // 오래된 정보 (30일 초과) 는 색상으로 강조
+  const stale = (Date.now() - new Date(iso).getTime()) > 30 * 24 * 60 * 60 * 1000;
+  const color = stale ? '#dc2626' : '#059669';
+  const bg = stale ? '#fef2f2' : '#f0fdf4';
+  return `<span class="update-badge" title="정보 업데이트: ${abs}"
+    style="display:inline-block;font-size:10px;color:${color};background:${bg};border:1px solid ${color}20;padding:1px 6px;border-radius:99px;margin-top:2px;font-weight:500">
+    🕒 ${rel}
+  </span>`;
+}
+
 function rowHtml(lead) {
   const selected = lead.id === state.selectedId ? "selected" : "";
   const checked = state.selectedLeadIds.has(lead.id) ? "checked" : "";
@@ -1575,6 +1833,7 @@ function rowHtml(lead) {
         <div class="company-cell">
           <strong>${escapeHtml(lead.Company)}</strong>
           <span class="meta-line">${escapeHtml(truncate(lead.Type, 74))}</span>
+          ${updatedInfoBadgeHtml(lead)}
         </div>
       </td>
       <td>${escapeHtml(lead.Country)}</td>
