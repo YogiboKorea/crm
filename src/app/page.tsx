@@ -54,16 +54,17 @@ export default function Home() {
               <p id="viewSubtitle">Search, qualify, and manage outreach.</p>
             </div>
             <div className="top-actions">
-              <button id="addLeadBtn" className="button" type="button">+ Add Lead</button>
-              <button id="markContactedBtn" className="button secondary" type="button">Mark Contacted</button>
-              <button id="undoContactedBtn" className="button ghost" type="button">Undo</button>
-              <button id="importCsvBtn" className="button secondary" type="button">⬆ Import CSV</button>
+              <button id="addLeadBtn" className="button" type="button">+ 리드 추가</button>
+              <button id="importCsvBtn" className="button secondary" type="button">⬆ Import</button>
               <button id="verifyLeadsBtn" className="button secondary" type="button">🔍 검증</button>
-              <button id="exportCsvBtn" className="button secondary" type="button">⬇ Export CSV</button>
-              <button id="settingsBtn" className="button secondary" type="button" style={{ display: 'none' }}>설정 (Settings)</button>
+              <button id="exportCsvBtn" className="button secondary" type="button">⬇ Export</button>
+              <button id="themeToggleBtn" className="theme-toggle" type="button" title="다크/라이트 모드">🌙</button>
+              <button id="settingsBtn" className="button secondary" type="button" style={{ display: 'none' }}>설정</button>
               <form action="/api/auth/logout" method="POST" style={{ display: 'inline' }}>
                 <button type="submit" className="button ghost">Logout</button>
               </form>
+              <button id="markContactedBtn" style={{ display: 'none' }} type="button"></button>
+              <button id="undoContactedBtn" style={{ display: 'none' }} type="button"></button>
             </div>
           </header>
 

@@ -197,7 +197,7 @@ let isMaster = false;
 let edits = {};
 let customLeads = [];
 let state = {
-  view: "leads",
+  view: "pipeline-verified",
   query: "",
   country: "All",
   status: "All",
@@ -252,6 +252,7 @@ async function init() {
   initSettingsModal();
   initImportCsvModal();
   initImportHistoryModal();
+  initThemeToggle();
   renderFilters();
   bindEvents();
   render();
@@ -330,6 +331,25 @@ async function loadLeads() {
   } catch(e) {
     console.error("Failed to load leads:", e);
   }
+}
+
+// ── 다크/라이트 테마 토글 ────────────────────────────────
+function initThemeToggle() {
+  const btn = document.getElementById('themeToggleBtn');
+  if (!btn) return;
+  const applyIcon = () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    btn.textContent = current === 'dark' ? '☀️' : '🌙';
+    btn.setAttribute('title', current === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환');
+  };
+  applyIcon();
+  btn.addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch {}
+    applyIcon();
+  });
 }
 
 function bindEvents() {
@@ -894,6 +914,8 @@ function renderFilters() {
 
 function render() {
   const leads = getFilteredLeads();
+  // 매 render 마다 stage 배너 초기화 — stage 페이지에서만 다시 그려짐
+  clearStageBanner();
   els.navItems.forEach((item) => {
     const itemView = item.dataset.view;
     const itemStatus = item.dataset.statusFilter;
@@ -984,7 +1006,13 @@ function render() {
     const s = stageMap[state.view];
     els.viewTitle.textContent = s.title;
     els.viewSubtitle.textContent = s.sub;
+    // stage 필터는 텍스트 필터(getFilteredLeads) 뒤에 한번 더 적용
+    const allByStage = getLeads().filter(l => (l.stage || 'imported') === s.stage);
     const stageLeads = leads.filter(l => (l.stage || 'imported') === s.stage);
+    renderStageBanner(s, allByStage.length, stageLeads.length);
+    // 통계 stats-grid 는 stage 페이지에서 숨김 (이미 renderStats에서 렌더됐으므로 지움)
+    const statsEl = document.getElementById('statsGrid');
+    if (statsEl) statsEl.innerHTML = '';
     renderLeadTable(stageLeads, `${s.title}에 해당하는 리드가 없습니다.`);
     return;
   }
@@ -1015,6 +1043,13 @@ function render() {
 }
 
 function renderStats(leads) {
+  // 파이프라인 페이지에서는 stage 배너로 대체하므로 stats grid 비움
+  const isStagePage = state.view && state.view.startsWith('pipeline-');
+  const isToolPage = state.view && state.view.startsWith('tool-');
+  if (isStagePage || isToolPage) {
+    if (els.stats) els.stats.innerHTML = '';
+    return;
+  }
   const all = getLeads();
   const countryCount = unique(all.map((lead) => lead.Country)).length;
   const contacted = all.filter((lead) => lead.status !== "New").length;
@@ -1091,6 +1126,41 @@ function renderPipeline() {
       render();
     });
   });
+}
+
+// stage 배너 (파이프라인 페이지 상단에 표시)
+function renderStageBanner(stageInfo, totalCount, filteredCount) {
+  const style = STAGE_STYLE[stageInfo.stage] || STAGE_STYLE.imported;
+  const iconMatch = stageInfo.title.match(/^([^\s]+)/);
+  const icon = iconMatch ? iconMatch[1] : '📊';
+  const filterHint = totalCount !== filteredCount
+    ? `<span style="color:var(--text-tertiary);font-size:12px;margin-left:8px">(전체 ${totalCount}건 중 필터 적용)</span>`
+    : '';
+  const container = document.getElementById('stageBannerContainer') || (() => {
+    const wrap = document.createElement('div');
+    wrap.id = 'stageBannerContainer';
+    const content = document.getElementById('content');
+    content.parentNode.insertBefore(wrap, content);
+    return wrap;
+  })();
+  container.innerHTML = `
+    <div class="stage-banner">
+      <div class="stage-info">
+        <div class="stage-icon" style="background:${style.bg};color:${style.fg};font-size:28px">${icon}</div>
+        <div>
+          <div class="stage-count">${filteredCount}<span style="font-size:14px;font-weight:500;color:var(--text-tertiary);margin-left:6px">건</span></div>
+          <div class="stage-label">${stageInfo.title.replace(/^[^\s]+\s*/, '')} ${filterHint}</div>
+        </div>
+      </div>
+      <div class="stage-hint">${stageInfo.sub}</div>
+    </div>
+  `;
+}
+
+// 파이프라인/도구 페이지에서는 stage 배너로 대체하므로 stat grid 는 숨김
+function clearStageBanner() {
+  const c = document.getElementById('stageBannerContainer');
+  if (c) c.innerHTML = '';
 }
 
 function renderLeadTable(leads, emptyText = "No leads match the current filters.") {
