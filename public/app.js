@@ -213,6 +213,12 @@ let state = {
   //   'maybe'       - AI 검증됨: 모호 판정 (사람 판단 필요)
   //   'ai-checked'  - AI 검증 완료된 모든 것 (maybe + 이번 stage 에 남은 것)
   verifyingSubFilter: 'all',
+  // 검증완료 페이지 서브 필터 (승인 상태로 나눔)
+  //   'all'        - 전체 verified
+  //   'approved'   - readyForOutreach=true (발송 대기열)
+  //   'pending'    - readyForOutreach=false (승인 대기)
+  //   'no-email'   - Email 필드 비었거나 "Not found" — 승인 불가
+  verifiedSubFilter: 'all',
   // B2B 메일 매니저 전용 서브 상태
   email: {
     templates: [],
@@ -1052,13 +1058,30 @@ function render() {
         stageLeads = stageLeads.filter(l => !!l?.verification?.aiVerifiedAt);
       }
     }
+    // 검증완료 stage 는 발송 승인 상태 하위 필터 적용
+    if (s.stage === 'verified') {
+      const sub = state.verifiedSubFilter || 'all';
+      const hasRealEmail = (l) => l.Email && l.Email.trim() && !/^Not found/i.test(l.Email);
+      if (sub === 'approved') {
+        stageLeads = stageLeads.filter(l => l.readyForOutreach === true);
+      } else if (sub === 'pending') {
+        stageLeads = stageLeads.filter(l => l.readyForOutreach !== true && hasRealEmail(l));
+      } else if (sub === 'no-email') {
+        stageLeads = stageLeads.filter(l => !hasRealEmail(l));
+      }
+    }
 
     renderStageBanner(s, allByStage.length, stageLeads.length);
-    // 검증대기 에서만 서브필터 chip 렌더 (다른 stage 에서는 정리)
+    // 서브필터 chip 렌더 (해당 stage 에서만, 다른 stage 에서는 정리)
     if (s.stage === 'verifying') {
       renderVerifyingSubFilterChips(allByStage);
+      clearVerifiedSubFilterChips();
+    } else if (s.stage === 'verified') {
+      renderVerifiedSubFilterChips(allByStage);
+      clearVerifyingSubFilterChips();
     } else {
       clearVerifyingSubFilterChips();
+      clearVerifiedSubFilterChips();
     }
     // 통계 stats-grid 는 stage 페이지에서 숨김 (이미 renderStats에서 렌더됐으므로 지움)
     const statsEl = document.getElementById('statsGrid');
@@ -1520,6 +1543,190 @@ function renderVerifyingSubFilterChips(allInStage) {
 function clearVerifyingSubFilterChips() {
   const c = document.getElementById('verifyingSubFilterChips');
   if (c) c.innerHTML = '';
+}
+
+// 검증완료 페이지 서브필터 chip + 벌크 승인 버튼
+function renderVerifiedSubFilterChips(allInStage) {
+  const containerId = 'verifiedSubFilterChips';
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    const banner = document.getElementById('stageBannerContainer');
+    if (banner && banner.parentNode) {
+      banner.parentNode.insertBefore(container, banner.nextSibling);
+    } else {
+      const content = document.getElementById('content');
+      content.parentNode.insertBefore(container, content);
+    }
+  }
+
+  const isKor = (c) => /korea|한국|대한민국/i.test(c || '') && !/north/i.test(c || '');
+  const hasRealEmail = (l) => l.Email && String(l.Email).trim() && !/^Not found/i.test(l.Email);
+
+  // 한국 제외한 실질 대상 기준
+  const nonKr = allInStage.filter(l => !isKor(l.Country || ''));
+  const cAll = nonKr.length;
+  const cApproved = nonKr.filter(l => l.readyForOutreach === true).length;
+  const cPending = nonKr.filter(l => l.readyForOutreach !== true && hasRealEmail(l)).length;
+  const cNoEmail = nonKr.filter(l => !hasRealEmail(l)).length;
+
+  const cur = state.verifiedSubFilter || 'all';
+  const chip = (key, label, count, color) => {
+    const active = key === cur;
+    const bg = active ? color : 'var(--surface-1)';
+    const fg = active ? 'white' : 'var(--text-primary)';
+    const bd = active ? color : 'var(--border)';
+    return `<button type="button" class="v-sub-filter-chip" data-sub-filter="${key}"
+      style="padding:6px 12px;font-size:12px;font-weight:600;
+      background:${bg};color:${fg};border:1px solid ${bd};border-radius:99px;cursor:pointer;
+      display:inline-flex;align-items:center;gap:6px;transition:all 0.1s">
+      ${label} <span style="opacity:0.7;font-weight:500">${count.toLocaleString()}</span>
+    </button>`;
+  };
+
+  container.innerHTML = `
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">📤 발송 승인:</span>
+        ${chip('all', '전체', cAll, '#334155')}
+        ${chip('approved', '✅ 승인됨 (대기열)', cApproved, '#15803d')}
+        ${chip('pending', '⏳ 승인 대기', cPending, '#f59e0b')}
+        ${chip('no-email', '📭 이메일 없음', cNoEmail, '#94a3b8')}
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <button id="bulkApproveAllBtn" class="button primary" type="button" style="font-size:12px;padding:6px 12px" title="필터에 노출된 리드 전부를 승인 처리">
+          ✅ 화면 전체 승인 (${cur === 'pending' ? cPending : (cur === 'approved' ? cApproved : cAll)})
+        </button>
+        <button id="bulkUnapproveAllBtn" class="button ghost" type="button" style="font-size:12px;padding:6px 12px" title="필터에 노출된 리드 전부의 승인 취소">
+          ⏸ 전체 승인 취소
+        </button>
+        <button id="dryrunSendBtn" class="button secondary" type="button" style="font-size:12px;padding:6px 12px" title="실제 발송 없이 승인된 리드 대상 발송 시뮬레이션">
+          🧪 dry-run 시뮬레이션
+        </button>
+      </div>
+    </div>
+  `;
+
+  container.querySelectorAll('.v-sub-filter-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      state.verifiedSubFilter = el.dataset.subFilter;
+      render();
+    });
+  });
+  document.getElementById('bulkApproveAllBtn')?.addEventListener('click', () => bulkApproveVisible(true));
+  document.getElementById('bulkUnapproveAllBtn')?.addEventListener('click', () => bulkApproveVisible(false));
+  document.getElementById('dryrunSendBtn')?.addEventListener('click', () => runDryRunSimulation());
+}
+function clearVerifiedSubFilterChips() {
+  const c = document.getElementById('verifiedSubFilterChips');
+  if (c) c.innerHTML = '';
+}
+
+// ── 일괄 승인/취소 (현재 필터에 보이는 리드 대상) ──────────────
+async function bulkApproveVisible(approve) {
+  // 현재 렌더된 verified 리드들 (state.verifiedSubFilter 반영)
+  const isKor = (c) => /korea|한국|대한민국/i.test(c || '') && !/north/i.test(c || '');
+  const hasRealEmail = (l) => l.Email && String(l.Email).trim() && !/^Not found/i.test(l.Email);
+  let candidates = baseLeads.filter(l =>
+    (l.stage || 'imported') === 'verified' && !isKor(l.Country || '')
+  );
+  // 승인은 이메일 있는 것만
+  if (approve) candidates = candidates.filter(hasRealEmail);
+  // sub-filter 반영
+  const sub = state.verifiedSubFilter || 'all';
+  if (sub === 'approved' && approve) {
+    alert('이미 승인된 리드만 표시 중입니다. 승인 대상 없음.');
+    return;
+  }
+  if (sub === 'approved') candidates = candidates.filter(l => l.readyForOutreach === true);
+  if (sub === 'pending') candidates = candidates.filter(l => l.readyForOutreach !== true);
+  if (sub === 'no-email') {
+    alert('이메일 없는 리드는 승인할 수 없습니다. 먼저 크롤링을 실행하세요.');
+    return;
+  }
+  if (!candidates.length) {
+    alert('처리 대상 리드가 없습니다.');
+    return;
+  }
+
+  const label = approve ? '승인' : '승인 취소';
+  const ok = confirm(
+    `📤 ${label} 대상: ${candidates.length}건\n\n` +
+    (approve ? '이 리드들에 "발송 승인" 을 부여합니다.\n실제 메일은 발송되지 않습니다 — 승인 게이트만 통과시킵니다.\n\n' : '이 리드들의 발송 승인을 취소합니다.\n\n') +
+    '계속하시겠습니까?'
+  );
+  if (!ok) return;
+
+  try {
+    const res = await fetch('/api/leads/bulk-approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: 'ids',
+        leadIds: candidates.map(l => l.leadId),
+        approve,
+        excludeKorea: true,
+        requireEmail: approve,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'bulk 실패');
+    // 로컬 상태 동기화
+    candidates.forEach(l => { l.readyForOutreach = approve; });
+    alert(
+      `✅ ${label} 완료\n\n` +
+      `요청: ${candidates.length}건\n` +
+      `실제 반영: ${data.updated}건\n` +
+      (data.skipReasons ? `스킵: 이메일없음 ${data.skipReasons.noEmail}, 한국 ${data.skipReasons.korean}, stage 불일치 ${data.skipReasons.wrongStage}` : '')
+    );
+    await loadLeads();
+    render();
+  } catch (e) {
+    alert(`${label} 실패: ${e.message || 'unknown'}`);
+  }
+}
+
+// ── dry-run 발송 시뮬레이션 (실제 SMTP 호출 없음) ──────────────
+async function runDryRunSimulation() {
+  const isKor = (c) => /korea|한국|대한민국/i.test(c || '') && !/north/i.test(c || '');
+  const hasRealEmail = (l) => l.Email && String(l.Email).trim() && !/^Not found/i.test(l.Email);
+  const approved = baseLeads.filter(l =>
+    (l.stage || 'imported') === 'verified' &&
+    l.readyForOutreach === true &&
+    !isKor(l.Country || '') &&
+    hasRealEmail(l)
+  );
+
+  if (!approved.length) {
+    alert('발송 대기열이 비어있습니다. 먼저 리드를 "✅ 승인" 처리하세요.');
+    return;
+  }
+
+  // 국가별/도메인별 분포 요약
+  const byCountry = {};
+  const domainCounts = {};
+  for (const l of approved) {
+    byCountry[l.Country || '(미상)'] = (byCountry[l.Country || '(미상)'] || 0) + 1;
+    const dom = (l.Email || '').split('@')[1]?.toLowerCase() || '';
+    if (dom) domainCounts[dom] = (domainCounts[dom] || 0) + 1;
+  }
+  const topCountries = Object.entries(byCountry).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const topDomains = Object.entries(domainCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  const sample = approved.slice(0, 5).map(l =>
+    `  · ${l.Company} (${l.Country}) → ${l.Email}`
+  ).join('\n');
+
+  const msg =
+    `🧪 dry-run 발송 시뮬레이션 (실제 발송 없음)\n\n` +
+    `총 대기열: ${approved.length}건\n\n` +
+    `📍 국가 top 8:\n${topCountries.map(([k,v])=>`  · ${k}: ${v}건`).join('\n')}\n\n` +
+    `📮 도메인 top 8:\n${topDomains.map(([k,v])=>`  · ${k}: ${v}건`).join('\n')}\n\n` +
+    `첫 5건 미리보기:\n${sample}\n\n` +
+    `※ 실제 발송하려면 다음 세션에서 B(실제 SMTP 발송) 구현 필요.\n` +
+    `※ .env.local 에 SMTP_USER / SMTP_PASS 설정 필요.`;
+  alert(msg);
 }
 
 // ── 파이프라인 자동 리로드 (verifying/verified 탭에서 배치 진행 실시간 반영) ─
