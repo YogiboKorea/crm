@@ -9,7 +9,7 @@ export const maxDuration = 60;
 /**
  * POST /api/leads/verify-ai
  * Body: {
- *   scope?: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'leadIds',
+ *   scope?: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'maybe-recheck' | 'leadIds',
  *   leadIds?: string[],
  *   limit?: number,
  *   excludeKorea?: boolean,     // default true (한국 기업 제외)
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: '잘못된 요청 본문' }, { status: 400 });
   }
 
-  const scope: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'leadIds' = body?.scope || 'suspicious';
+  const scope: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'maybe-recheck' | 'leadIds' = body?.scope || 'suspicious';
   const leadIds: string[] | undefined = body?.leadIds;
   const limit = Math.min(Math.max(parseInt(body?.limit, 10) || 20, 1), 50);
   const excludeKorea: boolean = body?.excludeKorea !== false;
