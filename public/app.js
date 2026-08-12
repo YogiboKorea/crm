@@ -213,6 +213,8 @@ let state = {
   //   'maybe'       - AI 검증됨: 모호 판정 (사람 판단 필요)
   //   'ai-checked'  - AI 검증 완료된 모든 것 (maybe + 이번 stage 에 남은 것)
   verifyingSubFilter: 'all',
+  // 테이블 페이지네이션 (100건씩)
+  pagination: { pageSize: 100, currentPage: 1 },
   // 검증완료 페이지 서브 필터 (승인 상태로 나눔)
   //   'all'        - 전체 verified
   //   'approved'   - readyForOutreach=true (발송 대기열)
@@ -294,6 +296,8 @@ function resetAllFilters() {
   if (els.status) els.status.value = "All";
   if (els.priority) els.priority.value = "All";
   if (els.verify) els.verify.value = "All";
+  // 필터 초기화 시 페이지도 1페이지로
+  if (state.pagination) state.pagination.currentPage = 1;
 }
 
 // ── Loading helpers ──────────────────────────────────────────────
@@ -768,15 +772,19 @@ function bindEvents() {
   document.addEventListener("change", (event) => {
     if (event.target.id === "countryFilter") {
       state.country = event.target.value;
+      resetPagination();
       render();
     } else if (event.target.id === "statusFilter") {
       state.status = event.target.value;
+      resetPagination();
       render();
     } else if (event.target.id === "priorityFilter") {
       state.priority = event.target.value;
+      resetPagination();
       render();
     } else if (event.target.id === "verifyFilter") {
       state.verify = event.target.value;
+      resetPagination();
       render();
     } else if (event.target.id === "importFileInput") {
       const file = event.target.files?.[0];
@@ -824,6 +832,7 @@ function bindEvents() {
     if (event.target.id === "searchInput") {
       state.query = event.target.value.trim();
       state.view = "leads";
+      resetPagination();
       if (state.query) {
         state.country = "All";
         state.status = "All";
@@ -1536,6 +1545,7 @@ function renderVerifyingSubFilterChips(allInStage) {
   container.querySelectorAll('.sub-filter-chip').forEach(el => {
     el.addEventListener('click', () => {
       state.verifyingSubFilter = el.dataset.subFilter;
+      resetPagination();
       render();
     });
   });
@@ -1611,6 +1621,7 @@ function renderVerifiedSubFilterChips(allInStage) {
   container.querySelectorAll('.v-sub-filter-chip').forEach(el => {
     el.addEventListener('click', () => {
       state.verifiedSubFilter = el.dataset.subFilter;
+      resetPagination();
       render();
     });
   });
@@ -1757,22 +1768,89 @@ function managePipelineAutoRefresh(currentView) {
   }, 30000);  // 30 초마다
 }
 
+// ── 페이지네이션 바 (게시판 스타일 1 · 2 · 3 · ... · N) ────────
+function renderPaginationBar(current, totalPages, totalItems) {
+  if (totalPages <= 1) return '';
+
+  // 페이지 번호 리스트 계산 — 현재 페이지 주변 + 처음/끝 + 생략(...)
+  //  예: [1, ..., 4, 5, 6, ..., 45]
+  const pages = new Set([1, totalPages, current, current - 1, current + 1, current - 2, current + 2]);
+  const visible = [...pages].filter(p => p >= 1 && p <= totalPages).sort((a, b) => a - b);
+
+  const pageBtn = (p, label = String(p), active = false, disabled = false) => {
+    const bg = active ? 'var(--brand-primary,#4338ca)' : 'var(--surface-1)';
+    const fg = active ? 'white' : disabled ? 'var(--text-tertiary)' : 'var(--text-primary)';
+    const bd = active ? 'var(--brand-primary,#4338ca)' : 'var(--border)';
+    return `<button type="button" class="page-btn" data-page="${p}" ${disabled ? 'disabled' : ''}
+      style="min-width:34px;height:34px;padding:0 10px;font-size:12px;font-weight:${active ? '700' : '500'};
+      background:${bg};color:${fg};border:1px solid ${bd};border-radius:8px;cursor:${disabled ? 'not-allowed' : 'pointer'};
+      display:inline-flex;align-items:center;justify-content:center;transition:all 0.1s;
+      ${disabled ? 'opacity:0.4' : ''}">${label}</button>`;
+  };
+
+  let itemsHtml = '';
+  let prev = 0;
+  for (const p of visible) {
+    if (p - prev > 1) {
+      itemsHtml += `<span style="min-width:24px;text-align:center;color:var(--text-tertiary);font-size:12px">…</span>`;
+    }
+    itemsHtml += pageBtn(p, String(p), p === current);
+    prev = p;
+  }
+
+  return `
+    <div style="margin-top:16px;padding:12px;display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap">
+      ${pageBtn(1, '⏮', false, current === 1)}
+      ${pageBtn(current - 1, '◀', false, current === 1)}
+      ${itemsHtml}
+      ${pageBtn(current + 1, '▶', false, current === totalPages)}
+      ${pageBtn(totalPages, '⏭', false, current === totalPages)}
+      <span style="margin-left:12px;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-tertiary)">
+        <span>페이지</span>
+        <input id="pageJumpInput" type="number" min="1" max="${totalPages}" value="${current}"
+          style="width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;text-align:center"
+          title="페이지 번호 입력 후 Enter">
+        <span>/ ${totalPages}</span>
+      </span>
+    </div>
+  `;
+}
+
+// 필터/뷰가 바뀔 때 1페이지로 리셋 (호출 지점: 뷰 이동, 필터 변경, 서브필터 chip)
+function resetPagination() {
+  if (state.pagination) state.pagination.currentPage = 1;
+}
+
 function renderLeadTable(leads, emptyText = "No leads match the current filters.") {
   if (!leads.length) {
     els.content.innerHTML = emptyState(emptyText);
     return;
   }
 
-  const visibleIds = leads.map((lead) => lead.id);
+  // ── 페이지네이션 ───────────────────────────────
+  const pageSize = state.pagination?.pageSize || 100;
+  const totalPages = Math.max(1, Math.ceil(leads.length / pageSize));
+  // 리드 수가 줄어들어 현재 페이지가 범위 초과 시 자동 클램프
+  if (state.pagination.currentPage > totalPages) state.pagination.currentPage = totalPages;
+  if (state.pagination.currentPage < 1) state.pagination.currentPage = 1;
+  const page = state.pagination.currentPage;
+  const start = (page - 1) * pageSize;
+  const end = Math.min(start + pageSize, leads.length);
+  const pageLeads = leads.slice(start, end);
+
+  const visibleIds = pageLeads.map((lead) => lead.id);
   const selectedVisibleCount = visibleIds.filter((id) => state.selectedLeadIds.has(id)).length;
   const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
 
   els.content.innerHTML = `
     <div class="bulk-actions">
-      <button class="button secondary" data-select-visible type="button">${allVisibleSelected ? "Clear Selection" : "Select All"}</button>
+      <button class="button secondary" data-select-visible type="button">${allVisibleSelected ? "이 페이지 선택 해제" : "이 페이지 전체 선택"}</button>
       <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
         Delete Selected (${state.selectedLeadIds.size})
       </button>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary)">
+        총 <b style="color:var(--text-primary)">${leads.length.toLocaleString()}</b>건 중 <b style="color:var(--text-primary)">${start + 1}~${end}</b>번 표시
+      </span>
     </div>
     <div class="table-wrap">
       <table>
@@ -1794,10 +1872,11 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
           </tr>
         </thead>
         <tbody>
-          ${leads.map((lead) => rowHtml(lead)).join("")}
+          ${pageLeads.map((lead) => rowHtml(lead)).join("")}
         </tbody>
       </table>
     </div>
+    ${renderPaginationBar(page, totalPages, leads.length)}
   `;
 
   els.content.querySelector("[data-select-visible]")?.addEventListener("click", () => {
@@ -1807,6 +1886,26 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
       visibleIds.forEach((id) => state.selectedLeadIds.add(id));
     }
     render();
+  });
+
+  // 페이지네이션 클릭
+  els.content.querySelectorAll('.page-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = parseInt(btn.dataset.page, 10);
+      if (isNaN(target) || target === state.pagination.currentPage) return;
+      state.pagination.currentPage = Math.min(Math.max(1, target), totalPages);
+      render();
+      // 상단으로 스크롤
+      els.content?.scrollTo?.({ top: 0, behavior: 'smooth' });
+    });
+  });
+  els.content.querySelector('#pageJumpInput')?.addEventListener('change', (e) => {
+    const v = parseInt(e.target.value, 10);
+    if (!isNaN(v) && v >= 1 && v <= totalPages) {
+      state.pagination.currentPage = v;
+      render();
+      els.content?.scrollTo?.({ top: 0, behavior: 'smooth' });
+    }
   });
 
   els.content.querySelectorAll("th.sortable").forEach((th) => {
