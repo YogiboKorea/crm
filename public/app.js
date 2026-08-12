@@ -730,6 +730,20 @@ function bindEvents() {
       if (file) handleCsvFile(file);
     }
 
+    // Stage 드롭다운 변경 — 즉시 서버 반영
+    if (event.target.classList && event.target.classList.contains("stage-select")) {
+      const leadId = event.target.dataset.stageLead;
+      const newStage = event.target.value;
+      handleStageChange(leadId, newStage, event.target);
+    }
+
+    // 발송 승인 체크박스
+    if (event.target.classList && event.target.classList.contains("outreach-approval")) {
+      const leadId = event.target.dataset.approveLead;
+      const on = event.target.checked;
+      handleOutreachApproval(leadId, on);
+    }
+
     // Inline checkboxes (row selection)
     if (event.target.closest(".lead-select")) {
       const checkbox = event.target;
@@ -1107,11 +1121,11 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
               Country
               <span style="color: #999; font-size: 0.8em; margin-left: 4px;">${state.sortField === 'Country' ? (state.sortOrder === 'asc' ? '▲' : '▼') : '⇕'}</span>
             </th>
-            <th>Status</th>
+            <th>Stage</th>
+            <th>발송승인</th>
             <th>Priority</th>
             <th>검증</th>
             <th>Contact</th>
-            <th>Title</th>
             <th>Email</th>
             <th>Website</th>
           </tr>
@@ -1421,6 +1435,63 @@ function initImportHistoryModal() {}
 
 
 
+// stage 색상 매핑
+const STAGE_STYLE = {
+  imported:    { bg: '#f1f5f9', fg: '#475569', label: '📥 가져오기' },
+  verifying:   { bg: '#fef9c3', fg: '#854d0e', label: '🔍 검증 대기' },
+  verified:    { bg: '#dcfce7', fg: '#166534', label: '✅ 검증 완료' },
+  contacted:   { bg: '#dbeafe', fg: '#1e40af', label: '📨 컨택 중' },
+  replied:     { bg: '#e0e7ff', fg: '#3730a3', label: '💬 응답 옴' },
+  negotiating: { bg: '#fed7aa', fg: '#9a3412', label: '🤝 협상 중' },
+  partner:     { bg: '#f3e8ff', fg: '#6b21a8', label: '⭐ 파트너' },
+  archived:    { bg: '#f3f4f6', fg: '#6b7280', label: '📦 보관함' },
+};
+const STAGE_ORDER = ['imported','verifying','verified','contacted','replied','negotiating','partner','archived'];
+
+function stageCellHtml(lead) {
+  const cur = lead.stage || 'imported';
+  const style = STAGE_STYLE[cur] || STAGE_STYLE.imported;
+  const options = STAGE_ORDER.map(s => {
+    const st = STAGE_STYLE[s];
+    return `<option value="${s}" ${s === cur ? 'selected' : ''}>${st.label}</option>`;
+  }).join('');
+  // click stopPropagation 방지 필요 — select 클릭 시 row 클릭(edit modal) 안 열리게
+  return `
+    <select
+      class="stage-select"
+      data-stage-lead="${escapeAttr(lead.id)}"
+      onclick="event.stopPropagation()"
+      style="padding:4px 6px;font-size:11px;border:1px solid ${style.fg}40;border-radius:6px;background:${style.bg};color:${style.fg};font-weight:600;cursor:pointer;min-width:120px"
+    >${options}</select>
+  `;
+}
+
+function outreachApprovalCellHtml(lead) {
+  // verified 단계에서만 승인 체크박스 노출
+  const stage = lead.stage || 'imported';
+  if (stage !== 'verified') {
+    if (stage === 'contacted' || stage === 'replied' || stage === 'negotiating') {
+      return `<span style="font-size:10px;color:#059669;background:#d1fae5;padding:2px 6px;border-radius:99px">✅ 발송됨</span>`;
+    }
+    if (stage === 'partner') {
+      return `<span style="font-size:10px;color:#6b21a8;background:#f3e8ff;padding:2px 6px;border-radius:99px">⭐ 파트너</span>`;
+    }
+    return `<span style="font-size:10px;color:#9ca3af">—</span>`;
+  }
+  const on = lead.readyForOutreach === true;
+  return `
+    <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:11px" onclick="event.stopPropagation()">
+      <input type="checkbox" class="outreach-approval"
+        data-approve-lead="${escapeAttr(lead.id)}"
+        ${on ? 'checked' : ''}
+        style="width:14px;height:14px;cursor:pointer">
+      <span style="color:${on ? '#166534' : '#6b7280'};font-weight:${on ? '700' : '400'}">
+        ${on ? '✓ 승인됨' : '승인'}
+      </span>
+    </label>
+  `;
+}
+
 function rowHtml(lead) {
   const selected = lead.id === state.selectedId ? "selected" : "";
   const checked = state.selectedLeadIds.has(lead.id) ? "checked" : "";
@@ -1437,11 +1508,11 @@ function rowHtml(lead) {
         </div>
       </td>
       <td>${escapeHtml(lead.Country)}</td>
-      <td><span class="badge">${escapeHtml(lead.status)}</span></td>
+      <td>${stageCellHtml(lead)}</td>
+      <td>${outreachApprovalCellHtml(lead)}</td>
       <td><span class="badge ${badgeClass(lead.Priority)}">${escapeHtml(lead.Priority || "-")}</span></td>
       <td>${verifyBadgeHtml(lead)}</td>
       <td>${escapeHtml(truncate(lead.BuyerContact || lead.Phone || "No public contact", 70))}</td>
-      <td>${escapeHtml(truncate(lead.Title || lead.RoleMemo || "", 70))}</td>
       <td>${emailCell(lead.Email)}</td>
       <td>${lead.WebsiteContact ? `<a href="${escapeAttr(urlFor(lead.WebsiteContact))}" target="_blank" rel="noreferrer">Open</a>` : ""}</td>
     </tr>
@@ -1450,6 +1521,62 @@ function rowHtml(lead) {
 
 function getLeads() {
   return baseLeads.filter(lead => !lead.deleted);
+}
+
+// ── Stage 변경 핸들러 ───────────────────────────────────────
+async function handleStageChange(leadId, newStage, selectEl) {
+  const lead = baseLeads.find(l => l.id === leadId);
+  if (!lead || !lead._id) return;
+
+  const oldStage = lead.stage || 'imported';
+  const oldStyle = STAGE_STYLE[oldStage];
+  if (selectEl) {
+    selectEl.style.opacity = '0.6';
+    selectEl.disabled = true;
+  }
+  try {
+    const res = await fetch(`/api/leads/${lead._id}/stage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: newStage }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'stage 변경 실패');
+    // 로컬 상태 동기화
+    lead.stage = data.data.stage;
+    lead.stageChangedAt = data.data.stageChangedAt;
+    if (data.data.becamePartnerAt) lead.becamePartnerAt = data.data.becamePartnerAt;
+    if (typeof data.data.readyForOutreach === 'boolean') lead.readyForOutreach = data.data.readyForOutreach;
+    render();
+  } catch (e) {
+    alert(`stage 변경 실패: ${e.message || 'unknown'}`);
+    if (selectEl) {
+      selectEl.value = oldStage;
+      selectEl.disabled = false;
+      selectEl.style.opacity = '1';
+    }
+  }
+}
+
+// ── 발송 승인 토글 ─────────────────────────────────────────
+async function handleOutreachApproval(leadId, on) {
+  const lead = baseLeads.find(l => l.id === leadId);
+  if (!lead || !lead._id) return;
+  try {
+    const res = await fetch(`/api/leads/${lead._id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ readyForOutreach: on }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'approval failed');
+    lead.readyForOutreach = on;
+    // 라벨 즉시 갱신 (전체 재렌더 최소화)
+    render();
+  } catch (e) {
+    alert(`승인 상태 변경 실패: ${e.message || 'unknown'}`);
+    render();
+  }
 }
 
 // 검증 버킷 매칭
