@@ -207,6 +207,12 @@ let state = {
   selectedLeadIds: new Set(),
   sortField: null,
   sortOrder: "asc",
+  // 검증대기 페이지 하위 필터 (AI 진행 여부로 나눔)
+  //   'all'         - 전체
+  //   'unverified'  - AI 미검증 (아직 처리 전)
+  //   'maybe'       - AI 검증됨: 모호 판정 (사람 판단 필요)
+  //   'ai-checked'  - AI 검증 완료된 모든 것 (maybe + 이번 stage 에 남은 것)
+  verifyingSubFilter: 'all',
   // B2B 메일 매니저 전용 서브 상태
   email: {
     templates: [],
@@ -935,8 +941,9 @@ function renderFilters() {
 
 function render() {
   const leads = getFilteredLeads();
-  // 매 render 마다 stage 배너 초기화 — stage 페이지에서만 다시 그려짐
+  // 매 render 마다 stage 배너/서브필터 chip 초기화 — 각 페이지에서 필요 시 다시 그려짐
   clearStageBanner();
+  clearVerifyingSubFilterChips();
   els.navItems.forEach((item) => {
     const itemView = item.dataset.view;
     const itemStatus = item.dataset.statusFilter;
@@ -1012,6 +1019,9 @@ function render() {
     return;
   }
 
+  // ── 검증대기/검증완료 탭에서 자동 리로드 (AI 배치 진행 실시간 반영) ─
+  managePipelineAutoRefresh(state.view);
+
   // ── 새 파이프라인 뷰 (stage 기반) ─────────────────────────────
   const stageMap = {
     'pipeline-import':      { stage: 'imported',    title: '📥 가져오기 (Import)',  sub: '엑셀에서 새로 업로드된 회사들. 검증 진행 대기.' },
@@ -1029,8 +1039,27 @@ function render() {
     els.viewSubtitle.textContent = s.sub;
     // stage 필터는 텍스트 필터(getFilteredLeads) 뒤에 한번 더 적용
     const allByStage = getLeads().filter(l => (l.stage || 'imported') === s.stage);
-    const stageLeads = leads.filter(l => (l.stage || 'imported') === s.stage);
+    let stageLeads = leads.filter(l => (l.stage || 'imported') === s.stage);
+
+    // 검증대기 stage 는 AI 진행 여부 하위 필터 적용
+    if (s.stage === 'verifying') {
+      const sub = state.verifyingSubFilter || 'all';
+      if (sub === 'unverified') {
+        stageLeads = stageLeads.filter(l => !l?.verification?.aiVerifiedAt);
+      } else if (sub === 'maybe') {
+        stageLeads = stageLeads.filter(l => l?.verification?.aiVerdict === 'maybe');
+      } else if (sub === 'ai-checked') {
+        stageLeads = stageLeads.filter(l => !!l?.verification?.aiVerifiedAt);
+      }
+    }
+
     renderStageBanner(s, allByStage.length, stageLeads.length);
+    // 검증대기 에서만 서브필터 chip 렌더 (다른 stage 에서는 정리)
+    if (s.stage === 'verifying') {
+      renderVerifyingSubFilterChips(allByStage);
+    } else {
+      clearVerifyingSubFilterChips();
+    }
     // 통계 stats-grid 는 stage 페이지에서 숨김 (이미 renderStats에서 렌더됐으므로 지움)
     const statsEl = document.getElementById('statsGrid');
     if (statsEl) statsEl.innerHTML = '';
@@ -1432,6 +1461,93 @@ async function runCrawlEmails(scope) {
 function clearStageBanner() {
   const c = document.getElementById('stageBannerContainer');
   if (c) c.innerHTML = '';
+}
+
+// 검증대기 페이지 서브필터 chip (AI 진행 여부로 분류)
+function renderVerifyingSubFilterChips(allInStage) {
+  const containerId = 'verifyingSubFilterChips';
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    // stageBannerContainer 바로 아래에 삽입
+    const banner = document.getElementById('stageBannerContainer');
+    if (banner && banner.parentNode) {
+      banner.parentNode.insertBefore(container, banner.nextSibling);
+    } else {
+      const content = document.getElementById('content');
+      content.parentNode.insertBefore(container, content);
+    }
+  }
+
+  // 각 필터별 카운트
+  const cAll = allInStage.length;
+  const cUnverified = allInStage.filter(l => !l?.verification?.aiVerifiedAt).length;
+  const cMaybe = allInStage.filter(l => l?.verification?.aiVerdict === 'maybe').length;
+  const cAiChecked = allInStage.filter(l => !!l?.verification?.aiVerifiedAt).length;
+
+  const cur = state.verifyingSubFilter || 'all';
+  const chip = (key, label, count, color) => {
+    const active = key === cur;
+    const bg = active ? color : 'var(--surface-1)';
+    const fg = active ? 'white' : 'var(--text-primary)';
+    const bd = active ? color : 'var(--border)';
+    return `<button type="button" class="sub-filter-chip" data-sub-filter="${key}"
+      style="padding:6px 12px;font-size:12px;font-weight:600;
+      background:${bg};color:${fg};border:1px solid ${bd};border-radius:99px;cursor:pointer;
+      display:inline-flex;align-items:center;gap:6px;transition:all 0.1s">
+      ${label} <span style="opacity:0.7;font-weight:500">${count.toLocaleString()}</span>
+    </button>`;
+  };
+
+  container.innerHTML = `
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">🔎 AI 진행 여부:</span>
+      ${chip('all', '전체', cAll, '#334155')}
+      ${chip('unverified', '⏳ AI 미검증 (대기)', cUnverified, '#f59e0b')}
+      ${chip('ai-checked', '✅ AI 검증됨', cAiChecked, '#3b82f6')}
+      ${chip('maybe', '🧠 모호 (사람 판단)', cMaybe, '#a855f7')}
+    </div>
+  `;
+
+  container.querySelectorAll('.sub-filter-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      state.verifyingSubFilter = el.dataset.subFilter;
+      render();
+    });
+  });
+}
+function clearVerifyingSubFilterChips() {
+  const c = document.getElementById('verifyingSubFilterChips');
+  if (c) c.innerHTML = '';
+}
+
+// ── 파이프라인 자동 리로드 (verifying/verified 탭에서 배치 진행 실시간 반영) ─
+let _pipelineAutoRefreshTimer = null;
+let _pipelineAutoRefreshView = null;
+function managePipelineAutoRefresh(currentView) {
+  const wantAutoRefresh = currentView === 'pipeline-verifying' || currentView === 'pipeline-verified';
+  // 다른 뷰로 이동하거나 auto-refresh 필요 없음 → 타이머 정리
+  if (!wantAutoRefresh) {
+    if (_pipelineAutoRefreshTimer) {
+      clearInterval(_pipelineAutoRefreshTimer);
+      _pipelineAutoRefreshTimer = null;
+      _pipelineAutoRefreshView = null;
+    }
+    return;
+  }
+  // 같은 view 에서 이미 타이머 돌고 있으면 그대로 유지
+  if (_pipelineAutoRefreshTimer && _pipelineAutoRefreshView === currentView) return;
+  // 다른 pipeline view 로 전환됐으면 기존 타이머 갈아치우기
+  if (_pipelineAutoRefreshTimer) clearInterval(_pipelineAutoRefreshTimer);
+  _pipelineAutoRefreshView = currentView;
+  _pipelineAutoRefreshTimer = setInterval(async () => {
+    if (state.view !== currentView) return;  // 사용자가 이미 다른 곳으로 이동
+    try {
+      await loadLeads({ silent: true });
+      render();
+    } catch (e) { /* silent */ }
+  }, 30000);  // 30 초마다
 }
 
 function renderLeadTable(leads, emptyText = "No leads match the current filters.") {
@@ -2099,10 +2215,28 @@ function verifyFailures(lead) {
 }
 
 // 뱃지 HTML — 테이블 셀에서 사용. invalid/suspicious 면 짧은 사유 같이 표시
+// AI 판정 배지 — verify-ai 실행 여부와 결과를 한눈에 표시
+function aiVerdictBadgeHtml(lead) {
+  const v = lead?.verification;
+  if (!v?.aiVerifiedAt) return '';   // AI 미검증 → 배지 없음
+  const verdict = v.aiVerdict;
+  const conf = v.aiConfidence;
+  const reasoning = v.aiReasoning ? v.aiReasoning.slice(0, 200) : '';
+  const style = {
+    'beauty-buyer': { bg: '#dcfce7', fg: '#166534', bd: '#22c55e', label: '🧠 진성 바이어' },
+    'maybe':        { bg: '#fef3c7', fg: '#92400e', bd: '#f59e0b', label: '🧠 모호' },
+    'not-buyer':    { bg: '#fee2e2', fg: '#991b1b', bd: '#ef4444', label: '🧠 무관' },
+  }[verdict] || { bg: '#f1f5f9', fg: '#475569', bd: '#94a3b8', label: '🧠 AI 검증됨' };
+  const tip = `AI 판정: ${verdict || '?'} (${conf || '?'})\n${reasoning}`;
+  return `<div style="margin-top:3px" title="${escapeAttr(tip)}">
+    <span style="display:inline-block;padding:1px 6px;border-radius:99px;background:${style.bg};color:${style.fg};font-size:10px;font-weight:700;border:1px solid ${style.bd}40">${style.label}</span>
+  </div>`;
+}
+
 function verifyBadgeHtml(lead) {
   // 즐겨찾기는 별도 라벨 — 대표 직접 검증
   if (lead?.favorite === true) {
-    return `<span title="대표가 직접 확인한 리드 (즐겨찾기 등록)" style="display:inline-block;padding:2px 8px;border-radius:99px;background:#fef9c3;color:#854d0e;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid #facc15">⭐ 검증완료</span>`;
+    return `<span title="대표가 직접 확인한 리드 (즐겨찾기 등록)" style="display:inline-block;padding:2px 8px;border-radius:99px;background:#fef9c3;color:#854d0e;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid #facc15">⭐ 검증완료</span>${aiVerdictBadgeHtml(lead)}`;
   }
 
   const bucket = verifyBucketOf(lead);
@@ -2120,15 +2254,18 @@ function verifyBadgeHtml(lead) {
 
   const badge = `<span title="${escapeAttr(tooltip)}" style="display:inline-block;padding:2px 8px;border-radius:99px;background:${styles.bg};color:${styles.fg};font-size:11px;font-weight:600;white-space:nowrap">${styles.label}</span>`;
 
+  // AI 판정 배지 (있는 경우) 를 항상 아래에 표시
+  const ai = aiVerdictBadgeHtml(lead);
+
   // suspicious / invalid 만 짧은 사유 라벨 같이 표시 (테이블에서 한눈에)
   if (bucket === 'suspicious' || bucket === 'invalid') {
     const labels = failures.slice(0, 2).map(f => f.label).join(', ');
     const more = failures.length > 2 ? ` +${failures.length - 2}` : '';
     if (labels) {
-      return `${badge}<div style="font-size:10px;color:#6b7280;margin-top:3px;line-height:1.2">${escapeHtml(labels)}${more}</div>`;
+      return `${badge}<div style="font-size:10px;color:#6b7280;margin-top:3px;line-height:1.2">${escapeHtml(labels)}${more}</div>${ai}`;
     }
   }
-  return badge;
+  return badge + ai;
 }
 
 // 검증 분류 뷰 — 4개 버킷별로 섹션 카드 + 각 섹션에 대표 리드 상위 10개
