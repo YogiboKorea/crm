@@ -1527,7 +1527,7 @@ function renderVerifyingSubFilterChips(allInStage) {
     <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">🔎 AI 진행 여부:</span>
       ${chip('all', '전체', cAll, '#334155')}
-      ${chip('unverified', '⏳ AI 미검증 (대기)', cUnverified, '#f59e0b')}
+      ${chip('unverified', '⚠️ 불일치 (정책 제외/미판정)', cUnverified, '#f59e0b')}
       ${chip('ai-checked', '✅ AI 검증됨', cAiChecked, '#3b82f6')}
       ${chip('maybe', '🧠 모호 (사람 판단)', cMaybe, '#a855f7')}
     </div>
@@ -2420,26 +2420,73 @@ function verifyFailures(lead) {
 }
 
 // 뱃지 HTML — 테이블 셀에서 사용. invalid/suspicious 면 짧은 사유 같이 표시
-// AI 판정 배지 — verify-ai 실행 여부와 결과 + 검증 시각을 한눈에 표시
+// 한국 기업 판별
+function isKoreanCompany(country) {
+  if (!country) return false;
+  const c = String(country);
+  return /korea|한국|대한민국/i.test(c) && !/north/i.test(c);
+}
+
+// AI 검증 결과 첫 문장 (요약) — 40자 내외로 자르되 단어 경계에서
+function summarizeReasoning(text, max = 60) {
+  if (!text) return '';
+  const s = String(text).trim();
+  // 첫 문장 우선
+  const firstSentence = s.split(/[.!?。]/)[0].trim();
+  const base = firstSentence.length > 10 ? firstSentence : s;
+  if (base.length <= max) return base;
+  return base.slice(0, max).replace(/\s\S*$/, '') + '…';
+}
+
+// AI 판정 배지 — verify-ai 결과 + 검증 시각 + 왜 그렇게 판정됐는지 사유 요약
 function aiVerdictBadgeHtml(lead) {
-  const v = lead?.verification;
-  if (!v?.aiVerifiedAt) return '';   // AI 미검증 → 배지 없음
+  const v = lead?.verification || {};
+  const verifiedAt = v.aiVerifiedAt;
+  const relTime = verifiedAt ? formatRelativeKo(verifiedAt) : null;
+  const absTime = verifiedAt ? formatDateKo(verifiedAt) : null;
+
+  // ── (a) AI 미검증 리드 — 왜 검증 안됐는지 사유 표시 ────────
+  if (!verifiedAt) {
+    // 한국 기업이면 정책 제외
+    if (isKoreanCompany(lead?.Country)) {
+      return `<div style="margin-top:3px;display:flex;flex-direction:column;gap:2px;align-items:flex-start"
+        title="한국 기업은 자동 검증에서 제외되어 있음">
+        <span style="display:inline-block;padding:1px 6px;border-radius:99px;background:#fef2f2;color:#991b1b;font-size:10px;font-weight:700;border:1px solid #fca5a540">
+          ⚠️ 불일치
+        </span>
+        <span style="font-size:9px;color:var(--text-tertiary);font-weight:500;line-height:1.3">
+          🇰🇷 한국 기업 (정책 제외)
+        </span>
+      </div>`;
+    }
+    // 나머지 = AI 실행 안 됨 → 대기 상태
+    return `<div style="margin-top:3px;display:flex;flex-direction:column;gap:2px;align-items:flex-start"
+      title="AI 검증 아직 실행 안 됨. 검증 대기 페이지에서 AI 실행 필요">
+      <span style="display:inline-block;padding:1px 6px;border-radius:99px;background:#f1f5f9;color:#475569;font-size:10px;font-weight:700;border:1px solid #cbd5e140">
+        ⏳ AI 대기
+      </span>
+      <span style="font-size:9px;color:var(--text-tertiary);font-weight:500;line-height:1.3">
+        검증 실행 필요
+      </span>
+    </div>`;
+  }
+
+  // ── (b) AI 판정 있는 리드 — 판정 + 사유 요약 ──────────────
   const verdict = v.aiVerdict;
   const conf = v.aiConfidence;
-  const reasoning = v.aiReasoning ? v.aiReasoning.slice(0, 200) : '';
+  const fullReasoning = v.aiReasoning || '';
+  const briefReasoning = summarizeReasoning(fullReasoning, 60);
   const style = {
     'beauty-buyer': { bg: '#dcfce7', fg: '#166534', bd: '#22c55e', label: '🧠 진성 바이어' },
     'maybe':        { bg: '#fef3c7', fg: '#92400e', bd: '#f59e0b', label: '🧠 모호' },
     'not-buyer':    { bg: '#fee2e2', fg: '#991b1b', bd: '#ef4444', label: '🧠 무관' },
   }[verdict] || { bg: '#f1f5f9', fg: '#475569', bd: '#94a3b8', label: '🧠 AI 검증됨' };
 
-  const verifiedAt = v.aiVerifiedAt;
-  const relTime = formatRelativeKo(verifiedAt);
-  const absTime = formatDateKo(verifiedAt);
-  const tip = `AI 판정: ${verdict || '?'} (${conf || '?'})\n검증 완료: ${absTime || '?'}\n\n${reasoning}`;
+  const tip = `AI 판정: ${verdict || '?'} (${conf || '?'})\n검증 완료: ${absTime || '?'}\n\n${fullReasoning}`;
 
   return `<div style="margin-top:3px;display:flex;flex-direction:column;gap:2px;align-items:flex-start" title="${escapeAttr(tip)}">
     <span style="display:inline-block;padding:1px 6px;border-radius:99px;background:${style.bg};color:${style.fg};font-size:10px;font-weight:700;border:1px solid ${style.bd}40">${style.label}</span>
+    ${briefReasoning ? `<span style="font-size:9px;color:var(--text-tertiary);font-weight:500;line-height:1.3;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(fullReasoning)}">💬 ${escapeHtml(briefReasoning)}</span>` : ''}
     ${relTime ? `<span style="font-size:9px;color:var(--text-tertiary);font-weight:500">📅 ${relTime}</span>` : ''}
   </div>`;
 }
