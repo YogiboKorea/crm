@@ -213,8 +213,8 @@ let state = {
   //   'failed'      - 검증 실패 (archived stage + not-buyer 판정) — cross-stage
   //   'all'         - 전체 (verifying stage 만)
   verifyingSubFilter: 'unverified',
-  // 테이블 페이지네이션 (100건씩)
-  pagination: { pageSize: 100, currentPage: 1 },
+  // 테이블 페이지네이션 (기본 50건 · 사용자가 25/50/100 선택 가능)
+  pagination: { pageSize: 50, currentPage: 1 },
   // 검증완료 페이지 서브 필터 (승인 상태로 나눔)
   //   'all'        - 전체 verified
   //   'approved'   - readyForOutreach=true (발송 대기열)
@@ -279,6 +279,11 @@ async function init() {
   initImportHistoryModal();
   initThemeToggle();
   initSidebarToggle();
+  // 저장된 페이지 크기 복원 (사용자가 이전에 선택한 값 유지)
+  try {
+    const savedSize = parseInt(localStorage.getItem('leads-page-size') || '', 10);
+    if ([25, 50, 100].includes(savedSize)) state.pagination.pageSize = savedSize;
+  } catch {}
   renderFilters();
   bindEvents();
   render();
@@ -1898,8 +1903,14 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
       <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
         Delete Selected (${state.selectedLeadIds.size})
       </button>
-      <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary)">
-        총 <b style="color:var(--text-primary)">${leads.length.toLocaleString()}</b>건 중 <b style="color:var(--text-primary)">${start + 1}~${end}</b>번 표시
+      <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary);display:inline-flex;align-items:center;gap:8px">
+        <span>총 <b style="color:var(--text-primary)">${leads.length.toLocaleString()}</b>건 중 <b style="color:var(--text-primary)">${start + 1}~${end}</b>번 표시</span>
+        <select id="pageSizeSel" title="한 페이지에 보여줄 리드 수"
+          style="padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--surface-1);color:var(--text-primary);cursor:pointer">
+          <option value="25" ${pageSize === 25 ? 'selected' : ''}>25/page</option>
+          <option value="50" ${pageSize === 50 ? 'selected' : ''}>50/page</option>
+          <option value="100" ${pageSize === 100 ? 'selected' : ''}>100/page</option>
+        </select>
       </span>
     </div>
     <div class="table-wrap">
@@ -1955,6 +1966,15 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
       state.pagination.currentPage = v;
       render();
       els.content?.scrollTo?.({ top: 0, behavior: 'smooth' });
+    }
+  });
+  els.content.querySelector('#pageSizeSel')?.addEventListener('change', (e) => {
+    const newSize = parseInt(e.target.value, 10);
+    if ([25, 50, 100].includes(newSize)) {
+      state.pagination.pageSize = newSize;
+      state.pagination.currentPage = 1;   // 페이지 크기 변경 시 1페이지로
+      try { localStorage.setItem('leads-page-size', String(newSize)); } catch {}
+      render();
     }
   });
 
