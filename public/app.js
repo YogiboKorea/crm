@@ -3026,49 +3026,219 @@ async function renderB2BEmailManager() {
 }
 
 // ── Phase 1 스켈레톤: 이메일 크롤링 ─────────────────────────
+// ══════════════════════════════════════════════════════════════
+// 🕷 이메일 크롤링 대시보드 — 대기열 · 결과 · 벌크 실행
+// ══════════════════════════════════════════════════════════════
+let _crawlState = {
+  scopeSel: 'verified',        // 'verified' | 'verifying' | 'both'
+  chunkLimit: 50,
+  running: false,
+  runResults: [],              // { chunk, processed, found, promoted, ts }
+};
+
 function renderCrawlerTool() {
-  const noEmailCount = baseLeads.filter(l => !hasEmail(l) && l.WebsiteContact).length;
-  const withUrlNoEmail = baseLeads.filter(l =>
-    !hasEmail(l) &&
-    (!Array.isArray(l.crawledEmails) || l.crawledEmails.length === 0) &&
-    l.WebsiteContact
-  ).length;
+  const isKor = (c) => /korea|한국|대한민국/i.test(c || '') && !/north/i.test(c || '');
+  const hasRealEmail = (l) => l.Email && String(l.Email).trim() && !/^Not found/i.test(l.Email);
+
+  // 3가지 카테고리로 분류
+  const compute = (stage) => {
+    const in_stage = baseLeads.filter(l =>
+      (l.stage || 'imported') === stage && !isKor(l.Country || '')
+    );
+    const noEmail = in_stage.filter(l => !hasRealEmail(l));
+    const withSite = noEmail.filter(l => l.WebsiteContact && String(l.WebsiteContact).trim());
+    const pending = withSite.filter(l => !(l.crawledAt || '').trim());
+    const attempted = withSite.filter(l => (l.crawledAt || '').trim());
+    const promotedInStage = in_stage.filter(l => l.crawledEmails?.length && hasRealEmail(l));
+    return { total: in_stage.length, noEmail: noEmail.length, withSite: withSite.length,
+             pending: pending.length, attempted: attempted.length, promoted: promotedInStage.length };
+  };
+  const cVerified = compute('verified');
+  const cVerifying = compute('verifying');
+  const totalPending = cVerified.pending + cVerifying.pending;
+  const totalAttempted = cVerified.attempted + cVerifying.attempted;
+  const totalPromoted = cVerified.promoted + cVerifying.promoted;
+
+  // 실행 대상 (현재 scopeSel 기준)
+  const scopeCount = _crawlState.scopeSel === 'verified' ? cVerified.pending
+                   : _crawlState.scopeSel === 'verifying' ? cVerifying.pending
+                   : totalPending;
+
+  // 최근 실행 결과 최대 20개 (역순)
+  const recentResults = _crawlState.runResults.slice(-20).reverse();
 
   els.content.innerHTML = `
-    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin-bottom:20px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span style="font-size:20px">🕷</span>
-        <strong style="font-size:15px;color:#1e40af">이메일 크롤링이란</strong>
+    <!-- 설명 배너 -->
+    <div style="background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%);border:1px solid #c7d2fe;border-radius:12px;padding:16px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:22px">🕷</span>
+        <strong style="font-size:15px;color:#3730a3">이메일 크롤링 (무료 · 외부 API 안 씀)</strong>
       </div>
-      <p style="margin:0;font-size:13px;color:#1e3a8a;line-height:1.6">
-        회사 홈페이지 → <code>/contact</code>, <code>/about</code>, <code>/team</code> 등 하위 페이지 접근 →
-        <code>mailto:</code> 링크 + 텍스트에서 이메일 추출 → <code>info@</code>, <code>ceo@</code> 등 신뢰도 스코어링.
+      <p style="margin:0;font-size:12px;color:#4c1d95;line-height:1.6">
+        회사 홈페이지 + <code style="background:#fff;padding:1px 5px;border-radius:4px">/contact</code>
+        <code style="background:#fff;padding:1px 5px;border-radius:4px">/about</code>
+        <code style="background:#fff;padding:1px 5px;border-radius:4px">/about-us</code> 순회 →
+        mailto: 링크 + 텍스트 이메일 추출 →
+        역할별 우선순위 (partnerships > business > sales > marketing > ceo > info) →
+        <b>최우선 후보 자동으로 Email 필드 승격</b>
+        · 🇰🇷 한국 기업 자동 제외 · 이미 시도한 리드는 재크롤 안 함
       </p>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px">
-      <div style="background:#fff;padding:16px;border:1px solid #e5e7eb;border-radius:8px">
-        <div style="font-size:11px;color:#6b7280;margin-bottom:4px">이메일 없는 리드</div>
-        <div style="font-size:22px;font-weight:800;color:#111">${noEmailCount}</div>
+    <!-- 스탯 카드 -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
+      <div style="background:var(--surface-1);padding:14px;border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;font-weight:600">🎯 크롤 대기 (총)</div>
+        <div style="font-size:26px;font-weight:800;color:#f59e0b">${totalPending.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+          verified <b>${cVerified.pending}</b> · verifying <b>${cVerifying.pending}</b>
+        </div>
       </div>
-      <div style="background:#fef3c7;padding:16px;border:1px solid #fcd34d;border-radius:8px">
-        <div style="font-size:11px;color:#92400e;margin-bottom:4px">크롤링 대상 (URL 있음, 미크롤링)</div>
-        <div style="font-size:22px;font-weight:800;color:#92400e">${withUrlNoEmail}</div>
+      <div style="background:var(--surface-1);padding:14px;border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;font-weight:600">✅ 크롤 시도 완료</div>
+        <div style="font-size:26px;font-weight:800;color:#3b82f6">${totalAttempted.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">이메일 발견/무 무관 · 재시도 안 함</div>
+      </div>
+      <div style="background:var(--surface-1);padding:14px;border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;font-weight:600">📧 Email 자동 승격</div>
+        <div style="font-size:26px;font-weight:800;color:#15803d">${totalPromoted.toLocaleString()}</div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">발견된 최우선 후보를 Email 필드에 등록</div>
+      </div>
+      <div style="background:var(--surface-1);padding:14px;border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;font-weight:600">💰 예상 비용</div>
+        <div style="font-size:26px;font-weight:800;color:#15803d">$0</div>
+        <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">외부 API 안 씀 · 서버 대역폭만 사용</div>
       </div>
     </div>
 
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:24px;text-align:center">
-      <div style="padding:32px;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;color:#6b7280;font-size:14px">
-        🚧 Phase 2 에서 구현 예정<br>
-        <span style="font-size:12px;margin-top:8px;display:block">
-          • 사이트 다중 페이지 크롤링 (contact/about/team/impressum)<br>
-          • 다국어 서브패스 지원 (/en, /ko, /de)<br>
-          • 신뢰도 스코어링 (실무 담당자 우선)<br>
-          • 청크 처리 + 진행률 표시
+    <!-- 실행 컨트롤 -->
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="margin:0;font-size:15px;font-weight:700">🚀 크롤 배치 실행</h3>
+        <span style="font-size:11px;color:var(--text-tertiary)">
+          한 번에 <b>${_crawlState.chunkLimit}건</b> 씩 순차 처리
         </span>
       </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary)">대상 stage:</label>
+        <select id="crawlScopeSel" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+          <option value="verified" ${_crawlState.scopeSel === 'verified' ? 'selected' : ''}>✅ verified 만 (${cVerified.pending}건)</option>
+          <option value="verifying" ${_crawlState.scopeSel === 'verifying' ? 'selected' : ''}>🔍 verifying 만 (${cVerifying.pending}건)</option>
+          <option value="both" ${_crawlState.scopeSel === 'both' ? 'selected' : ''}>📦 둘 다 (${totalPending}건)</option>
+        </select>
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary)">청크당:</label>
+        <select id="crawlChunkSel" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+          <option value="20" ${_crawlState.chunkLimit === 20 ? 'selected' : ''}>20건 (느리게)</option>
+          <option value="50" ${_crawlState.chunkLimit === 50 ? 'selected' : ''}>50건 (기본)</option>
+          <option value="100" ${_crawlState.chunkLimit === 100 ? 'selected' : ''}>100건 (빠르게)</option>
+        </select>
+      </div>
+      <button id="crawlRunBtn" class="button primary" type="button"
+        ${_crawlState.running || scopeCount === 0 ? 'disabled' : ''}
+        style="width:100%;padding:14px;font-size:14px;font-weight:700;background:${scopeCount === 0 ? '#9ca3af' : '#4338ca'};color:white;border:none;border-radius:10px;cursor:${scopeCount === 0 ? 'not-allowed' : 'pointer'}">
+        ${_crawlState.running
+          ? '⏳ 크롤 실행 중...'
+          : scopeCount === 0
+            ? '✅ 크롤 대기 없음 (모두 처리됨)'
+            : `🕷 크롤 실행 (${scopeCount}건 · 무료)`}
+      </button>
+    </div>
+
+    <!-- 최근 실행 결과 -->
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:20px">
+      <h3 style="margin:0 0 12px;font-size:14px;font-weight:700">📊 최근 실행 결과 (이번 세션)</h3>
+      ${recentResults.length === 0 ? `
+        <div style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:12px;background:var(--surface-2);border-radius:8px">
+          아직 실행한 배치가 없습니다. 위 "🕷 크롤 실행" 버튼을 눌러 시작하세요.
+        </div>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${recentResults.map(r => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface-2);border-radius:6px;font-size:12px">
+              <span style="color:var(--text-tertiary)">${r.ts} · chunk#${r.chunk}</span>
+              <span>처리 <b style="color:#3b82f6">${r.processed}</b> · 발견 <b style="color:#15803d">${r.found}</b> · 승격 <b style="color:#15803d">${r.promoted}</b></span>
+            </div>
+          `).join('')}
+        </div>
+      `}
     </div>
   `;
+
+  // 바인딩
+  document.getElementById('crawlScopeSel')?.addEventListener('change', (e) => {
+    _crawlState.scopeSel = e.target.value;
+    renderCrawlerTool();
+  });
+  document.getElementById('crawlChunkSel')?.addEventListener('change', (e) => {
+    _crawlState.chunkLimit = parseInt(e.target.value, 10);
+    renderCrawlerTool();
+  });
+  document.getElementById('crawlRunBtn')?.addEventListener('click', () => runCrawlerBatch());
+}
+
+async function runCrawlerBatch() {
+  if (_crawlState.running) return;
+  const scopeMap = {
+    'verified': ['verified-no-email'],
+    'verifying': ['verifying-no-email'],
+    'both': ['verified-no-email', 'verifying-no-email'],
+  };
+  const scopes = scopeMap[_crawlState.scopeSel] || ['verified-no-email'];
+  _crawlState.running = true;
+  renderCrawlerTool();
+
+  let totalP = 0, totalF = 0, totalPr = 0;
+  try {
+    for (const scope of scopes) {
+      let chunkNum = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (chunkNum < 40) {
+        const res = await fetch('/api/leads/crawl-emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope,
+            limit: _crawlState.chunkLimit,
+            excludeKorea: true,
+            promoteToEmail: true,
+            skipAlreadyCrawled: true,
+          }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || '크롤 실패');
+        chunkNum++;
+        totalP += data.processed || 0;
+        totalF += data.foundCount || 0;
+        totalPr += data.promotedCount || 0;
+        _crawlState.runResults.push({
+          chunk: chunkNum,
+          processed: data.processed || 0,
+          found: data.foundCount || 0,
+          promoted: data.promotedCount || 0,
+          ts: new Date().toLocaleTimeString('ko-KR', { hour12: false }),
+        });
+        // 실시간 렌더링 (스탯 갱신)
+        renderCrawlerTool();
+        if ((data.processed || 0) === 0) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    // 완료 후 leads 재로드
+    await loadLeads();
+    _crawlState.running = false;
+    renderCrawlerTool();
+    alert(
+      `✅ 크롤링 배치 완료\n\n` +
+      `처리: ${totalP}건\n` +
+      `이메일 발견: ${totalF}건\n` +
+      `Email 필드 자동 승격: ${totalPr}건\n` +
+      `비용: $0 (외부 API 안 씀)`
+    );
+  } catch (e) {
+    _crawlState.running = false;
+    renderCrawlerTool();
+    alert(`❌ 크롤 실패: ${e.message || 'unknown'}\n\n지금까지 처리: ${totalP}건`);
+  }
 }
 
 async function renderRecommendedBuyers() {
