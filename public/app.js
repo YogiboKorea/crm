@@ -208,11 +208,11 @@ let state = {
   sortField: null,
   sortOrder: "asc",
   // 검증대기 페이지 하위 필터 (AI 진행 여부로 나눔)
-  //   'all'         - 전체
-  //   'unverified'  - AI 미검증 (아직 처리 전)
+  //   'unverified'  - AI 미검증 (아직 처리 전) — DEFAULT: "검증 전 상태" 만 보이도록
   //   'maybe'       - AI 검증됨: 모호 판정 (사람 판단 필요)
-  //   'ai-checked'  - AI 검증 완료된 모든 것 (maybe + 이번 stage 에 남은 것)
-  verifyingSubFilter: 'all',
+  //   'failed'      - 검증 실패 (archived stage + not-buyer 판정) — cross-stage
+  //   'all'         - 전체 (verifying stage 만)
+  verifyingSubFilter: 'unverified',
   // 테이블 페이지네이션 (100건씩)
   pagination: { pageSize: 100, currentPage: 1 },
   // 검증완료 페이지 서브 필터 (승인 상태로 나눔)
@@ -1093,14 +1093,21 @@ function render() {
 
     // 검증대기 stage 는 AI 진행 여부 하위 필터 적용
     if (s.stage === 'verifying') {
-      const sub = state.verifyingSubFilter || 'all';
+      const sub = state.verifyingSubFilter || 'unverified';
       if (sub === 'unverified') {
+        // "검증 전 상태" — AI 아직 안 본 것만
         stageLeads = stageLeads.filter(l => !l?.verification?.aiVerifiedAt);
       } else if (sub === 'maybe') {
         stageLeads = stageLeads.filter(l => l?.verification?.aiVerdict === 'maybe');
-      } else if (sub === 'ai-checked') {
-        stageLeads = stageLeads.filter(l => !!l?.verification?.aiVerifiedAt);
+      } else if (sub === 'failed') {
+        // 검증 실패 (무효) — archived stage + AI not-buyer 판정 (cross-stage)
+        // filter 리스트를 archived + not-buyer 로 대체
+        stageLeads = leads.filter(l =>
+          (l.stage || 'imported') === 'archived' &&
+          l?.verification?.aiVerdict === 'not-buyer'
+        );
       }
+      // 'all' 은 stage=verifying 필터 그대로
     }
     // 검증완료 stage 는 발송 승인 상태 하위 필터 적용
     if (s.stage === 'verified') {
@@ -1551,9 +1558,14 @@ function renderVerifyingSubFilterChips(allInStage) {
   const cAll = allInStage.length;
   const cUnverified = allInStage.filter(l => !l?.verification?.aiVerifiedAt).length;
   const cMaybe = allInStage.filter(l => l?.verification?.aiVerdict === 'maybe').length;
-  const cAiChecked = allInStage.filter(l => !!l?.verification?.aiVerifiedAt).length;
+  // 검증 실패 (무효): archived stage + not-buyer (cross-stage)
+  const cFailed = baseLeads.filter(l =>
+    !l.deleted &&
+    (l.stage || 'imported') === 'archived' &&
+    l?.verification?.aiVerdict === 'not-buyer'
+  ).length;
 
-  const cur = state.verifyingSubFilter || 'all';
+  const cur = state.verifyingSubFilter || 'unverified';
   const chip = (key, label, count, color) => {
     const active = key === cur;
     const bg = active ? color : 'var(--surface-1)';
@@ -1567,13 +1579,26 @@ function renderVerifyingSubFilterChips(allInStage) {
     </button>`;
   };
 
+  // 실패 탭 전용 액션 버튼
+  const showDeleteAllBtn = cur === 'failed' && cFailed > 0;
+
   container.innerHTML = `
-    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-      <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">🔎 AI 진행 여부:</span>
-      ${chip('all', '전체', cAll, '#334155')}
-      ${chip('unverified', '⚠️ 불일치 (정책 제외/미판정)', cUnverified, '#f59e0b')}
-      ${chip('ai-checked', '✅ AI 검증됨', cAiChecked, '#3b82f6')}
-      ${chip('maybe', '🧠 모호 (사람 판단)', cMaybe, '#a855f7')}
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">🔎 상태별:</span>
+        ${chip('unverified', '⏳ 검증 전 (기본)', cUnverified, '#f59e0b')}
+        ${chip('maybe', '🧠 모호 (사람 판단)', cMaybe, '#a855f7')}
+        ${chip('failed', '🚫 검증 실패 (무효)', cFailed, '#dc2626')}
+        ${chip('all', '📦 전체 검증대기', cAll, '#334155')}
+      </div>
+      ${showDeleteAllBtn ? `
+        <button id="deleteAllFailedBtn" type="button"
+          style="padding:6px 14px;font-size:12px;font-weight:700;background:#dc2626;color:white;
+          border:none;border-radius:8px;cursor:pointer;box-shadow:0 1px 3px rgba(220,38,38,0.3)"
+          title="검증 실패 리드 ${cFailed}건 전부 완전 삭제 (되돌릴 수 없음)">
+          🗑 실패 리드 전부 삭제 (${cFailed})
+        </button>
+      ` : ''}
     </div>
   `;
 
@@ -1584,6 +1609,7 @@ function renderVerifyingSubFilterChips(allInStage) {
       render();
     });
   });
+  document.getElementById('deleteAllFailedBtn')?.addEventListener('click', () => deleteAllFailedLeads());
 }
 function clearVerifyingSubFilterChips() {
   const c = document.getElementById('verifyingSubFilterChips');
@@ -3842,6 +3868,52 @@ async function deleteLead(id) {
   if(lead._id) {
     await fetch('/api/leads/' + lead._id, { method: 'DELETE' });
   }
+}
+
+// 검증 실패 (archived + not-buyer) 리드 전부 삭제
+async function deleteAllFailedLeads() {
+  const failed = baseLeads.filter(l =>
+    !l.deleted &&
+    (l.stage || 'imported') === 'archived' &&
+    l?.verification?.aiVerdict === 'not-buyer'
+  );
+  if (!failed.length) {
+    alert('삭제할 검증 실패 리드가 없습니다.');
+    return;
+  }
+  const ok = confirm(
+    `🗑 검증 실패 리드 ${failed.length}건 전부 삭제\n\n` +
+    `AI가 K-beauty 무관 판정한 리드들입니다.\n` +
+    `이 작업은 되돌릴 수 없습니다.\n\n` +
+    `정말 전부 삭제하시겠습니까?`
+  );
+  if (!ok) return;
+
+  // 로컬에서 즉시 삭제 표시 + 병렬 API 호출 (기존 deleteSelectedLeads 패턴)
+  let deleted = 0;
+  const failures = [];
+  const promises = failed.map(async (lead) => {
+    if (!lead._id) return;
+    try {
+      const res = await fetch('/api/leads/' + lead._id, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        lead.deleted = true;
+        deleted++;
+      } else {
+        failures.push(lead.Company || lead.leadId);
+      }
+    } catch (e) {
+      failures.push(lead.Company || lead.leadId);
+    }
+  });
+  await Promise.all(promises);
+
+  alert(`✅ 삭제 완료\n\n삭제됨: ${deleted}건${failures.length ? '\n실패: ' + failures.length + '건' : ''}`);
+  await loadLeads();
+  state.selectedLeadIds.clear();
+  renderFilters();
+  render();
 }
 
 async function deleteSelectedLeads() {
