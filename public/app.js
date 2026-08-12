@@ -1076,20 +1076,31 @@ function render() {
   const stageMap = {
     'pipeline-import':      { stage: 'imported',    title: '📥 가져오기 (Import)',  sub: '엑셀에서 새로 업로드된 회사들. 검증 진행 대기.' },
     'pipeline-verifying':   { stage: 'verifying',   title: '🔍 검증 대기',          sub: '검증 진행 중이거나 필요한 회사들.' },
-    'pipeline-verified':    { stage: 'verified',    title: '✅ 검증 완료',          sub: '검증 통과 = B2B 메일 컨택 대상. 발송 승인 후 자동 발송.' },
+    'pipeline-verified':    { stage: 'verified',    title: '✅ 검증 완료',          sub: '검증 통과 = B2B 메일 컨택 대상. 메일 없으면 크롤링 실행.' },
+    'pipeline-failed':      { stage: '__failed',    title: '🚫 검증 실패',          sub: 'AI가 K-beauty 무관으로 판정. 잘못 판정된 것은 수동으로 검증완료로 되돌리기 가능.' },
     'pipeline-contacted':   { stage: 'contacted',   title: '📨 컨택 중',            sub: '첫 메일 발송 완료. 응답 대기 중.' },
     'pipeline-replied':     { stage: 'replied',     title: '💬 응답 옴',            sub: '상대방 답장 옴. 팔로우업 필요.' },
     'pipeline-negotiating': { stage: 'negotiating', title: '🤝 협상 중',            sub: '미팅/샘플/조건 협상 단계.' },
     'pipeline-partner':     { stage: 'partner',     title: '⭐ 파트너 (최종 완료)', sub: '계약 성사된 파트너. 자동 메일 발송 대상에서 자동 제외됨.' },
-    'pipeline-archived':    { stage: 'archived',    title: '📦 보관함',             sub: '검증 무효 또는 폐기된 리드. 필요 시 복구 가능.' },
+    'pipeline-archived':    { stage: 'archived',    title: '📦 보관함',             sub: '수동 폐기 또는 정리한 리드. 필요 시 복구 가능.' },
   };
   if (stageMap[state.view]) {
     const s = stageMap[state.view];
     els.viewTitle.textContent = s.title;
     els.viewSubtitle.textContent = s.sub;
+
+    // 특수 케이스: pipeline-failed 는 실제 stage 아님 → archived + not-buyer 로 대체
+    let stageMatch;
+    if (s.stage === '__failed') {
+      stageMatch = (l) => (l.stage || 'imported') === 'archived' &&
+        l?.verification?.aiVerdict === 'not-buyer';
+    } else {
+      stageMatch = (l) => (l.stage || 'imported') === s.stage;
+    }
+
     // stage 필터는 텍스트 필터(getFilteredLeads) 뒤에 한번 더 적용
-    const allByStage = getLeads().filter(l => (l.stage || 'imported') === s.stage);
-    let stageLeads = leads.filter(l => (l.stage || 'imported') === s.stage);
+    const allByStage = getLeads().filter(stageMatch);
+    let stageLeads = leads.filter(stageMatch);
 
     // 검증대기 stage 는 AI 진행 여부 하위 필터 적용
     if (s.stage === 'verifying') {
@@ -1099,15 +1110,9 @@ function render() {
         stageLeads = stageLeads.filter(l => !l?.verification?.aiVerifiedAt);
       } else if (sub === 'maybe') {
         stageLeads = stageLeads.filter(l => l?.verification?.aiVerdict === 'maybe');
-      } else if (sub === 'failed') {
-        // 검증 실패 (무효) — archived stage + AI not-buyer 판정 (cross-stage)
-        // filter 리스트를 archived + not-buyer 로 대체
-        stageLeads = leads.filter(l =>
-          (l.stage || 'imported') === 'archived' &&
-          l?.verification?.aiVerdict === 'not-buyer'
-        );
       }
       // 'all' 은 stage=verifying 필터 그대로
+      // 'failed' 는 사이드바 별도 페이지로 이동됨
     }
     // 검증완료 stage 는 발송 승인 상태 하위 필터 적용
     if (s.stage === 'verified') {
@@ -1318,6 +1323,39 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
         </div>
       </div>
     `;
+  } else if (stageInfo.stage === '__failed') {
+    // 검증 실패 페이지 — archived + not-buyer 리드
+    const failedCount = baseLeads.filter(l =>
+      !l.deleted &&
+      (l.stage || 'imported') === 'archived' &&
+      l?.verification?.aiVerdict === 'not-buyer'
+    ).length;
+    heroCard = `
+      <div class="verify-hero" style="margin-top:12px">
+        <div class="verify-hero-card" style="
+          padding:20px;border-radius:16px;
+          background:linear-gradient(135deg,#fef2f2 0%,#fecaca 100%);
+          border:1px solid #fca5a5;display:flex;align-items:center;gap:20px;
+        ">
+          <div style="font-size:40px">🚫</div>
+          <div style="flex:1">
+            <div style="font-size:12px;color:#991b1b;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">AI 검증 실패</div>
+            <div style="font-size:14px;color:#7f1d1d;margin-top:2px">
+              <b>${failedCount.toLocaleString()}건</b> · AI가 K-beauty 무관으로 판정.
+              잘못된 판정이라 싶으면 각 행의 <b>[→ ✅ 검증완료]</b> 버튼으로 되돌리기 가능.
+            </div>
+          </div>
+          <button id="deleteAllFailedHeroBtn" type="button" style="
+            font-size:13px;font-weight:700;padding:12px 20px;white-space:nowrap;
+            background:#dc2626;color:white;border:none;border-radius:10px;cursor:pointer;
+            box-shadow:0 2px 8px rgba(220,38,38,0.3);
+            ${failedCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+          " ${failedCount === 0 ? 'disabled' : ''}>
+            🗑 전부 완전 삭제 (${failedCount})
+          </button>
+        </div>
+      </div>
+    `;
   } else if (stageInfo.stage === 'verified') {
     const { crawlPending } = computeVerificationCounts('verified');
     heroCard = `
@@ -1370,6 +1408,7 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   document.getElementById('runAiVerifyOnVerifyingBtn')?.addEventListener('click', () => runVerifyingStageAi());
   document.getElementById('runCrawlOnVerifyingBtn')?.addEventListener('click', () => runCrawlEmails('verifying-no-email'));
   document.getElementById('runCrawlOnVerifiedBtn')?.addEventListener('click', () => runCrawlEmails('verified-no-email'));
+  document.getElementById('deleteAllFailedHeroBtn')?.addEventListener('click', () => deleteAllFailedLeads());
 }
 
 // ── AI 1차 검증 (verifying stage 파이프라인) ─────────────────
@@ -1525,16 +1564,10 @@ function renderVerifyingSubFilterChips(allInStage) {
     }
   }
 
-  // 각 필터별 카운트
+  // 각 필터별 카운트 (검증대기 stage 내부 3 상태만)
   const cAll = allInStage.length;
   const cUnverified = allInStage.filter(l => !l?.verification?.aiVerifiedAt).length;
   const cMaybe = allInStage.filter(l => l?.verification?.aiVerdict === 'maybe').length;
-  // 검증 실패 (무효): archived stage + not-buyer (cross-stage)
-  const cFailed = baseLeads.filter(l =>
-    !l.deleted &&
-    (l.stage || 'imported') === 'archived' &&
-    l?.verification?.aiVerdict === 'not-buyer'
-  ).length;
 
   const cur = state.verifyingSubFilter || 'unverified';
   const chip = (key, label, count, color) => {
@@ -1550,26 +1583,12 @@ function renderVerifyingSubFilterChips(allInStage) {
     </button>`;
   };
 
-  // 실패 탭 전용 액션 버튼
-  const showDeleteAllBtn = cur === 'failed' && cFailed > 0;
-
   container.innerHTML = `
-    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-        <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">🔎 상태별:</span>
-        ${chip('unverified', '⏳ 검증 전 (기본)', cUnverified, '#f59e0b')}
-        ${chip('maybe', '🧠 모호 (사람 판단)', cMaybe, '#a855f7')}
-        ${chip('failed', '🚫 검증 실패 (무효)', cFailed, '#dc2626')}
-        ${chip('all', '📦 전체 검증대기', cAll, '#334155')}
-      </div>
-      ${showDeleteAllBtn ? `
-        <button id="deleteAllFailedBtn" type="button"
-          style="padding:6px 14px;font-size:12px;font-weight:700;background:#dc2626;color:white;
-          border:none;border-radius:8px;cursor:pointer;box-shadow:0 1px 3px rgba(220,38,38,0.3)"
-          title="검증 실패 리드 ${cFailed}건 전부 완전 삭제 (되돌릴 수 없음)">
-          🗑 실패 리드 전부 삭제 (${cFailed})
-        </button>
-      ` : ''}
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">🔎 상태별:</span>
+      ${chip('unverified', '⏳ 검증 전 (기본)', cUnverified, '#f59e0b')}
+      ${chip('maybe', '🧠 모호 (사람 판단)', cMaybe, '#a855f7')}
+      ${chip('all', '📦 전체 검증대기', cAll, '#334155')}
     </div>
   `;
 
@@ -1580,7 +1599,6 @@ function renderVerifyingSubFilterChips(allInStage) {
       render();
     });
   });
-  document.getElementById('deleteAllFailedBtn')?.addEventListener('click', () => deleteAllFailedLeads());
 }
 function clearVerifyingSubFilterChips() {
   const c = document.getElementById('verifyingSubFilterChips');
@@ -2251,7 +2269,7 @@ const STAGE_QUICK_MOVES = {
   replied:     ['negotiating', 'partner', 'archived'],
   negotiating: ['partner', 'archived'],
   partner:     ['negotiating', 'archived'],
-  archived:    ['imported', 'verifying'],
+  archived:    ['verified', 'verifying', 'imported'],
 };
 
 function stageCellHtml(lead) {
@@ -3161,7 +3179,7 @@ async function renderB2BEmailManager() {
 // 🕷 이메일 크롤링 대시보드 — 대기열 · 결과 · 벌크 실행
 // ══════════════════════════════════════════════════════════════
 let _crawlState = {
-  scopeSel: 'verified',        // 'verified' | 'verifying' | 'both'
+  scopeSel: 'verified',        // 검증완료 리드만 대상 (검증대기는 크롤링 안 함)
   chunkLimit: 50,
   running: false,
   runResults: [],              // { chunk, processed, found, promoted, ts }
@@ -3171,29 +3189,23 @@ function renderCrawlerTool() {
   const isKor = (c) => /korea|한국|대한민국/i.test(c || '') && !/north/i.test(c || '');
   const hasRealEmail = (l) => l.Email && String(l.Email).trim() && !/^Not found/i.test(l.Email);
 
-  // 3가지 카테고리로 분류
-  const compute = (stage) => {
-    const in_stage = baseLeads.filter(l =>
-      (l.stage || 'imported') === stage && !isKor(l.Country || '')
-    );
-    const noEmail = in_stage.filter(l => !hasRealEmail(l));
-    const withSite = noEmail.filter(l => l.WebsiteContact && String(l.WebsiteContact).trim());
-    const pending = withSite.filter(l => !(l.crawledAt || '').trim());
-    const attempted = withSite.filter(l => (l.crawledAt || '').trim());
-    const promotedInStage = in_stage.filter(l => l.crawledEmails?.length && hasRealEmail(l));
-    return { total: in_stage.length, noEmail: noEmail.length, withSite: withSite.length,
-             pending: pending.length, attempted: attempted.length, promoted: promotedInStage.length };
-  };
-  const cVerified = compute('verified');
-  const cVerifying = compute('verifying');
-  const totalPending = cVerified.pending + cVerifying.pending;
-  const totalAttempted = cVerified.attempted + cVerifying.attempted;
-  const totalPromoted = cVerified.promoted + cVerifying.promoted;
+  // 검증완료(verified) 리드만 크롤링 대상
+  const in_stage = baseLeads.filter(l =>
+    (l.stage || 'imported') === 'verified' && !isKor(l.Country || '')
+  );
+  const noEmail = in_stage.filter(l => !hasRealEmail(l));
+  const withSite = noEmail.filter(l => l.WebsiteContact && String(l.WebsiteContact).trim());
+  const pending = withSite.filter(l => !(l.crawledAt || '').trim());
+  const attempted = withSite.filter(l => (l.crawledAt || '').trim());
+  const promotedInStage = in_stage.filter(l => l.crawledEmails?.length && hasRealEmail(l));
+  const cVerified = { total: in_stage.length, noEmail: noEmail.length, withSite: withSite.length,
+                      pending: pending.length, attempted: attempted.length, promoted: promotedInStage.length };
+  const totalPending = cVerified.pending;
+  const totalAttempted = cVerified.attempted;
+  const totalPromoted = cVerified.promoted;
 
-  // 실행 대상 (현재 scopeSel 기준)
-  const scopeCount = _crawlState.scopeSel === 'verified' ? cVerified.pending
-                   : _crawlState.scopeSel === 'verifying' ? cVerifying.pending
-                   : totalPending;
+  // 실행 대상 = verified 대기 건수
+  const scopeCount = cVerified.pending;
 
   // 최근 실행 결과 최대 20개 (역순)
   const recentResults = _crawlState.runResults.slice(-20).reverse();
@@ -3219,10 +3231,10 @@ function renderCrawlerTool() {
     <!-- 스탯 카드 -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
       <div style="background:var(--surface-1);padding:14px;border:1px solid var(--border);border-radius:10px">
-        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;font-weight:600">🎯 크롤 대기 (총)</div>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;font-weight:600">🎯 크롤 대기</div>
         <div style="font-size:26px;font-weight:800;color:#f59e0b">${totalPending.toLocaleString()}</div>
         <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
-          verified <b>${cVerified.pending}</b> · verifying <b>${cVerifying.pending}</b>
+          검증완료 리드 중 메일 없음 + 사이트 있음
         </div>
       </div>
       <div style="background:var(--surface-1);padding:14px;border:1px solid var(--border);border-radius:10px">
@@ -3251,12 +3263,9 @@ function renderCrawlerTool() {
         </span>
       </div>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-        <label style="font-size:12px;font-weight:600;color:var(--text-secondary)">대상 stage:</label>
-        <select id="crawlScopeSel" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px">
-          <option value="verified" ${_crawlState.scopeSel === 'verified' ? 'selected' : ''}>✅ verified 만 (${cVerified.pending}건)</option>
-          <option value="verifying" ${_crawlState.scopeSel === 'verifying' ? 'selected' : ''}>🔍 verifying 만 (${cVerifying.pending}건)</option>
-          <option value="both" ${_crawlState.scopeSel === 'both' ? 'selected' : ''}>📦 둘 다 (${totalPending}건)</option>
-        </select>
+        <label style="font-size:12px;font-weight:600;color:var(--text-secondary)">대상: <b>✅ 검증완료</b></label>
+        <span style="font-size:11px;color:var(--text-tertiary)">(검증대기 상태는 크롤 안 함 — AI 통과 후에만)</span>
+        <div style="flex:1"></div>
         <label style="font-size:12px;font-weight:600;color:var(--text-secondary)">청크당:</label>
         <select id="crawlChunkSel" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px">
           <option value="20" ${_crawlState.chunkLimit === 20 ? 'selected' : ''}>20건 (느리게)</option>
@@ -3296,10 +3305,6 @@ function renderCrawlerTool() {
   `;
 
   // 바인딩
-  document.getElementById('crawlScopeSel')?.addEventListener('change', (e) => {
-    _crawlState.scopeSel = e.target.value;
-    renderCrawlerTool();
-  });
   document.getElementById('crawlChunkSel')?.addEventListener('change', (e) => {
     _crawlState.chunkLimit = parseInt(e.target.value, 10);
     renderCrawlerTool();
@@ -3309,12 +3314,7 @@ function renderCrawlerTool() {
 
 async function runCrawlerBatch() {
   if (_crawlState.running) return;
-  const scopeMap = {
-    'verified': ['verified-no-email'],
-    'verifying': ['verifying-no-email'],
-    'both': ['verified-no-email', 'verifying-no-email'],
-  };
-  const scopes = scopeMap[_crawlState.scopeSel] || ['verified-no-email'];
+  const scopes = ['verified-no-email'];
   _crawlState.running = true;
   renderCrawlerTool();
 
