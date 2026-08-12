@@ -300,9 +300,11 @@ export async function POST(req: Request) {
   }
 
   // 이미 크롤된 것 제외 옵션 (재시도 안 하려면)
+  // crawledAt 이 세팅되어 있으면 = 이미 한 번 시도한 리드 → 재시도 안 함
+  // (crawledEmails 이 빈 배열이더라도 crawledAt 은 세팅됨 → "0건 발견" 도 완료 처리)
   if (body.skipAlreadyCrawled !== false) {
     filter.$and = (filter.$and || []).concat([
-      { $or: [{ crawledEmails: { $size: 0 } }, { crawledEmails: { $exists: false } }] },
+      { $or: [{ crawledAt: { $exists: false } }, { crawledAt: '' }, { crawledAt: null }] },
     ]);
   }
 
