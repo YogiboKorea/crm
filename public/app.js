@@ -1284,67 +1284,38 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   // 검증대기 / 검증완료 stage 는 히어로 CTA 카드 추가 렌더
   let heroCard = '';
   if (stageInfo.stage === 'verifying') {
-    const { aiPending, crawlPending } = computeVerificationCounts('verifying');
+    const { aiPending } = computeVerificationCounts('verifying');
+    // 크롤링은 검증완료 단계로 이동한 후에 하는 것 — 검증대기에는 AI 검증 카드 하나만
     heroCard = `
-      <div class="verify-hero" style="
-        margin-top:12px;
-        display:grid;grid-template-columns:1fr 1fr;gap:12px;
-      ">
+      <div class="verify-hero" style="margin-top:12px">
         <div class="verify-hero-card" style="
           padding:20px;border-radius:16px;
           background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%);
           border:1px solid #c7d2fe;position:relative;overflow:hidden;
+          display:flex;align-items:center;gap:20px;
         ">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-            <div style="font-size:32px" class="pulse-icon">🧠</div>
-            <div>
-              <div style="font-size:12px;color:#4338ca;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">AI 1차 검증</div>
-              <div style="font-size:24px;font-weight:800;color:#1e1b4b;line-height:1.1">
-                ${aiPending.toLocaleString()}<span style="font-size:14px;font-weight:600;color:#6366f1;margin-left:4px">건 대기</span>
-              </div>
+          <div style="font-size:40px" class="pulse-icon">🧠</div>
+          <div style="flex:1">
+            <div style="font-size:12px;color:#4338ca;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">AI 1차 검증</div>
+            <div style="font-size:24px;font-weight:800;color:#1e1b4b;line-height:1.1;margin-top:2px">
+              ${aiPending.toLocaleString()}<span style="font-size:14px;font-weight:600;color:#6366f1;margin-left:4px">건 대기</span>
             </div>
+            <p style="font-size:12px;color:#4c1d95;margin:6px 0 0;line-height:1.5">
+              Claude Haiku 4.5 · beauty-buyer → 검증완료 자동 이동 · not-buyer → 보관함
+            </p>
           </div>
-          <p style="font-size:12px;color:#4c1d95;margin:0 0 12px;line-height:1.5">
-            Claude Haiku 4.5 로 K-beauty 진성 바이어 판정.<br>
-            <b>beauty-buyer → 검증완료 자동 이동 · not-buyer → 보관함</b>
-          </p>
           <button id="runAiVerifyOnVerifyingBtn" class="button primary" type="button" style="
-            width:100%;font-size:14px;font-weight:700;padding:12px;
+            font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
             background:#4338ca;color:white;border:none;border-radius:10px;cursor:pointer;
             box-shadow:0 2px 8px rgba(67,56,202,0.3);
-          ">
-            🧠 AI 검증 실행 (예상 ${(aiPending / 20 * 4).toFixed(0)}분, 비용 ~$${(aiPending * 0.0005).toFixed(2)})
+            ${aiPending === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+          " ${aiPending === 0 ? 'disabled' : ''}>
+            🧠 AI 검증 실행 (${aiPending}건, ~$${(aiPending * 0.0005).toFixed(2)})
           </button>
         </div>
-        <div class="verify-hero-card" style="
-          padding:20px;border-radius:16px;
-          background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);
-          border:1px solid #fcd34d;position:relative;overflow:hidden;
-        ">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-            <div style="font-size:32px">🔍</div>
-            <div>
-              <div style="font-size:12px;color:#92400e;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">메일 크롤링</div>
-              <div style="font-size:24px;font-weight:800;color:#78350f;line-height:1.1">
-                ${crawlPending.toLocaleString()}<span style="font-size:14px;font-weight:600;color:#b45309;margin-left:4px">건 대기</span>
-              </div>
-            </div>
-          </div>
-          <p style="font-size:12px;color:#78350f;margin:0 0 12px;line-height:1.5">
-            메일 없음 + 사이트 있음 → 홈/contact/about 자동 크롤.<br>
-            <b>최우선 후보 (partnerships/business/sales) 자동 Email 승격</b>
-          </p>
-          <button id="runCrawlOnVerifyingBtn" class="button secondary" type="button" style="
-            width:100%;font-size:14px;font-weight:700;padding:12px;
-            background:#d97706;color:white;border:none;border-radius:10px;cursor:pointer;
-            box-shadow:0 2px 8px rgba(217,119,6,0.3);
-          ">
-            🔍 크롤링 실행 (${crawlPending}건)
-          </button>
+        <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center">
+          🇰🇷 한국 기업 자동 제외 · AI 통과 시 검증완료로 이동 → 거기서 메일 크롤링
         </div>
-      </div>
-      <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center">
-        🇰🇷 한국 기업 자동 제외 · AI 실행 후 자동으로 검증완료/보관함으로 이동
       </div>
     `;
   } else if (stageInfo.stage === 'verified') {
