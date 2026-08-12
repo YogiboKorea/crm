@@ -1779,7 +1779,6 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
         <thead>
           <tr>
             <th><span class="sr-only">Select</span></th>
-            <th></th>
             <th>Company</th>
             <th class="sortable" data-sort="Country" style="cursor: pointer; user-select: none;" title="Sort by Country">
               Country
@@ -2240,7 +2239,6 @@ function rowHtml(lead) {
       <td>
         <input class="lead-select" data-select-lead="${escapeAttr(lead.id)}" type="checkbox" ${checked} aria-label="Select ${escapeAttr(lead.Company)}">
       </td>
-      <td>${favoriteButton(lead, true)}</td>
       <td>
         <div class="company-cell">
           <strong>${escapeHtml(lead.Company)}</strong>
