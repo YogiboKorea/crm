@@ -861,6 +861,42 @@ th.sortable:hover { color: var(--text-primary); }
 
 @keyframes cd-spin { to { transform: rotate(360deg); } }
 
+/* 검증 히어로 아이콘 pulse 애니메이션 */
+@keyframes pulseIcon {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(99,102,241,0)); }
+  50%      { transform: scale(1.08); filter: drop-shadow(0 0 12px rgba(99,102,241,0.5)); }
+}
+.pulse-icon {
+  display: inline-block;
+  animation: pulseIcon 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-icon { animation: none; }
+}
+
+/* 검증 히어로 카드 hover 효과 */
+.verify-hero-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.verify-hero-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+.verify-hero-card button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.verify-hero-card button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* 반응형 — 좁은 화면에서 히어로 카드 세로로 */
+@media (max-width: 900px) {
+  .verify-hero {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* ── Utility ────────────────────────────────────────────────── */
 .sr-only {
   position: absolute;
