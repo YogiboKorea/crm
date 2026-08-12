@@ -24,12 +24,15 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // suppressHydrationWarning: 인라인 themeInitScript 가 React hydrate 전에
+  // <html> 에 data-theme 을 심음 → 서버 HTML 과 클라이언트 tree 미스매치가 의도된 것.
+  // <body> 에도 붙임 — 브라우저 확장 (Grammarly 등) 이 body 속성 추가하는 케이스 방어.
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body>{children}</body>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
