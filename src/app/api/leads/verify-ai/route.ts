@@ -64,6 +64,10 @@ export async function POST(req: Request) {
         { 'verification.aiVerifiedAt': { $exists: false } },
         { 'verification.aiVerifiedAt': '' },
       ];
+    } else if (scope === 'maybe-recheck') {
+      // stage='verifying' + AI verdict='maybe' 재검증 (모호 판정 재분류)
+      filter.stage = 'verifying';
+      filter['verification.aiVerdict'] = 'maybe';
     } else if (scope === 'suspicious') {
       // 자동 검증 끝났고(verifiedAt 있음) AI 검증 안 된(aiVerifiedAt 비어있음) 의심 케이스
       filter['verification.verifiedAt'] = { $exists: true, $ne: '' };

@@ -2422,7 +2422,7 @@ function verifyFailures(lead) {
 }
 
 // 뱃지 HTML — 테이블 셀에서 사용. invalid/suspicious 면 짧은 사유 같이 표시
-// AI 판정 배지 — verify-ai 실행 여부와 결과를 한눈에 표시
+// AI 판정 배지 — verify-ai 실행 여부와 결과 + 검증 시각을 한눈에 표시
 function aiVerdictBadgeHtml(lead) {
   const v = lead?.verification;
   if (!v?.aiVerifiedAt) return '';   // AI 미검증 → 배지 없음
@@ -2434,9 +2434,15 @@ function aiVerdictBadgeHtml(lead) {
     'maybe':        { bg: '#fef3c7', fg: '#92400e', bd: '#f59e0b', label: '🧠 모호' },
     'not-buyer':    { bg: '#fee2e2', fg: '#991b1b', bd: '#ef4444', label: '🧠 무관' },
   }[verdict] || { bg: '#f1f5f9', fg: '#475569', bd: '#94a3b8', label: '🧠 AI 검증됨' };
-  const tip = `AI 판정: ${verdict || '?'} (${conf || '?'})\n${reasoning}`;
-  return `<div style="margin-top:3px" title="${escapeAttr(tip)}">
+
+  const verifiedAt = v.aiVerifiedAt;
+  const relTime = formatRelativeKo(verifiedAt);
+  const absTime = formatDateKo(verifiedAt);
+  const tip = `AI 판정: ${verdict || '?'} (${conf || '?'})\n검증 완료: ${absTime || '?'}\n\n${reasoning}`;
+
+  return `<div style="margin-top:3px;display:flex;flex-direction:column;gap:2px;align-items:flex-start" title="${escapeAttr(tip)}">
     <span style="display:inline-block;padding:1px 6px;border-radius:99px;background:${style.bg};color:${style.fg};font-size:10px;font-weight:700;border:1px solid ${style.bd}40">${style.label}</span>
+    ${relTime ? `<span style="font-size:9px;color:var(--text-tertiary);font-weight:500">📅 ${relTime}</span>` : ''}
   </div>`;
 }
 
