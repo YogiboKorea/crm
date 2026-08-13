@@ -1120,9 +1120,9 @@ function render() {
       stageMatch = (l) => (l.stage || 'imported') === s.stage;
     }
 
-    // ── Import 배치별 폴더 UI (검증대기/완료/실패 페이지 전용) ──
-    // 활성화 stage: verifying, verified, __failed
-    const useFolderView = ['verifying', 'verified', '__failed'].includes(s.stage);
+    // ── Import 배치별 폴더 UI (검증대기 전용) ──
+    // 검증완료/실패는 flat 테이블로 (배치 출처는 각 행에 라벨로 표시)
+    const useFolderView = s.stage === 'verifying';
     if (useFolderView) {
       const allByStage = getLeads().filter(stageMatch);
       renderStageBanner(s, allByStage.length, allByStage.length);
@@ -3142,6 +3142,18 @@ function updatedInfoBadgeHtml(lead) {
   </span>`;
 }
 
+// 출처 배치 라벨 (검증완료/실패 페이지에서 각 행에 표시)
+function sourceBatchBadgeHtml(lead) {
+  const b = lead.importBatch;
+  if (!b) return '';
+  const m = String(b).match(/(\d{4})(\d{2})(\d{2})/);
+  const dateLabel = m ? `${m[1].slice(2)}/${m[2]}/${m[3]}` : b;
+  return `<span title="출처 배치: ${escapeAttr(b)}"
+    style="display:inline-block;font-size:9px;color:#6366f1;background:#eef2ff;border:1px solid #a5b4fc40;padding:1px 6px;border-radius:99px;margin-top:2px;font-weight:500;margin-left:4px">
+    📁 ${dateLabel}
+  </span>`;
+}
+
 function rowHtml(lead) {
   const selected = lead.id === state.selectedId ? "selected" : "";
   const checked = state.selectedLeadIds.has(lead.id) ? "checked" : "";
@@ -3154,7 +3166,7 @@ function rowHtml(lead) {
         <div class="company-cell">
           <strong>${escapeHtml(lead.Company)}</strong>
           <span class="meta-line">${escapeHtml(truncate(lead.Type, 74))}</span>
-          ${updatedInfoBadgeHtml(lead)}
+          <div>${updatedInfoBadgeHtml(lead)}${sourceBatchBadgeHtml(lead)}</div>
         </div>
       </td>
       <td>${escapeHtml(lead.Country)}</td>
