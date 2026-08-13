@@ -347,7 +347,7 @@ function resetAllFilters() {
 
 // ── Loading helpers ──────────────────────────────────────────────
 // 상단 가로 progress bar — async 작업 시작/끝에 호출
-let _topBarTimer = null;
+var _topBarTimer = null;
 function startTopProgress() {
   const bar = document.getElementById('topProgressBar');
   if (!bar) return;
@@ -393,7 +393,7 @@ function hideGlobalBlocker() {
 }
 
 // 클라이언트 캐시 — 매 nav 클릭마다 5000+ 리드 재fetch 방지
-let _leadsLastFetch = 0;
+var _leadsLastFetch = 0;
 const LEADS_CACHE_TTL_MS = 60 * 1000;   // 60초
 
 async function loadLeads(opts) {
@@ -418,7 +418,7 @@ async function loadLeads(opts) {
 
 // ── 서버 사이드 페이지네이션 (verified/failed 전용 · 50개씩) ──
 // state.serverPage 캐시: 현재 열린 stage/page/sub 조합의 데이터
-let _serverPageCache = null;   // { stage, page, sub, leads, total, totalPages, ts }
+var _serverPageCache = null;   // { stage, page, sub, leads, total, totalPages, ts }
 const SERVER_PAGE_CACHE_TTL_MS = 30 * 1000;   // 30초
 
 async function loadServerPage(stage, page, sub, force) {
@@ -447,7 +447,7 @@ async function loadServerPage(stage, page, sub, force) {
 }
 
 // ── stage-counts 캐시 ──
-let _stageCountsCache = null;
+var _stageCountsCache = null;
 async function loadStageCounts(force) {
   const now = Date.now();
   if (!force && _stageCountsCache && (now - _stageCountsCache.ts) < 30 * 1000) {
@@ -3771,7 +3771,7 @@ function renderVerificationClassification() {
 }
 
 // K-beauty 추천 리스트 — 글로벌 발굴 시드 표시 + 선택 후 leads 로 import
-let _recommendedCache = null;
+var _recommendedCache = null;
 // ── Phase 1 스켈레톤: B2B 메일 관리 ──────────────────────────
 // ══════════════════════════════════════════════════════════════
 // B2B 메일 매니저 — 템플릿 CRUD + 변수 치환 + 리드 대입 미리보기
@@ -4204,7 +4204,7 @@ async function renderB2BEmailManager() {
 // ══════════════════════════════════════════════════════════════
 // 🕷 이메일 크롤링 대시보드 — 대기열 · 결과 · 벌크 실행
 // ══════════════════════════════════════════════════════════════
-let _crawlState = {
+var _crawlState = {
   scopeSel: 'verified',        // 검증완료 리드만 대상 (검증대기는 크롤링 안 함)
   chunkLimit: 50,
   running: false,
