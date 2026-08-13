@@ -1414,6 +1414,40 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
         </div>
       </div>
     `;
+  } else if (stageInfo.stage === 'contacted') {
+    // 컨택 중 = B2B 메일 발송 진입점
+    const contactedLeads = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted');
+    const readyToSend = contactedLeads.filter(l => {
+      const e = (l.Email || '').trim();
+      return e && !/^Not found/i.test(e) && /@/.test(e);
+    });
+    const alreadySent = contactedLeads.filter(l => (l.emailHistory || []).length > 0);
+    heroCard = `
+      <div class="verify-hero" style="margin-top:12px">
+        <div class="verify-hero-card" style="
+          padding:20px;border-radius:16px;
+          background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+          border:1px solid #93c5fd;display:flex;align-items:center;gap:20px;
+        ">
+          <div style="font-size:40px" class="pulse-icon">📧</div>
+          <div style="flex:1">
+            <div style="font-size:12px;color:#1e40af;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">B2B 메일 발송</div>
+            <div style="font-size:14px;color:#1e3a8a;margin-top:2px">
+              발송 가능 <b>${readyToSend.length}건</b> · 이미 발송 <b>${alreadySent.length}건</b>
+              ${_mailerEnvCache?.dryRun ? ' · 🧪 <b>DRY_RUN</b> 모드 (실제 발송 X)' : ' · 🟢 실전 발송 모드'}
+            </div>
+          </div>
+          <button id="openBulkComposeBtn" type="button" style="
+            font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
+            background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
+            box-shadow:0 2px 8px rgba(37,99,235,0.3);
+            ${readyToSend.length === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+          " ${readyToSend.length === 0 ? 'disabled' : ''}>
+            ✉ 메일 작성 & 발송 (${readyToSend.length})
+          </button>
+        </div>
+      </div>
+    `;
   } else if (stageInfo.stage === 'verified') {
     const { crawlPending } = computeVerificationCounts('verified');
     heroCard = `
@@ -1467,6 +1501,7 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   document.getElementById('runCrawlOnVerifyingBtn')?.addEventListener('click', () => runCrawlEmails('verifying-no-email'));
   document.getElementById('runCrawlOnVerifiedBtn')?.addEventListener('click', () => runCrawlEmails('verified-no-email'));
   document.getElementById('deleteAllFailedHeroBtn')?.addEventListener('click', () => deleteAllFailedLeads());
+  document.getElementById('openBulkComposeBtn')?.addEventListener('click', () => openComposeModal('bulk-contacted'));
 }
 
 // ── AI 1차 검증 (verifying stage 파이프라인) ─────────────────
@@ -1874,6 +1909,400 @@ function managePipelineAutoRefresh(currentView) {
       render();
     } catch (e) { /* silent */ }
   }, 30000);  // 30 초마다
+}
+
+// ══════════════════════════════════════════════════════════════
+// 📧 B2B 메일 컴포즈 모달 (Gmail 스타일 좌: 편집 · 우: 미리보기)
+// ══════════════════════════════════════════════════════════════
+let _mailerEnvCache = null;   // { dryRun: boolean, from: string }
+let _composeState = {
+  isOpen: false,
+  recipientIds: [],     // 발송 대상 leadId
+  templateId: null,     // 선택된 템플릿
+  subject: '',
+  body: '',
+  fontFamily: 'Pretendard, -apple-system, BlinkMacSystemFont, sans-serif',
+  fontSize: 15,
+  previewLeadId: null,  // 미리보기 대상 (기본: 첫 번째 수신자)
+  sending: false,
+  resultSummary: null,  // { sent, failed, dryRun }
+};
+
+const COMPOSE_FONTS = [
+  { key: 'Pretendard, -apple-system, BlinkMacSystemFont, sans-serif', label: 'Pretendard (기본)' },
+  { key: '"Noto Sans KR", sans-serif', label: 'Noto Sans KR' },
+  { key: '"Malgun Gothic", sans-serif', label: '맑은 고딕' },
+  { key: 'Arial, sans-serif', label: 'Arial' },
+  { key: 'Georgia, serif', label: 'Georgia (Serif)' },
+  { key: '"Times New Roman", serif', label: 'Times New Roman' },
+  { key: 'Verdana, sans-serif', label: 'Verdana' },
+];
+const COMPOSE_SIZES = [12, 13, 14, 15, 16, 17, 18, 20];
+
+async function openComposeModal(scope) {
+  // 발송 대상 확정
+  let recipients = [];
+  if (scope === 'bulk-contacted') {
+    recipients = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted' && l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email));
+  } else if (scope === 'selected') {
+    recipients = [...state.selectedLeadIds]
+      .map(id => baseLeads.find(l => l.id === id))
+      .filter(l => l && l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email));
+  } else if (typeof scope === 'string') {
+    // 단일 leadId
+    const l = baseLeads.find(x => x.id === scope || x.leadId === scope);
+    if (l) recipients = [l];
+  }
+  if (!recipients.length) {
+    alert('발송 대상이 없습니다 (유효한 이메일 있는 리드만 가능).');
+    return;
+  }
+
+  // 템플릿 로드
+  if (state.email.templates.length === 0) await loadEmailTemplates();
+
+  _composeState.isOpen = true;
+  _composeState.recipientIds = recipients.map(l => l.leadId);
+  _composeState.previewLeadId = recipients[0].leadId;
+  _composeState.resultSummary = null;
+
+  // 최초 진입 시 기본 템플릿 자동 선택
+  if (!_composeState.templateId && state.email.templates.length > 0) {
+    const defaultTpl = state.email.templates.find(t => t.purpose === 'intro' && t.language === 'en')
+                    || state.email.templates[0];
+    _composeState.templateId = defaultTpl._id;
+    _composeState.subject = defaultTpl.subject;
+    _composeState.body = defaultTpl.body;
+  }
+
+  await refreshMailerEnv();
+  renderComposeModal();
+}
+
+function closeComposeModal() {
+  if (_composeState.sending) {
+    if (!confirm('발송 진행 중입니다. 정말 닫으시겠습니까? (진행 상황 유실)')) return;
+  }
+  _composeState.isOpen = false;
+  document.getElementById('composeModalRoot')?.remove();
+}
+
+async function refreshMailerEnv() {
+  if (_mailerEnvCache) return _mailerEnvCache;
+  try {
+    const r = await fetch('/api/mail/test');
+    const d = await r.json();
+    _mailerEnvCache = { dryRun: false, from: d.user || '' };
+    // dry_run 여부는 별도 판단 필요 — 서버가 알려주지 않음. 일단 UI 에서 표시만.
+  } catch {
+    _mailerEnvCache = { dryRun: true, from: '' };
+  }
+  return _mailerEnvCache;
+}
+
+function renderComposeModal() {
+  // 기존 모달 제거 후 재생성
+  document.getElementById('composeModalRoot')?.remove();
+
+  const recipients = _composeState.recipientIds.map(id =>
+    baseLeads.find(l => l.leadId === id)
+  ).filter(Boolean);
+  const previewLead = recipients.find(l => l.leadId === _composeState.previewLeadId) || recipients[0];
+
+  // 미리보기 렌더 (변수 치환)
+  const example = {};
+  for (const v of state.email.variables) example[v.key] = v.fromLead ? '' : v.example;
+  const buildVars = (lead) => {
+    const out = {};
+    for (const v of state.email.variables) {
+      // fromLead 시뮬레이션 (client-side)
+      const val = lead[v.key] || '';
+      out[v.key] = val || v.example;
+    }
+    out.SenderName = '요기보';
+    out.SenderCompany = 'Yogico';
+    out.SenderEmail = _mailerEnvCache?.from || 'partnerships@yogico.kr';
+    return out;
+  };
+  const renderClient = (src, vars) => (src || '').replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (_, k) => vars[k] != null ? String(vars[k]) : `{{${k}}}`);
+  const previewVars = previewLead ? buildVars(previewLead) : example;
+  const previewSubject = renderClient(_composeState.subject, previewVars);
+  const previewBody = renderClient(_composeState.body, previewVars);
+  const previewBodyHtml = previewBody.includes('<') ? previewBody : previewBody.replace(/\n/g, '<br>');
+
+  const modalHtml = `
+    <div id="composeModalRoot" style="
+      position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.5);
+      display:flex;align-items:center;justify-content:center;
+    ">
+      <div style="
+        width:min(1200px, 95vw);height:min(800px, 92vh);
+        background:var(--surface-0);border-radius:16px;
+        display:flex;flex-direction:column;overflow:hidden;
+        box-shadow:0 24px 64px rgba(0,0,0,0.3);
+      ">
+        <!-- 헤더 -->
+        <div style="
+          padding:16px 24px;border-bottom:1px solid var(--border);
+          display:flex;justify-content:space-between;align-items:center;
+        ">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-size:22px">📧</span>
+            <div>
+              <div style="font-size:15px;font-weight:700">B2B 메일 작성 & 발송</div>
+              <div style="font-size:11px;color:var(--text-tertiary)">
+                수신자 <b>${recipients.length}명</b>
+                · From: <b>${_mailerEnvCache?.from || '(env 미설정)'}</b>
+              </div>
+            </div>
+          </div>
+          <button type="button" id="composeCloseBtn" style="
+            background:transparent;border:none;font-size:22px;cursor:pointer;
+            color:var(--text-tertiary);padding:4px 10px;
+          ">×</button>
+        </div>
+
+        <!-- 결과 표시 (발송 후) -->
+        ${_composeState.resultSummary ? `
+          <div style="padding:12px 24px;background:${_composeState.resultSummary.failed > 0 ? '#fef3c7' : '#dcfce7'};border-bottom:1px solid var(--border);font-size:13px">
+            ${_composeState.resultSummary.dryRun ? '🧪 <b>DRY_RUN</b>: 실제 발송 안 됨 (로그만). ' : '✅ '}
+            요청 ${_composeState.resultSummary.requested}건 · 성공 <b style="color:#15803d">${_composeState.resultSummary.sent}</b> · 실패 <b style="color:#dc2626">${_composeState.resultSummary.failed}</b>
+          </div>
+        ` : ''}
+
+        <!-- 본문 2열 (좌: 편집 · 우: 미리보기) -->
+        <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;overflow:hidden">
+
+          <!-- 좌: 편집 -->
+          <div style="padding:16px 20px;overflow-y:auto;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:12px">
+
+            <!-- 수신자 chip (많으면 접힘) -->
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">받는 사람 (${recipients.length})</label>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;max-height:80px;overflow-y:auto;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)">
+                ${recipients.slice(0, 12).map(l => `
+                  <span style="padding:3px 8px;background:#dbeafe;color:#1e40af;border-radius:99px;font-size:11px;font-weight:500">
+                    ${escapeHtml(l.Company || '?')} · ${escapeHtml(l.Email)}
+                  </span>
+                `).join('')}
+                ${recipients.length > 12 ? `<span style="padding:3px 8px;color:var(--text-tertiary);font-size:11px">... + ${recipients.length - 12}명</span>` : ''}
+              </div>
+            </div>
+
+            <!-- 템플릿 선택 -->
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">템플릿</label>
+              <select id="composeTemplateSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+                <option value="">— 커스텀 (템플릿 없이) —</option>
+                ${state.email.templates.map(t => `
+                  <option value="${escapeAttr(t._id)}" ${t._id === _composeState.templateId ? 'selected' : ''}>
+                    ${escapeHtml(t.name)} (${t.language === 'ko' ? '🇰🇷' : '🇺🇸'} ${t.purpose})
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+
+            <!-- 폰트 -->
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+              <div>
+                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">폰트</label>
+                <select id="composeFontSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+                  ${COMPOSE_FONTS.map(f => `<option value="${escapeAttr(f.key)}" ${f.key === _composeState.fontFamily ? 'selected' : ''}>${f.label}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">크기</label>
+                <select id="composeSizeSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+                  ${COMPOSE_SIZES.map(s => `<option value="${s}" ${s === _composeState.fontSize ? 'selected' : ''}>${s}px</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <!-- 제목 -->
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">제목</label>
+              <input id="composeSubjectInput" type="text" value="${escapeAttr(_composeState.subject)}"
+                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px"
+                placeholder="예: Partnership inquiry — {{Company}}">
+            </div>
+
+            <!-- 본문 -->
+            <div style="display:flex;flex-direction:column;flex:1;min-height:200px">
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">본문 (변수 {{Company}} 등 사용 가능)</label>
+              <textarea id="composeBodyInput"
+                style="width:100%;flex:1;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:${_composeState.fontFamily};margin-top:2px;resize:vertical;min-height:250px;line-height:1.6"
+              >${escapeHtml(_composeState.body)}</textarea>
+            </div>
+          </div>
+
+          <!-- 우: 미리보기 (Gmail 스타일) -->
+          <div style="padding:16px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;background:var(--surface-1)">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">👁 실시간 미리보기</label>
+              <select id="composePreviewSel" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px">
+                ${recipients.map(l => `
+                  <option value="${escapeAttr(l.leadId)}" ${l.leadId === _composeState.previewLeadId ? 'selected' : ''}>
+                    ${escapeHtml((l.Company || '?').slice(0, 30))}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+
+            <div style="background:white;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;flex:1;display:flex;flex-direction:column">
+              <!-- 헤더 (Gmail 느낌) -->
+              <div style="padding:14px 20px;border-bottom:1px solid #e5e7eb;background:#f9fafb">
+                <div style="font-size:16px;font-weight:700;color:#111827;line-height:1.3">${escapeHtml(previewSubject) || '<span style="color:#9ca3af">(제목 없음)</span>'}</div>
+                <div style="font-size:12px;color:#6b7280;margin-top:6px">
+                  <b>From:</b> ${escapeHtml(_mailerEnvCache?.from || '(env)')}
+                  · <b>To:</b> ${previewLead ? escapeHtml(previewLead.Email) : '?'}
+                </div>
+              </div>
+              <!-- 본문 (실제 발송되는 스타일 그대로) -->
+              <div style="padding:20px;overflow-y:auto;flex:1;background:white;font-family:${_composeState.fontFamily};font-size:${_composeState.fontSize}px;line-height:1.65;color:#111827">
+                ${previewBodyHtml || '<span style="color:#9ca3af">(본문 없음)</span>'}
+              </div>
+            </div>
+            <div style="font-size:10px;color:var(--text-tertiary);text-align:center">
+              📌 미리보기는 선택한 리드 (${previewLead ? escapeHtml(previewLead.Company || '?') : '?'})의 값으로 변수 치환
+            </div>
+          </div>
+        </div>
+
+        <!-- 하단 액션 바 -->
+        <div style="
+          padding:14px 24px;border-top:1px solid var(--border);
+          display:flex;justify-content:space-between;align-items:center;gap:12px;
+        ">
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer">
+            <input type="checkbox" id="composeForceDryRunChk" ${_composeState.forceDryRun ? 'checked' : ''}>
+            🧪 이번만 DRY_RUN (실제 발송 안 함)
+          </label>
+          <div style="display:flex;gap:8px">
+            <button type="button" id="composeCancelBtn" class="button ghost" style="font-size:13px;padding:9px 16px">닫기</button>
+            <button type="button" id="composeSendBtn" ${_composeState.sending ? 'disabled' : ''} style="
+              font-size:14px;font-weight:700;padding:9px 22px;
+              background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;
+              box-shadow:0 2px 6px rgba(37,99,235,0.3);
+              ${_composeState.sending ? 'opacity:0.5;cursor:wait' : ''}
+            ">
+              ${_composeState.sending ? '⏳ 발송 중...' : `✉ ${recipients.length}명에게 발송`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  // 이벤트 바인딩
+  document.getElementById('composeCloseBtn')?.addEventListener('click', closeComposeModal);
+  document.getElementById('composeCancelBtn')?.addEventListener('click', closeComposeModal);
+
+  document.getElementById('composeTemplateSel')?.addEventListener('change', (e) => {
+    const tid = e.target.value;
+    _composeState.templateId = tid || null;
+    if (tid) {
+      const t = state.email.templates.find(x => x._id === tid);
+      if (t) {
+        _composeState.subject = t.subject;
+        _composeState.body = t.body;
+      }
+    }
+    renderComposeModal();
+  });
+  document.getElementById('composeFontSel')?.addEventListener('change', (e) => {
+    _composeState.fontFamily = e.target.value;
+    renderComposeModal();
+  });
+  document.getElementById('composeSizeSel')?.addEventListener('change', (e) => {
+    _composeState.fontSize = parseInt(e.target.value, 10);
+    renderComposeModal();
+  });
+  document.getElementById('composePreviewSel')?.addEventListener('change', (e) => {
+    _composeState.previewLeadId = e.target.value;
+    renderComposeModal();
+  });
+  // 실시간 미리보기 위해 input 이벤트 hook — 하지만 매타이핑 재렌더 하면 포커스 잃음
+  // → 타이핑 시엔 미리보기 우측만 부분 업데이트, 재렌더 스킵
+  document.getElementById('composeSubjectInput')?.addEventListener('input', (e) => {
+    _composeState.subject = e.target.value;
+    // 우측 subject 만 갱신 (포커스 유지)
+    const previewLead = baseLeads.find(l => l.leadId === _composeState.previewLeadId);
+    const vars = {};
+    for (const v of state.email.variables) vars[v.key] = (previewLead?.[v.key] || v.example || '');
+    vars.SenderName = '요기보'; vars.SenderCompany = 'Yogico'; vars.SenderEmail = _mailerEnvCache?.from || '';
+    const s = e.target.value.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (_, k) => vars[k] != null ? String(vars[k]) : `{{${k}}}`);
+    const titleEl = document.querySelector('#composeModalRoot .verify-hero-card') || document.querySelector('#composeModalRoot [data-preview-subject]');
+    // 간단 fallback: 재렌더
+    // 성능 이슈 없으면 매번 재렌더 OK
+    renderComposeModal();
+    // 포커스 복구
+    setTimeout(() => {
+      const el = document.getElementById('composeSubjectInput');
+      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+    }, 0);
+  });
+  document.getElementById('composeBodyInput')?.addEventListener('input', (e) => {
+    _composeState.body = e.target.value;
+    // 재렌더 + 포커스 복구
+    const cursorPos = e.target.selectionStart;
+    renderComposeModal();
+    setTimeout(() => {
+      const el = document.getElementById('composeBodyInput');
+      if (el) { el.focus(); el.setSelectionRange(cursorPos, cursorPos); }
+    }, 0);
+  });
+  document.getElementById('composeForceDryRunChk')?.addEventListener('change', (e) => {
+    _composeState.forceDryRun = e.target.checked;
+  });
+  document.getElementById('composeSendBtn')?.addEventListener('click', () => handleComposeSend());
+}
+
+async function handleComposeSend() {
+  const recipients = _composeState.recipientIds;
+  if (!recipients.length) return;
+  const ok = confirm(
+    `📧 ${recipients.length}명에게 발송\n\n` +
+    (_composeState.forceDryRun ? '🧪 DRY_RUN 모드 (실제 발송 X)\n' : '') +
+    `제목: ${_composeState.subject.slice(0, 60)}\n\n계속하시겠습니까?`
+  );
+  if (!ok) return;
+
+  _composeState.sending = true;
+  renderComposeModal();
+
+  try {
+    const res = await fetch('/api/mail/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        leadIds: recipients,
+        templateId: _composeState.templateId || undefined,
+        subject: _composeState.subject,
+        body: _composeState.body,
+        bodyIsHtml: true,
+        fontFamily: _composeState.fontFamily,
+        fontSize: _composeState.fontSize,
+        dryRun: !!_composeState.forceDryRun,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '발송 실패');
+    _composeState.resultSummary = {
+      requested: data.requested,
+      sent: data.sent,
+      failed: data.failed,
+      dryRun: data.dryRun,
+    };
+    // 로컬 lead emailHistory 갱신 위해 재로드
+    await loadLeads();
+  } catch (e) {
+    alert(`발송 실패: ${e.message || 'unknown'}`);
+  } finally {
+    _composeState.sending = false;
+    renderComposeModal();
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
