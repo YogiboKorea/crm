@@ -281,11 +281,10 @@ async function init() {
   renderFilters();
   bindEvents();
 
-  // 서버 사이드 페이지드 뷰 (verified/failed) 로 시작하면 전체 fetch 불필요
-  //   render()가 loadServerPage 로 50건만 fetch
-  // 그 외 뷰 (imported/verifying/contacted/등) 는 baseLeads 필요 → loadLeads 호출
-  const initialServerPaged = state.view === 'pipeline-verified' || state.view === 'pipeline-failed';
-  if (!initialServerPaged) {
+  // pipeline-verifying (폴더 뷰) 만 baseLeads 필요, 나머지는 서버 페이지드
+  // → 초기 진입 시 baseLeads 전체 fetch 스킵 (즉시 렌더)
+  const needsBaseLeads = state.view === 'pipeline-verifying' || state.view === 'pipeline-import';
+  if (needsBaseLeads) {
     await loadLeads();
     state.selectedId = baseLeads[0]?.id || null;
   }
@@ -522,10 +521,10 @@ function bindEvents() {
       startTopProgress();
       setContentLoading(true);
       try {
-        // 서버 사이드 페이지드 뷰 (verified/failed) 는 loadLeads 스킵
-        // — render()가 loadServerPage 로 50건만 fetch → 즉시 반응
-        const isServerPaged = targetView === 'pipeline-verified' || targetView === 'pipeline-failed';
-        if (!isServerPaged) {
+        // 폴더 뷰 (verifying) 와 imported (원본 데이터 뷰) 만 baseLeads 필요
+        // 나머지는 서버 페이지드 → loadLeads 스킵으로 즉시 반응
+        const needsBaseLeads = targetView === 'pipeline-verifying' || targetView === 'pipeline-import';
+        if (needsBaseLeads) {
           await loadLeads();
           state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
         }
@@ -1196,9 +1195,10 @@ async function _renderInner() {
       stageMatch = (l) => (l.stage || 'imported') === s.stage;
     }
 
-    // ── 서버 페이지네이션 (verified/failed 전용 · 대용량) ──
-    // 5000건 넘는 stage 는 client 전량 fetch 대신 50건씩 서버가 슬라이스
-    const useServerPage = s.stage === 'verified' || s.stage === '__failed';
+    // ── 서버 페이지네이션 (검증대기 제외 모든 stage) ──
+    // 검증대기 는 배치별 폴더 뷰 필요 → baseLeads 사용
+    // 나머지는 stage 별 50건씩 서버 슬라이스
+    const useServerPage = s.stage !== 'verifying' && s.stage !== 'imported';
     if (useServerPage) {
       const serverStage = s.stage;
       const sub = serverStage === 'verified' ? (state.verifiedSubFilter || 'all') : null;
