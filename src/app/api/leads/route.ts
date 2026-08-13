@@ -33,24 +33,65 @@ const LIST_PROJECTION = {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    // 기본을 50,000 으로 (실질적으로 전체 반환). 필요시 ?limit=N 으로 명시적 축소 가능.
+    // 기본을 50,000 으로 (전체 반환 — 기존 클라이언트 호환)
     const limit = parseInt(searchParams.get('limit') || '50000');
-    // full=1 이면 모든 필드 반환 (Export 등에서 사용)
+    // full=1 이면 모든 필드 반환 (Export 등)
     const full = searchParams.get('full') === '1';
+    // ── 서버 페이지네이션 ─────────────────────────────
+    // ?stage=X&page=N&limit=50 → 해당 stage 만 페이지 단위로
+    const stage = searchParams.get('stage');   // e.g. 'verified', 'verifying', 'contacted', '__failed'
+    const sub = searchParams.get('sub');       // 서브필터 (unverified/maybe/approved/pending/no-email)
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+
+    // 필터 구성
+    const filter: any = {};
+    if (stage === '__failed') {
+      filter.stage = 'archived';
+      filter['verification.aiVerdict'] = 'not-buyer';
+    } else if (stage) {
+      filter.stage = stage;
+    }
+    // 서브필터
+    if (stage === 'verifying') {
+      if (sub === 'unverified') {
+        filter.$or = [
+          { 'verification.aiVerifiedAt': { $exists: false } },
+          { 'verification.aiVerifiedAt': '' },
+        ];
+      } else if (sub === 'maybe') {
+        filter['verification.aiVerdict'] = 'maybe';
+      }
+    } else if (stage === 'verified') {
+      if (sub === 'approved') filter.readyForOutreach = true;
+      else if (sub === 'pending') filter.readyForOutreach = { $ne: true };
+      else if (sub === 'no-email') {
+        filter.$or = [{ Email: '' }, { Email: /^Not found/i }, { Email: { $exists: false } }];
+      }
+    }
 
     await dbConnect();
-    const query = Lead.find({})
-      .limit(limit)
+    const skip = (page - 1) * limit;
+    const query = Lead.find(filter)
       .sort({ createdAt: -1 })
-      .lean();  // ← mongoose hydration 스킵 → 5x 빠름
+      .skip(stage ? skip : 0)          // stage 지정 시에만 페이지네이션
+      .limit(limit)
+      .lean();
     if (!full) query.select(LIST_PROJECTION);
 
     const [leads, total] = await Promise.all([
       query.exec(),
-      Lead.estimatedDocumentCount(),  // countDocuments 대비 훨씬 빠름
+      // stage 지정 시 필터 카운트, 아니면 전체 estimatedDocumentCount
+      stage ? Lead.countDocuments(filter) : Lead.estimatedDocumentCount(),
     ]);
 
-    return NextResponse.json({ success: true, data: leads, total });
+    return NextResponse.json({
+      success: true,
+      data: leads,
+      total,
+      page: stage ? page : 1,
+      limit,
+      totalPages: stage ? Math.max(1, Math.ceil(total / limit)) : 1,
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

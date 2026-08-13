@@ -417,6 +417,60 @@ async function loadLeads(opts) {
   }
 }
 
+// ── 서버 사이드 페이지네이션 (verified/failed 전용 · 50개씩) ──
+// state.serverPage 캐시: 현재 열린 stage/page/sub 조합의 데이터
+let _serverPageCache = null;   // { stage, page, sub, leads, total, totalPages, ts }
+const SERVER_PAGE_CACHE_TTL_MS = 30 * 1000;   // 30초
+
+async function loadServerPage(stage, page, sub, force) {
+  const cacheKey = `${stage}::${sub || ''}::${page}`;
+  const now = Date.now();
+  if (!force && _serverPageCache && _serverPageCache.cacheKey === cacheKey && (now - _serverPageCache.ts) < SERVER_PAGE_CACHE_TTL_MS) {
+    return _serverPageCache;
+  }
+  const params = new URLSearchParams();
+  params.set('stage', stage);
+  if (sub) params.set('sub', sub);
+  params.set('page', String(page));
+  params.set('limit', '50');
+  const res = await fetch(`/api/leads?${params.toString()}`);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || 'load page failed');
+  _serverPageCache = {
+    cacheKey,
+    stage, page, sub,
+    leads: (data.data || []).map(l => ({ ...l, id: l.leadId })),
+    total: data.total || 0,
+    totalPages: data.totalPages || 1,
+    ts: now,
+  };
+  return _serverPageCache;
+}
+
+// ── stage-counts 캐시 ──
+let _stageCountsCache = null;
+async function loadStageCounts(force) {
+  const now = Date.now();
+  if (!force && _stageCountsCache && (now - _stageCountsCache.ts) < 30 * 1000) {
+    return _stageCountsCache;
+  }
+  try {
+    const res = await fetch('/api/leads/stage-counts');
+    const data = await res.json();
+    if (data.success) {
+      _stageCountsCache = { ...data, ts: now };
+      return _stageCountsCache;
+    }
+  } catch (e) { console.error('stage-counts', e); }
+  return null;
+}
+
+// 데이터 변경 후 캐시 무효화
+function invalidateServerPage() {
+  _serverPageCache = null;
+  _stageCountsCache = null;
+}
+
 // ── 다크/라이트 테마 토글 ────────────────────────────────
 function initThemeToggle() {
   const btn = document.getElementById('themeToggleBtn');
@@ -1011,7 +1065,7 @@ function renderFilters() {
   if (els.verify) els.verify.value = state.verify || "All";
 }
 
-function render() {
+async function render() {
   const leads = getFilteredLeads();
   // 매 render 마다 stage 배너/서브필터 chip 초기화 — 각 페이지에서 필요 시 다시 그려짐
   clearStageBanner();
@@ -1120,8 +1174,39 @@ function render() {
       stageMatch = (l) => (l.stage || 'imported') === s.stage;
     }
 
+    // ── 서버 페이지네이션 (verified/failed 전용 · 대용량) ──
+    // 5000건 넘는 stage 는 client 전량 fetch 대신 50건씩 서버가 슬라이스
+    const useServerPage = s.stage === 'verified' || s.stage === '__failed';
+    if (useServerPage) {
+      const serverStage = s.stage;
+      const sub = serverStage === 'verified' ? (state.verifiedSubFilter || 'all') : null;
+      const wantPage = state.pagination?.currentPage || 1;
+      // 카운트 로드 (사이드바/서브필터/폴더 등)
+      const counts = _stageCountsCache || await loadStageCounts();
+      // 현재 페이지 데이터 로드
+      let pageData;
+      try {
+        pageData = await loadServerPage(serverStage, wantPage, sub === 'all' ? null : sub);
+      } catch (e) {
+        els.content.innerHTML = emptyState('페이지 로드 실패: ' + (e.message || 'unknown'));
+        return;
+      }
+      const totalForBanner = pageData.total;
+      renderStageBanner(s, totalForBanner, totalForBanner);
+      // 검증완료 서브필터 chip (서버 카운트 기반)
+      if (serverStage === 'verified' && counts) {
+        renderVerifiedSubFilterChipsServer(counts.verifiedSub, counts.stages.failed);
+      } else {
+        clearVerifiedSubFilterChips();
+      }
+      clearVerifyingSubFilterChips();
+      const statsElServer = document.getElementById('statsGrid');
+      if (statsElServer) statsElServer.innerHTML = '';
+      renderServerPagedTable(pageData, s);
+      return;
+    }
+
     // ── Import 배치별 폴더 UI (검증대기 전용) ──
-    // 검증완료/실패는 flat 테이블로 (배치 출처는 각 행에 라벨로 표시)
     const useFolderView = s.stage === 'verifying';
     if (useFolderView) {
       const allByStage = getLeads().filter(stageMatch);
@@ -1574,6 +1659,7 @@ async function runVerifyingStageAi() {
       `→ 보관함: ${totalMoved.archived}건\n` +
       `→ 대기 유지 (모호): ${totalMoved.kept}건`
     );
+    invalidateServerPage();
     await loadLeads({ force: true });
     render();
   } catch (e) {
@@ -1639,6 +1725,7 @@ async function runCrawlEmails(scope) {
       `메일 발견: ${totalFound}건\n` +
       `Email 필드 자동 승격: ${totalPromoted}건`
     );
+    invalidateServerPage();
     await loadLeads({ force: true });
     render();
   } catch (e) {
@@ -1791,6 +1878,122 @@ function clearVerifiedSubFilterChips() {
   if (c) c.innerHTML = '';
 }
 
+// 검증완료 서브필터 chip — 서버 카운트 기반 (전체 리드 fetch 없이)
+function renderVerifiedSubFilterChipsServer(verifiedSub, _failedCount) {
+  const containerId = 'verifiedSubFilterChips';
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    const banner = document.getElementById('stageBannerContainer');
+    if (banner && banner.parentNode) {
+      banner.parentNode.insertBefore(container, banner.nextSibling);
+    } else {
+      const content = document.getElementById('content');
+      content.parentNode.insertBefore(container, content);
+    }
+  }
+  const cur = state.verifiedSubFilter || 'all';
+  const chip = (key, label, count, color) => {
+    const active = key === cur;
+    const bg = active ? color : 'var(--surface-1)';
+    const fg = active ? 'white' : 'var(--text-primary)';
+    const bd = active ? color : 'var(--border)';
+    return `<button type="button" class="v-sub-filter-chip" data-sub-filter="${key}"
+      style="padding:6px 12px;font-size:12px;font-weight:600;
+      background:${bg};color:${fg};border:1px solid ${bd};border-radius:99px;cursor:pointer;
+      display:inline-flex;align-items:center;gap:6px;transition:all 0.1s">
+      ${label} <span style="opacity:0.7;font-weight:500">${(count || 0).toLocaleString()}</span>
+    </button>`;
+  };
+  container.innerHTML = `
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">📤 발송 승인:</span>
+      ${chip('all', '전체', verifiedSub.all, '#334155')}
+      ${chip('approved', '✅ 승인됨', verifiedSub.approved, '#15803d')}
+      ${chip('pending', '⏳ 승인 대기', verifiedSub.pending, '#f59e0b')}
+      ${chip('no-email', '📭 이메일 없음', verifiedSub.noEmail, '#94a3b8')}
+    </div>
+  `;
+  container.querySelectorAll('.v-sub-filter-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      state.verifiedSubFilter = el.dataset.subFilter;
+      resetPagination();
+      render();
+    });
+  });
+}
+
+// 서버 페이지드 테이블 렌더러 (verified/failed 전용)
+function renderServerPagedTable(pageData, stageInfo) {
+  const leads = pageData.leads;
+  if (!leads.length) {
+    els.content.innerHTML = emptyState(`${stageInfo.title}에 해당하는 리드가 없습니다.`);
+    return;
+  }
+  const start = (pageData.page - 1) * 50 + 1;
+  const end = start + leads.length - 1;
+  const visibleIds = leads.map(l => l.id);
+  const selectedVisibleCount = visibleIds.filter(id => state.selectedLeadIds.has(id)).length;
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+
+  els.content.innerHTML = `
+    <div class="bulk-actions">
+      <button class="button secondary" data-select-visible type="button">${allVisibleSelected ? "이 페이지 선택 해제" : "이 페이지 전체 선택"}</button>
+      <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
+        Delete Selected (${state.selectedLeadIds.size})
+      </button>
+      <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary);display:inline-flex;align-items:center;gap:8px">
+        <span>총 <b style="color:var(--text-primary)">${pageData.total.toLocaleString()}</b>건 중 <b style="color:var(--text-primary)">${start}~${end}</b>번 표시</span>
+      </span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th><span class="sr-only">Select</span></th>
+            <th>Company</th>
+            <th>Country</th>
+            <th>Stage</th>
+            <th>발송승인</th>
+            <th>Priority</th>
+            <th>검증</th>
+            <th>Contact</th>
+            <th>Email</th>
+            <th>Website</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${leads.map(l => rowHtml(l)).join('')}
+        </tbody>
+      </table>
+    </div>
+    ${renderPaginationBar(pageData.page, pageData.totalPages, pageData.total)}
+  `;
+
+  els.content.querySelector('[data-select-visible]')?.addEventListener('click', () => {
+    if (allVisibleSelected) visibleIds.forEach(id => state.selectedLeadIds.delete(id));
+    else visibleIds.forEach(id => state.selectedLeadIds.add(id));
+    render();
+  });
+  els.content.querySelectorAll('.page-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = parseInt(btn.dataset.page, 10);
+      if (isNaN(target) || target === pageData.page) return;
+      state.pagination.currentPage = Math.min(Math.max(1, target), pageData.totalPages);
+      render();
+      els.content?.scrollTo?.({ top: 0, behavior: 'smooth' });
+    });
+  });
+  els.content.querySelector('#pageJumpInput')?.addEventListener('change', (e) => {
+    const v = parseInt(e.target.value, 10);
+    if (!isNaN(v) && v >= 1 && v <= pageData.totalPages) {
+      state.pagination.currentPage = v;
+      render();
+    }
+  });
+}
+
 // ── 일괄 승인/취소 (현재 필터에 보이는 리드 대상) ──────────────
 async function bulkApproveVisible(approve) {
   // 현재 렌더된 verified 리드들 (state.verifiedSubFilter 반영)
@@ -1848,6 +2051,7 @@ async function bulkApproveVisible(approve) {
       `실제 반영: ${data.updated}건\n` +
       (data.skipReasons ? `스킵: 이메일없음 ${data.skipReasons.noEmail}, 한국 ${data.skipReasons.korean}, stage 불일치 ${data.skipReasons.wrongStage}` : '')
     );
+    invalidateServerPage();
     await loadLeads({ force: true });
     render();
   } catch (e) {
@@ -1920,7 +2124,8 @@ function managePipelineAutoRefresh(currentView) {
     if (state.view !== currentView) return;  // 사용자가 이미 다른 곳으로 이동
     try {
       // 캐시 무시하고 강제 재로드 (배치 진행 반영 목적)
-      await loadLeads({ force: true });
+      invalidateServerPage();
+    await loadLeads({ force: true });
       render();
     } catch (e) { /* silent */ }
   }, 5 * 60 * 1000);  // 5분마다 (기존 30초는 너무 잦음 → 매번 5MB fetch)
@@ -2324,6 +2529,7 @@ async function handleComposeSend() {
       dryRun: data.dryRun,
     };
     // 로컬 lead emailHistory 갱신 위해 재로드
+    invalidateServerPage();
     await loadLeads({ force: true });
   } catch (e) {
     alert(`발송 실패: ${e.message || 'unknown'}`);
@@ -4151,6 +4357,7 @@ async function runCrawlerBatch() {
       }
     }
     // 완료 후 leads 재로드
+    invalidateServerPage();
     await loadLeads({ force: true });
     _crawlState.running = false;
     renderCrawlerTool();
@@ -4677,6 +4884,7 @@ async function deleteAllFailedLeads() {
   await Promise.all(promises);
 
   alert(`✅ 삭제 완료\n\n삭제됨: ${deleted}건${failures.length ? '\n실패: ' + failures.length + '건' : ''}`);
+  invalidateServerPage();
   await loadLeads({ force: true });
   state.selectedLeadIds.clear();
   renderFilters();
