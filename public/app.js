@@ -2124,8 +2124,10 @@ async function runDryRunSimulation() {
 }
 
 // ── 파이프라인 자동 리로드 (verifying/verified 탭에서 배치 진행 실시간 반영) ─
-let _pipelineAutoRefreshTimer = null;
-let _pipelineAutoRefreshView = null;
+// var 로 선언 (function-scope 호이스팅) — render() 가 managePipelineAutoRefresh 를
+// 호출할 때 (line ~1171) 이 선언 (line ~2127) 보다 먼저 접근되어 TDZ 오류 발생 방지.
+var _pipelineAutoRefreshTimer = null;
+var _pipelineAutoRefreshView = null;
 function managePipelineAutoRefresh(currentView) {
   const wantAutoRefresh = currentView === 'pipeline-verifying' || currentView === 'pipeline-verified';
   // 다른 뷰로 이동하거나 auto-refresh 필요 없음 → 타이머 정리
@@ -2156,8 +2158,8 @@ function managePipelineAutoRefresh(currentView) {
 // ══════════════════════════════════════════════════════════════
 // 📧 B2B 메일 컴포즈 모달 (Gmail 스타일 좌: 편집 · 우: 미리보기)
 // ══════════════════════════════════════════════════════════════
-let _mailerEnvCache = null;   // { dryRun: boolean, from: string }
-let _composeState = {
+var _mailerEnvCache = null;   // { dryRun: boolean, from: string } · var for hoisting
+var _composeState = {
   isOpen: false,
   recipientIds: [],     // 발송 대상 leadId
   templateId: null,     // 선택된 템플릿
