@@ -29,30 +29,25 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 // - local-part 는 반드시 알파벳으로 시작 (실무 B2B 이메일 99% 커버, `2ndbureau@` 같은 예외는 포기)
 const EMAIL_RE = /(?<![a-zA-Z0-9%])[a-zA-Z][a-zA-Z0-9._+\-]*@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,24}/g;
 
-// 무시할 이메일 패턴 (스팸/시스템/서드파티/이미지 파일명)
+// 무시할 이메일 패턴 (스팸/시스템/서드파티/이미지 파일명/placeholder)
 const NOISE_PATTERNS = [
-  /sentry\.(io|wixpress)/i,
-  /wixpress\.com$/i,
-  /wordpress\.(com|org)$/i,
-  /example\.(com|org|net)$/i,
-  /domain\.com$/i,
-  /yourdomain/i,
-  /your-domain/i,
-  /email@/i,
-  /@sentry\./i,
-  /@2x\.png$/i,
-  /\.(png|jpg|jpeg|webp|gif|svg|ico|pdf|css|js)$/i,
-  /noreply/i,
-  /no-reply/i,
-  /donotreply/i,
-  /mailer-daemon/i,
-  /postmaster@/i,
-  /abuse@/i,
-  /webmaster@/i,
-  /^[a-f0-9]{32,}@/i,  // 해시성 이메일 (캐시버스터)
-  /jsdelivr/i,
-  /cdn\./i,
-  /gravatar/i,
+  // 서비스/시스템
+  /sentry\.(io|wixpress)/i, /wixpress\.com$/i, /wordpress\.(com|org)$/i,
+  /noreply/i, /no-reply/i, /donotreply/i, /mailer-daemon/i,
+  /postmaster@/i, /abuse@/i, /webmaster@/i,
+  // CDN/이미지/캐시버스터
+  /@sentry\./i, /@2x\.png$/i, /\.(png|jpg|jpeg|webp|gif|svg|ico|pdf|css|js)$/i,
+  /^[a-f0-9]{32,}@/i, /jsdelivr/i, /cdn\./i, /gravatar/i,
+  // placeholder/template (오탐 방지)
+  /@example\.(com|org|net|io)$/i, /@domain\.(com|org)$/i,
+  /@yourdomain/i, /@your-domain/i, /@companyname\./i,
+  /@email\.(de|com)$/i,
+  /^(ihre|deine|your|meine|my|dein)@/i,
+  /^example@/i, /^info@example/i,
+  /@website\./i, /@yoursite\./i, /@yourcompany\./i,
+  /@test\.(com|org|io)$/i, /@localhost/i,
+  /^user@/i, /^name@/i, /^address@/i,
+  /@lorem/i, /@ipsum/i,
 ];
 
 // 역할별 우선순위 (낮을수록 최우선)
