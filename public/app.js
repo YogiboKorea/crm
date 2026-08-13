@@ -1071,6 +1071,23 @@ function renderFilters() {
 }
 
 async function render() {
+  try {
+    return await _renderInner();
+  } catch (e) {
+    console.error('[render] failed:', e);
+    if (els.content) {
+      els.content.innerHTML = `
+        <div style="padding:24px;background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;margin:16px">
+          <div style="font-size:14px;font-weight:700;color:#991b1b;margin-bottom:8px">⚠️ 렌더링 오류 발생</div>
+          <div style="font-size:12px;color:#7f1d1d;font-family:monospace;white-space:pre-wrap;background:white;padding:12px;border-radius:6px">${escapeHtml(String(e?.message || e))}</div>
+          <div style="font-size:11px;color:#991b1b;margin-top:8px">브라우저 개발자 도구(F12) → Console 탭에서 상세 오류 확인. 강제 새로고침 (Ctrl+Shift+R) 후 재시도.</div>
+        </div>
+      `;
+    }
+  }
+}
+
+async function _renderInner() {
   const leads = getFilteredLeads();
   // 매 render 마다 stage 배너/서브필터 chip 초기화 — 각 페이지에서 필요 시 다시 그려짐
   clearStageBanner();
@@ -4725,8 +4742,9 @@ async function undoSelectedContacted() {
 
 function updateActionButtons() {
   const lead = getLeads().find((item) => item.id === state.selectedId);
-  els.markContacted.disabled = !lead || lead.status === "Contacted";
-  els.undoContacted.disabled = !lead || lead.status !== "Contacted";
+  // 방어: 버튼이 없을 수 있음 (숨김 처리된 legacy 버튼)
+  if (els.markContacted) els.markContacted.disabled = !lead || lead.status === "Contacted";
+  if (els.undoContacted) els.undoContacted.disabled = !lead || lead.status !== "Contacted";
 }
 
 function addLead() {
