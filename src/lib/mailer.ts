@@ -58,6 +58,27 @@ export interface SendMailResult {
   dryRun?: boolean;
 }
 
+/**
+ * SMTP 연결/인증 만 확인 (실제 발송 없음, DRY_RUN 무시).
+ * transporter.verify() 는 EHLO+AUTH 까지 수행하므로 비번 오류/포트 방화벽 즉시 검출.
+ */
+export async function verifySmtp(): Promise<{ ok: boolean; error?: string; host?: string; port?: number; user?: string }> {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || '465', 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) {
+    return { ok: false, error: 'SMTP_HOST/SMTP_USER/SMTP_PASS 미설정' };
+  }
+  try {
+    const t = getTransporter();
+    await t.verify();
+    return { ok: true, host, port, user };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'unknown SMTP error', host, port, user };
+  }
+}
+
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
   const dryRun = process.env.MAIL_DRY_RUN === '1';
   if (dryRun) {
