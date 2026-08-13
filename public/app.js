@@ -393,12 +393,23 @@ function hideGlobalBlocker() {
   if (el) el.classList.remove('is-active');
 }
 
-async function loadLeads() {
+// 클라이언트 캐시 — 매 nav 클릭마다 5000+ 리드 재fetch 방지
+let _leadsLastFetch = 0;
+const LEADS_CACHE_TTL_MS = 60 * 1000;   // 60초
+
+async function loadLeads(opts) {
+  const force = opts?.force === true;
+  const now = Date.now();
+  // 캐시 유효하면 스킵 (뷰 전환 시 로딩 시간 0)
+  if (!force && baseLeads.length > 0 && (now - _leadsLastFetch) < LEADS_CACHE_TTL_MS) {
+    return;
+  }
   try {
     const res = await fetch('/api/leads');
     const result = await res.json();
     if (result.success) {
       baseLeads = result.data.map(lead => ({ ...lead, id: lead.leadId }));
+      _leadsLastFetch = Date.now();
       renderFilters();
     }
   } catch(e) {
@@ -1563,7 +1574,7 @@ async function runVerifyingStageAi() {
       `→ 보관함: ${totalMoved.archived}건\n` +
       `→ 대기 유지 (모호): ${totalMoved.kept}건`
     );
-    await loadLeads();
+    await loadLeads({ force: true });
     render();
   } catch (e) {
     alert(`❌ AI 검증 실패: ${e.message || 'unknown'}\n\n지금까지 처리: ${totalProcessed}건`);
@@ -1628,7 +1639,7 @@ async function runCrawlEmails(scope) {
       `메일 발견: ${totalFound}건\n` +
       `Email 필드 자동 승격: ${totalPromoted}건`
     );
-    await loadLeads();
+    await loadLeads({ force: true });
     render();
   } catch (e) {
     alert(`❌ 크롤링 실패: ${e.message || 'unknown'}\n\n지금까지 처리: ${totalProcessed}건`);
@@ -1837,7 +1848,7 @@ async function bulkApproveVisible(approve) {
       `실제 반영: ${data.updated}건\n` +
       (data.skipReasons ? `스킵: 이메일없음 ${data.skipReasons.noEmail}, 한국 ${data.skipReasons.korean}, stage 불일치 ${data.skipReasons.wrongStage}` : '')
     );
-    await loadLeads();
+    await loadLeads({ force: true });
     render();
   } catch (e) {
     alert(`${label} 실패: ${e.message || 'unknown'}`);
@@ -1908,10 +1919,11 @@ function managePipelineAutoRefresh(currentView) {
   _pipelineAutoRefreshTimer = setInterval(async () => {
     if (state.view !== currentView) return;  // 사용자가 이미 다른 곳으로 이동
     try {
-      await loadLeads({ silent: true });
+      // 캐시 무시하고 강제 재로드 (배치 진행 반영 목적)
+      await loadLeads({ force: true });
       render();
     } catch (e) { /* silent */ }
-  }, 30000);  // 30 초마다
+  }, 5 * 60 * 1000);  // 5분마다 (기존 30초는 너무 잦음 → 매번 5MB fetch)
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2312,7 +2324,7 @@ async function handleComposeSend() {
       dryRun: data.dryRun,
     };
     // 로컬 lead emailHistory 갱신 위해 재로드
-    await loadLeads();
+    await loadLeads({ force: true });
   } catch (e) {
     alert(`발송 실패: ${e.message || 'unknown'}`);
   } finally {
@@ -2343,19 +2355,48 @@ function groupLeadsByBatch(stageMatch) {
   return Array.from(groups.values()).sort((a, b) => b.batchId.localeCompare(a.batchId));
 }
 
-// 검증대기 폴더 카드 (AI 진행 상태 표시)
-function batchCardVerifying(g) {
-  const total = g.leads.length;
-  const aiChecked = g.leads.filter(l => l?.verification?.aiVerifiedAt).length;
-  const aiPending = total - aiChecked;
-  const maybeCount = g.leads.filter(l => l?.verification?.aiVerdict === 'maybe').length;
-  const pctChecked = total > 0 ? Math.round(aiChecked / total * 100) : 0;
-  const done = pctChecked === 100;
+// 배치 전체 (모든 stage 포함) breakdown — 검증대기/완료/실패 카드 공용
+// 한 배치의 리드가 각 stage 로 얼마나 이동했는지 카운트
+function getBatchStageBreakdown(batchId) {
+  const inBatch = baseLeads.filter(l =>
+    !l.deleted && (l.importBatch || '(수동/미배치)') === batchId
+  );
+  const bd = {
+    total: inBatch.length,
+    verifying: 0,
+    verified: 0,
+    failed: 0,          // archived + not-buyer
+    archivedOther: 0,   // archived + 그 외 (수동 폐기)
+    contacted: 0,
+    replied: 0,
+    negotiating: 0,
+    partner: 0,
+    imported: 0,
+  };
+  for (const l of inBatch) {
+    const s = l.stage || 'imported';
+    if (s === 'archived') {
+      if (l?.verification?.aiVerdict === 'not-buyer') bd.failed++;
+      else bd.archivedOther++;
+    } else if (bd[s] !== undefined) {
+      bd[s]++;
+    }
+  }
+  return bd;
+}
 
-  const statusBadge = done
-    ? `<span style="padding:2px 8px;background:#dcfce7;color:#166534;border-radius:99px;font-size:11px;font-weight:700">✅ 검증 완료</span>`
-    : aiChecked > 0
-      ? `<span style="padding:2px 8px;background:#fef3c7;color:#92400e;border-radius:99px;font-size:11px;font-weight:700">🔄 진행 중 ${pctChecked}%</span>`
+// 검증대기 폴더 카드 (AI 진행 상태 + 이 배치가 어디로 얼마나 이동했는지)
+function batchCardVerifying(g) {
+  const bd = getBatchStageBreakdown(g.batchId);
+  const total = g.leads.length;   // 검증대기 stage 잔여
+  const aiChecked = g.leads.filter(l => l?.verification?.aiVerifiedAt).length;
+  const pctChecked = total > 0 ? Math.round(aiChecked / total * 100) : 100;
+  const allProcessed = bd.total > 0 && bd.verifying === 0;
+
+  const statusBadge = allProcessed
+    ? `<span style="padding:2px 8px;background:#dcfce7;color:#166534;border-radius:99px;font-size:11px;font-weight:700">✅ 검증 완료 (전량 이동)</span>`
+    : aiChecked > 0 || (bd.verified + bd.failed) > 0
+      ? `<span style="padding:2px 8px;background:#fef3c7;color:#92400e;border-radius:99px;font-size:11px;font-weight:700">🔄 검증 진행 중</span>`
       : `<span style="padding:2px 8px;background:#f1f5f9;color:#475569;border-radius:99px;font-size:11px;font-weight:700">⏳ 진행 전</span>`;
 
   return `
@@ -2363,7 +2404,7 @@ function batchCardVerifying(g) {
       background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px 18px;
       cursor:pointer;transition:all 0.15s;
     ">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <span style="font-size:22px">📁</span>
           <div style="min-width:0">
@@ -2373,18 +2414,30 @@ function batchCardVerifying(g) {
         </div>
         ${statusBadge}
       </div>
-      <div style="display:flex;gap:12px;font-size:12px;color:var(--text-secondary)">
-        <span>📊 총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>건</span>
-        ${aiPending > 0 ? `<span>⏳ 미검증 <b>${aiPending}</b></span>` : ''}
-        ${maybeCount > 0 ? `<span>🧠 모호 <b>${maybeCount}</b></span>` : ''}
-        <span style="margin-left:auto;color:var(--brand-primary,#4338ca);font-weight:600">폴더 열기 →</span>
+
+      <!-- 이 배치 전체 흐름 요약 -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;margin-bottom:8px">
+        <span style="padding:3px 8px;background:var(--surface-2);color:var(--text-secondary);border-radius:6px">
+          📊 배치 총 <b style="color:var(--text-primary)">${bd.total.toLocaleString()}</b>건
+        </span>
+        <span style="padding:3px 8px;background:#fef3c7;color:#92400e;border-radius:6px">
+          ⏳ 검증대기 <b>${bd.verifying}</b>
+        </span>
+        ${bd.verified > 0 ? `<span style="padding:3px 8px;background:#dcfce7;color:#166534;border-radius:6px">✅ 검증완료 <b>${bd.verified}</b></span>` : ''}
+        ${bd.failed > 0 ? `<span style="padding:3px 8px;background:#fef2f2;color:#991b1b;border-radius:6px">🚫 검증실패 <b>${bd.failed}</b></span>` : ''}
+        ${(bd.contacted + bd.replied + bd.negotiating) > 0 ? `<span style="padding:3px 8px;background:#dbeafe;color:#1e40af;border-radius:6px">📨 컨택+ <b>${bd.contacted + bd.replied + bd.negotiating}</b></span>` : ''}
+        ${bd.partner > 0 ? `<span style="padding:3px 8px;background:#f3e8ff;color:#6b21a8;border-radius:6px">⭐ 파트너 <b>${bd.partner}</b></span>` : ''}
+      </div>
+      <div style="display:flex;justify-content:flex-end;font-size:12px;color:var(--brand-primary,#4338ca);font-weight:600">
+        폴더 열기 (검증대기 ${total}건) →
       </div>
     </div>
   `;
 }
 
-// 검증완료 폴더 카드 (컨택 이동 준비 상태)
+// 검증완료 폴더 카드 (컨택 이동 준비 상태 + 배치 breakdown)
 function batchCardVerified(g) {
+  const bd = getBatchStageBreakdown(g.batchId);
   const total = g.leads.length;
   const hasRealEmail = (l) => l.Email && String(l.Email).trim() && !/^Not found/i.test(l.Email);
   const withEmail = g.leads.filter(hasRealEmail).length;
@@ -2396,7 +2449,7 @@ function batchCardVerified(g) {
       background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px 18px;
       cursor:pointer;transition:all 0.15s;
     ">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <span style="font-size:22px">📁</span>
           <div style="min-width:0">
@@ -2404,11 +2457,21 @@ function batchCardVerified(g) {
             <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.batchId)}</div>
           </div>
         </div>
-        <span style="padding:2px 8px;background:#dcfce7;color:#166534;border-radius:99px;font-size:11px;font-weight:700">✅ 검증 통과</span>
+        <span style="padding:2px 8px;background:#dcfce7;color:#166534;border-radius:99px;font-size:11px;font-weight:700">✅ 검증 통과 ${total}</span>
       </div>
+      <!-- 배치 전체 흐름 -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;margin-bottom:8px">
+        <span style="padding:3px 8px;background:var(--surface-2);color:var(--text-secondary);border-radius:6px">
+          📊 배치 총 <b style="color:var(--text-primary)">${bd.total.toLocaleString()}</b>건
+        </span>
+        ${bd.verifying > 0 ? `<span style="padding:3px 8px;background:#fef3c7;color:#92400e;border-radius:6px">⏳ 검증대기 <b>${bd.verifying}</b></span>` : ''}
+        ${bd.failed > 0 ? `<span style="padding:3px 8px;background:#fef2f2;color:#991b1b;border-radius:6px">🚫 실패 <b>${bd.failed}</b></span>` : ''}
+        <span style="padding:3px 8px;background:#dcfce7;color:#166534;border-radius:6px">✅ 통과 <b>${bd.verified}</b></span>
+        ${(bd.contacted + bd.replied + bd.negotiating) > 0 ? `<span style="padding:3px 8px;background:#dbeafe;color:#1e40af;border-radius:6px">📨 컨택+ <b>${bd.contacted + bd.replied + bd.negotiating}</b></span>` : ''}
+      </div>
+      <!-- 검증완료 특화 지표 -->
       <div style="display:flex;gap:12px;font-size:12px;color:var(--text-secondary);flex-wrap:wrap">
-        <span>📊 총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>건</span>
-        <span>📧 메일 있음 <b style="color:#15803d">${withEmail}</b></span>
+        <span>📧 메일 있음 <b style="color:#15803d">${withEmail}/${total}</b></span>
         ${noEmailWithSite > 0 ? `<span>🔍 크롤 대상 <b style="color:#d97706">${noEmailWithSite}</b></span>` : ''}
         ${approved > 0 ? `<span>✔ 승인 <b style="color:#15803d">${approved}</b></span>` : ''}
         <span style="margin-left:auto;color:var(--brand-primary,#4338ca);font-weight:600">폴더 열기 →</span>
@@ -2417,15 +2480,16 @@ function batchCardVerified(g) {
   `;
 }
 
-// 검증실패 폴더 카드
+// 검증실패 폴더 카드 (배치 breakdown 포함)
 function batchCardFailed(g) {
+  const bd = getBatchStageBreakdown(g.batchId);
   const total = g.leads.length;
   return `
     <div class="batch-folder-card" data-batch="${escapeAttr(g.batchId)}" style="
       background:var(--surface-1);border:1px solid #fca5a540;border-radius:12px;padding:16px 18px;
       cursor:pointer;transition:all 0.15s;
     ">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
           <span style="font-size:22px">📁</span>
           <div style="min-width:0">
@@ -2433,11 +2497,20 @@ function batchCardFailed(g) {
             <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.batchId)}</div>
           </div>
         </div>
-        <span style="padding:2px 8px;background:#fef2f2;color:#991b1b;border-radius:99px;font-size:11px;font-weight:700">🚫 실패</span>
+        <span style="padding:2px 8px;background:#fef2f2;color:#991b1b;border-radius:99px;font-size:11px;font-weight:700">🚫 실패 ${total}</span>
       </div>
-      <div style="display:flex;gap:12px;font-size:12px;color:var(--text-secondary)">
-        <span>📊 총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>건 무효</span>
-        <span style="margin-left:auto;color:var(--brand-primary,#4338ca);font-weight:600">폴더 열기 →</span>
+      <!-- 배치 전체 흐름 -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;margin-bottom:8px">
+        <span style="padding:3px 8px;background:var(--surface-2);color:var(--text-secondary);border-radius:6px">
+          📊 배치 총 <b style="color:var(--text-primary)">${bd.total.toLocaleString()}</b>건
+        </span>
+        <span style="padding:3px 8px;background:#fef2f2;color:#991b1b;border-radius:6px">🚫 실패 <b>${bd.failed}</b></span>
+        ${bd.verified > 0 ? `<span style="padding:3px 8px;background:#dcfce7;color:#166534;border-radius:6px">✅ 통과 <b>${bd.verified}</b></span>` : ''}
+        ${bd.verifying > 0 ? `<span style="padding:3px 8px;background:#fef3c7;color:#92400e;border-radius:6px">⏳ 대기 <b>${bd.verifying}</b></span>` : ''}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary)">
+        <span style="font-size:11px;color:var(--text-tertiary)">💡 실패는 수동으로 검증완료로 되돌리기 가능</span>
+        <span style="color:var(--brand-primary,#4338ca);font-weight:600">폴더 열기 →</span>
       </div>
     </div>
   `;
@@ -4066,7 +4139,7 @@ async function runCrawlerBatch() {
       }
     }
     // 완료 후 leads 재로드
-    await loadLeads();
+    await loadLeads({ force: true });
     _crawlState.running = false;
     renderCrawlerTool();
     alert(
@@ -4592,7 +4665,7 @@ async function deleteAllFailedLeads() {
   await Promise.all(promises);
 
   alert(`✅ 삭제 완료\n\n삭제됨: ${deleted}건${failures.length ? '\n실패: ' + failures.length + '건' : ''}`);
-  await loadLeads();
+  await loadLeads({ force: true });
   state.selectedLeadIds.clear();
   renderFilters();
   render();
