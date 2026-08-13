@@ -263,17 +263,8 @@ const els = {
 init();
 
 async function init() {
-  try {
-    const res = await fetch('/api/leads');
-    const result = await res.json();
-    if (result.success) {
-      baseLeads = result.data.map(lead => ({ ...lead, id: lead.leadId }));
-    }
-  } catch(e) {
-    console.error(e);
-  }
-  state.selectedId = baseLeads[0]?.id || null;
-
+  // 초기 페이지 로드에서 전체 리드(5000+) fetch 하지 않음 — render()가 필요 시 loadLeads 호출
+  // 이전 코드는 여기서 무조건 전체를 받아 60초 지연 발생
   initDetailResizer();
   initAddLeadModal();
   initEditModal();
@@ -289,6 +280,15 @@ async function init() {
   } catch {}
   renderFilters();
   bindEvents();
+
+  // 서버 사이드 페이지드 뷰 (verified/failed) 로 시작하면 전체 fetch 불필요
+  //   render()가 loadServerPage 로 50건만 fetch
+  // 그 외 뷰 (imported/verifying/contacted/등) 는 baseLeads 필요 → loadLeads 호출
+  const initialServerPaged = state.view === 'pipeline-verified' || state.view === 'pipeline-failed';
+  if (!initialServerPaged) {
+    await loadLeads();
+    state.selectedId = baseLeads[0]?.id || null;
+  }
   render();
 }
 
@@ -522,9 +522,14 @@ function bindEvents() {
       startTopProgress();
       setContentLoading(true);
       try {
-        await loadLeads();
-        state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
-        render();
+        // 서버 사이드 페이지드 뷰 (verified/failed) 는 loadLeads 스킵
+        // — render()가 loadServerPage 로 50건만 fetch → 즉시 반응
+        const isServerPaged = targetView === 'pipeline-verified' || targetView === 'pipeline-failed';
+        if (!isServerPaged) {
+          await loadLeads();
+          state.selectedId = getFilteredLeads()[0]?.id || state.selectedId;
+        }
+        await render();
       } finally {
         setContentLoading(false);
         finishTopProgress();
