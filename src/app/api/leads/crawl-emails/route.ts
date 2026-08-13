@@ -111,6 +111,15 @@ function normalizeUrl(raw: string): string | null {
   }
 }
 
+// 3-4 UA 회전 (기본 봇 차단 우회)
+const UAS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
+];
+let _uaIdx = 0;
+function pickUA() { _uaIdx = (_uaIdx + 1) % UAS.length; return UAS[_uaIdx]; }
+
 // 사이트에서 이메일 뽑기
 async function fetchAndExtract(url: string, ac: AbortController, maxBytes = 500_000): Promise<string[]> {
   try {
@@ -118,14 +127,19 @@ async function fetchAndExtract(url: string, ac: AbortController, maxBytes = 500_
       signal: ac.signal,
       redirect: 'follow',
       headers: {
-        'User-Agent': UA,
+        'User-Agent': pickUA(),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8,de;q=0.7,fr;q=0.6',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
       },
     });
     if (!res.ok) return [];
     const ct = res.headers.get('content-type') || '';
-    if (!/text\/html|application\/xhtml/i.test(ct)) return [];
+    if (!/text\/html|application\/xhtml|text\/plain/i.test(ct)) return [];
 
     // 스트림에서 500KB 만 읽기 (거대 페이지 방지)
     const reader = res.body?.getReader();
@@ -157,43 +171,141 @@ async function fetchAndExtract(url: string, ac: AbortController, maxBytes = 500_
   }
 }
 
+// HTML 엔티티 디코딩 (&#64; → @, &amp; → &, &nbsp; → space 등)
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#[xX]([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+// 난독화된 이메일을 정상 형태로 복원
+// "info [at] company [dot] com" → "info@company.com"
+// "info(at)company(dot)com", "info AT company DOT com", "info＠company．com" (fullwidth) 등
+function deobfuscateEmails(text: string): string {
+  return text
+    // fullwidth 문자 → ASCII
+    .replace(/[＠﹫]/g, '@')
+    .replace(/[．․﹒]/g, '.')
+    // (at) / [at] / {at} / AT 패턴
+    .replace(/\s*[\(\[\{]\s*at\s*[\)\]\}]\s*/gi, '@')
+    .replace(/\s+at\s+/gi, '@')
+    // (dot) / [dot] / {dot} / DOT 패턴
+    .replace(/\s*[\(\[\{]\s*dot\s*[\)\]\}]\s*/gi, '.')
+    .replace(/\s+dot\s+/gi, '.')
+    // "info AT company DOT com" 대문자 특수 케이스
+    .replace(/\bAT\b/g, '@')
+    .replace(/\bDOT\b/g, '.');
+}
+
 function extractEmails(html: string): string[] {
   const out = new Set<string>();
 
-  // 1) mailto: 링크에서 뽑기 (더 신뢰도 높음)
-  // mailto:info@x.com  ·  mailto: info@x.com (URL-encoded space %20)  ·  mailto:info@x.com?subject=... 모두 커버
+  // 0) HTML 엔티티 디코드 (전체 HTML)
+  const decoded = decodeHtmlEntities(html);
+
+  // 1) mailto: 링크
   const mailtoRe = /mailto:([^"'<>\s]+)/gi;
   let m: RegExpExecArray | null;
-  while ((m = mailtoRe.exec(html)) !== null) {
-    let raw = m[1].split('?')[0];  // query string 제거
-    try { raw = decodeURIComponent(raw); } catch { /* malformed → 원본 사용 */ }
-    // raw 안에 "leading space + email" 처럼 이메일 이외의 문자가 섞여 있을 수 있어 정규식으로 재추출
+  while ((m = mailtoRe.exec(decoded)) !== null) {
+    let raw = m[1].split('?')[0];
+    try { raw = decodeURIComponent(raw); } catch {}
     const clean = raw.match(EMAIL_RE);
     if (clean) clean.forEach((e) => out.add(e.toLowerCase()));
   }
 
-  // 2) 텍스트에서 직접 뽑기
-  const textMatches = html.match(EMAIL_RE) || [];
-  for (const e of textMatches) {
-    out.add(e.toLowerCase());
+  // 2) JSON-LD 구조화 데이터 (schema.org Organization/Person)
+  //    <script type="application/ld+json">{"email":"info@x.com",...}</script>
+  const jsonLdRe = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let jm: RegExpExecArray | null;
+  while ((jm = jsonLdRe.exec(decoded)) !== null) {
+    try {
+      const data = JSON.parse(jm[1]);
+      const collectEmails = (obj: any): void => {
+        if (!obj) return;
+        if (typeof obj === 'string') {
+          const found = obj.match(EMAIL_RE);
+          if (found) found.forEach((e) => out.add(e.toLowerCase()));
+          return;
+        }
+        if (Array.isArray(obj)) { obj.forEach(collectEmails); return; }
+        if (typeof obj === 'object') {
+          // "email" 필드 우선 처리
+          if (obj.email && typeof obj.email === 'string') {
+            const found = obj.email.match(EMAIL_RE);
+            if (found) found.forEach((e: string) => out.add(e.toLowerCase()));
+          }
+          Object.values(obj).forEach(collectEmails);
+        }
+      };
+      collectEmails(data);
+    } catch {}
+  }
+
+  // 3) 텍스트에서 직접 (일반적인 케이스)
+  const textMatches = decoded.match(EMAIL_RE) || [];
+  for (const e of textMatches) out.add(e.toLowerCase());
+
+  // 4) 난독화된 이메일 (at/dot/fullwidth) 복원 후 재추출
+  const deobfuscated = deobfuscateEmails(decoded);
+  const deobfMatches = deobfuscated.match(EMAIL_RE) || [];
+  for (const e of deobfMatches) out.add(e.toLowerCase());
+
+  // 5) data-email 속성 등 (React/Vue 컴포넌트 자주)
+  const dataEmailRe = /data-email=["']([^"']+)["']/gi;
+  while ((m = dataEmailRe.exec(decoded)) !== null) {
+    const found = m[1].match(EMAIL_RE);
+    if (found) found.forEach((e) => out.add(e.toLowerCase()));
   }
 
   // 노이즈 필터링
   return Array.from(out).filter((e) => !isNoise(e));
 }
 
-// 후보 사이트 URL 조합 (홈 + /contact + /about)
+// 후보 사이트 URL 조합 — 다국어 · impressum(DE) · 배급/도매 관련 경로 확장
 function candidatePaths(baseUrl: string): string[] {
   try {
     const u = new URL(baseUrl);
     const origin = u.origin;
-    return [
+    // baseUrl 이 /en/foo 같은 서브패스면 그 언어 유지 위해 그대로 포함
+    const paths = [
       baseUrl,
       `${origin}/contact`,
       `${origin}/contact-us`,
+      `${origin}/contactus`,
+      `${origin}/contacts`,
       `${origin}/about`,
       `${origin}/about-us`,
+      `${origin}/aboutus`,
+      // B2B 특화 (파트너십/도매)
+      `${origin}/wholesale`,
+      `${origin}/b2b`,
+      `${origin}/business`,
+      `${origin}/partnerships`,
+      `${origin}/partners`,
+      // 독일어권 (impressum 은 법적 컨택 정보 의무 노출)
+      `${origin}/impressum`,
+      `${origin}/kontakt`,
+      // 한국어
+      `${origin}/ko/contact`,
+      `${origin}/kr/contact`,
+      // 언론/PR
+      `${origin}/press`,
+      `${origin}/media`,
+      // 지원/고객서비스
+      `${origin}/support`,
+      `${origin}/customer-service`,
+      // 흔한 다국어 prefix 조합
+      `${origin}/en/contact`,
+      `${origin}/en/about`,
     ];
+    // 중복 제거
+    return Array.from(new Set(paths));
   } catch {
     return [baseUrl];
   }
