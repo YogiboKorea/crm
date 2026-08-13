@@ -59,9 +59,6 @@ export default function Home() {
             <button className="nav-item" data-view="pipeline-partner" type="button" title="파트너 (완료)">
               <span className="nav-icon">⭐</span><span className="nav-label">파트너 (완료)</span>
             </button>
-            <button className="nav-item" data-view="pipeline-archived" type="button" title="보관함">
-              <span className="nav-icon">📦</span><span className="nav-label">보관함</span>
-            </button>
             <div className="nav-divider"></div>
             {/* ── 부가 도구 ────────────────────────────────── */}
             <button className="nav-item" data-view="tool-b2b-email" type="button" title="B2B 메일 관리">

@@ -215,6 +215,9 @@ let state = {
   verifyingSubFilter: 'unverified',
   // 테이블 페이지네이션 (기본 50건 · 사용자가 25/50/100 선택 가능)
   pagination: { pageSize: 50, currentPage: 1 },
+  // Import 배치별 폴더 뷰 (검증대기/완료/실패 페이지 공용)
+  //   null = 폴더 목록 모드 · string = 특정 배치 안의 리드 리스트
+  folderView: { openBatch: null },
   // 검증완료 페이지 서브 필터 (승인 상태로 나눔)
   //   'all'        - 전체 verified
   //   'approved'   - readyForOutreach=true (발송 대기열)
@@ -338,6 +341,8 @@ function resetAllFilters() {
   if (els.verify) els.verify.value = "All";
   // 필터 초기화 시 페이지도 1페이지로
   if (state.pagination) state.pagination.currentPage = 1;
+  // 뷰 이동 시 폴더 뷰도 리셋
+  if (state.folderView) state.folderView.openBatch = null;
 }
 
 // ── Loading helpers ──────────────────────────────────────────────
@@ -1103,6 +1108,54 @@ function render() {
       stageMatch = (l) => (l.stage || 'imported') === s.stage;
     }
 
+    // ── Import 배치별 폴더 UI (검증대기/완료/실패 페이지 전용) ──
+    // 활성화 stage: verifying, verified, __failed
+    const useFolderView = ['verifying', 'verified', '__failed'].includes(s.stage);
+    if (useFolderView) {
+      const allByStage = getLeads().filter(stageMatch);
+      renderStageBanner(s, allByStage.length, allByStage.length);
+      // 서브필터 chip 은 폴더 밖에서만
+      if (s.stage === 'verifying') {
+        renderVerifyingSubFilterChips(allByStage);
+      } else {
+        clearVerifyingSubFilterChips();
+      }
+      const statsEl = document.getElementById('statsGrid');
+      if (statsEl) statsEl.innerHTML = '';
+
+      if (state.folderView.openBatch === null) {
+        // 폴더 목록 모드
+        const cardRenderer = s.stage === 'verifying' ? batchCardVerifying
+                          : s.stage === 'verified'  ? batchCardVerified
+                          : batchCardFailed;
+        renderBatchFolders(stageMatch, cardRenderer,
+          `${s.title}에 해당하는 import 배치가 없습니다.`);
+        return;
+      } else {
+        // 폴더 내부 모드 — 해당 배치 리드만 노출
+        const batchMatch = (l) => stageMatch(l) && (l.importBatch || '(수동/미배치)') === state.folderView.openBatch;
+        let batchLeads = leads.filter(batchMatch);
+        // 검증대기 서브필터도 배치 내부에서 적용
+        if (s.stage === 'verifying') {
+          const sub = state.verifyingSubFilter || 'unverified';
+          if (sub === 'unverified') batchLeads = batchLeads.filter(l => !l?.verification?.aiVerifiedAt);
+          else if (sub === 'maybe') batchLeads = batchLeads.filter(l => l?.verification?.aiVerdict === 'maybe');
+        }
+        // breadcrumb 추가
+        const bcHtml = renderFolderBreadcrumb(state.folderView.openBatch, batchLeads.length);
+        renderLeadTable(batchLeads, `이 폴더에 해당하는 리드가 없습니다.`);
+        // content 앞에 breadcrumb prepend
+        els.content.insertAdjacentHTML('afterbegin', bcHtml);
+        document.getElementById('folderBackBtn')?.addEventListener('click', () => {
+          state.folderView.openBatch = null;
+          resetPagination();
+          render();
+        });
+        return;
+      }
+    }
+
+    // ── 폴더 UI 안 쓰는 stage (contacted/replied/negotiating/partner/imported) ──
     // stage 필터는 텍스트 필터(getFilteredLeads) 뒤에 한번 더 적용
     const allByStage = getLeads().filter(stageMatch);
     let stageLeads = leads.filter(stageMatch);
@@ -1823,6 +1876,177 @@ function managePipelineAutoRefresh(currentView) {
   }, 30000);  // 30 초마다
 }
 
+// ══════════════════════════════════════════════════════════════
+// Import 배치별 폴더 UI (검증대기/완료/실패 페이지 공용)
+// ══════════════════════════════════════════════════════════════
+
+// stageMatch 함수 받아서 해당 stage 리드를 batch 별로 그룹핑
+function groupLeadsByBatch(stageMatch) {
+  const groups = new Map();  // batchId -> { batchId, dateLabel, leads: [] }
+  for (const lead of getLeads()) {
+    if (!stageMatch(lead)) continue;
+    const b = lead.importBatch || '(수동/미배치)';
+    if (!groups.has(b)) {
+      // batchId 예: "import-20260813-153021" → date label 추출
+      const m = String(b).match(/(\d{4})(\d{2})(\d{2})/);
+      const dateLabel = m ? `${m[1]}-${m[2]}-${m[3]}` : (b === '(수동/미배치)' ? '수동 추가' : '미상');
+      groups.set(b, { batchId: b, dateLabel, leads: [] });
+    }
+    groups.get(b).leads.push(lead);
+  }
+  // 최신 배치 (batchId 문자열 역순) 먼저
+  return Array.from(groups.values()).sort((a, b) => b.batchId.localeCompare(a.batchId));
+}
+
+// 검증대기 폴더 카드 (AI 진행 상태 표시)
+function batchCardVerifying(g) {
+  const total = g.leads.length;
+  const aiChecked = g.leads.filter(l => l?.verification?.aiVerifiedAt).length;
+  const aiPending = total - aiChecked;
+  const maybeCount = g.leads.filter(l => l?.verification?.aiVerdict === 'maybe').length;
+  const pctChecked = total > 0 ? Math.round(aiChecked / total * 100) : 0;
+  const done = pctChecked === 100;
+
+  const statusBadge = done
+    ? `<span style="padding:2px 8px;background:#dcfce7;color:#166534;border-radius:99px;font-size:11px;font-weight:700">✅ 검증 완료</span>`
+    : aiChecked > 0
+      ? `<span style="padding:2px 8px;background:#fef3c7;color:#92400e;border-radius:99px;font-size:11px;font-weight:700">🔄 진행 중 ${pctChecked}%</span>`
+      : `<span style="padding:2px 8px;background:#f1f5f9;color:#475569;border-radius:99px;font-size:11px;font-weight:700">⏳ 진행 전</span>`;
+
+  return `
+    <div class="batch-folder-card" data-batch="${escapeAttr(g.batchId)}" style="
+      background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px 18px;
+      cursor:pointer;transition:all 0.15s;
+    ">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <span style="font-size:22px">📁</span>
+          <div style="min-width:0">
+            <div style="font-weight:700;font-size:14px;color:var(--text-primary)">${g.dateLabel}</div>
+            <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.batchId)}</div>
+          </div>
+        </div>
+        ${statusBadge}
+      </div>
+      <div style="display:flex;gap:12px;font-size:12px;color:var(--text-secondary)">
+        <span>📊 총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>건</span>
+        ${aiPending > 0 ? `<span>⏳ 미검증 <b>${aiPending}</b></span>` : ''}
+        ${maybeCount > 0 ? `<span>🧠 모호 <b>${maybeCount}</b></span>` : ''}
+        <span style="margin-left:auto;color:var(--brand-primary,#4338ca);font-weight:600">폴더 열기 →</span>
+      </div>
+    </div>
+  `;
+}
+
+// 검증완료 폴더 카드 (컨택 이동 준비 상태)
+function batchCardVerified(g) {
+  const total = g.leads.length;
+  const hasRealEmail = (l) => l.Email && String(l.Email).trim() && !/^Not found/i.test(l.Email);
+  const withEmail = g.leads.filter(hasRealEmail).length;
+  const approved = g.leads.filter(l => l.readyForOutreach === true).length;
+  const noEmailWithSite = g.leads.filter(l => !hasRealEmail(l) && l.WebsiteContact && String(l.WebsiteContact).trim()).length;
+
+  return `
+    <div class="batch-folder-card" data-batch="${escapeAttr(g.batchId)}" style="
+      background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px 18px;
+      cursor:pointer;transition:all 0.15s;
+    ">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <span style="font-size:22px">📁</span>
+          <div style="min-width:0">
+            <div style="font-weight:700;font-size:14px;color:var(--text-primary)">${g.dateLabel}</div>
+            <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.batchId)}</div>
+          </div>
+        </div>
+        <span style="padding:2px 8px;background:#dcfce7;color:#166534;border-radius:99px;font-size:11px;font-weight:700">✅ 검증 통과</span>
+      </div>
+      <div style="display:flex;gap:12px;font-size:12px;color:var(--text-secondary);flex-wrap:wrap">
+        <span>📊 총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>건</span>
+        <span>📧 메일 있음 <b style="color:#15803d">${withEmail}</b></span>
+        ${noEmailWithSite > 0 ? `<span>🔍 크롤 대상 <b style="color:#d97706">${noEmailWithSite}</b></span>` : ''}
+        ${approved > 0 ? `<span>✔ 승인 <b style="color:#15803d">${approved}</b></span>` : ''}
+        <span style="margin-left:auto;color:var(--brand-primary,#4338ca);font-weight:600">폴더 열기 →</span>
+      </div>
+    </div>
+  `;
+}
+
+// 검증실패 폴더 카드
+function batchCardFailed(g) {
+  const total = g.leads.length;
+  return `
+    <div class="batch-folder-card" data-batch="${escapeAttr(g.batchId)}" style="
+      background:var(--surface-1);border:1px solid #fca5a540;border-radius:12px;padding:16px 18px;
+      cursor:pointer;transition:all 0.15s;
+    ">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <span style="font-size:22px">📁</span>
+          <div style="min-width:0">
+            <div style="font-weight:700;font-size:14px;color:var(--text-primary)">${g.dateLabel}</div>
+            <div style="font-size:11px;color:var(--text-tertiary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.batchId)}</div>
+          </div>
+        </div>
+        <span style="padding:2px 8px;background:#fef2f2;color:#991b1b;border-radius:99px;font-size:11px;font-weight:700">🚫 실패</span>
+      </div>
+      <div style="display:flex;gap:12px;font-size:12px;color:var(--text-secondary)">
+        <span>📊 총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>건 무효</span>
+        <span style="margin-left:auto;color:var(--brand-primary,#4338ca);font-weight:600">폴더 열기 →</span>
+      </div>
+    </div>
+  `;
+}
+
+// 배치 폴더 목록 뷰 (열린 배치가 없을 때)
+function renderBatchFolders(stageMatch, cardRenderer, emptyText) {
+  const groups = groupLeadsByBatch(stageMatch);
+  if (groups.length === 0) {
+    els.content.innerHTML = emptyState(emptyText);
+    return;
+  }
+  els.content.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${groups.map(cardRenderer).join('')}
+    </div>
+  `;
+  // 카드 클릭 → 폴더 열기
+  els.content.querySelectorAll('.batch-folder-card').forEach(el => {
+    el.addEventListener('click', () => {
+      state.folderView.openBatch = el.dataset.batch;
+      resetPagination();
+      render();
+    });
+    el.addEventListener('mouseenter', () => {
+      el.style.borderColor = 'var(--brand-primary, #4338ca)';
+      el.style.transform = 'translateY(-1px)';
+      el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
+    });
+    el.addEventListener('mouseleave', () => {
+      el.style.borderColor = 'var(--border)';
+      el.style.transform = '';
+      el.style.boxShadow = '';
+    });
+  });
+}
+
+// 폴더 안에서 표시할 상단 breadcrumb (뒤로 가기 링크)
+function renderFolderBreadcrumb(batchId, count) {
+  const m = String(batchId).match(/(\d{4})(\d{2})(\d{2})/);
+  const dateLabel = m ? `${m[1]}-${m[2]}-${m[3]}` : '수동';
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 14px;background:var(--surface-2);border-radius:8px;font-size:13px">
+      <button id="folderBackBtn" type="button" style="background:transparent;border:none;color:var(--brand-primary,#4338ca);cursor:pointer;font-weight:600;font-size:13px;padding:0">
+        ← 폴더 목록으로
+      </button>
+      <span style="color:var(--text-tertiary)">/</span>
+      <span style="font-weight:600">📁 ${dateLabel}</span>
+      <span style="color:var(--text-tertiary);font-family:monospace;font-size:11px">${escapeHtml(batchId)}</span>
+      <span style="margin-left:auto;color:var(--text-tertiary)">${count.toLocaleString()}건</span>
+    </div>
+  `;
+}
+
 // ── 페이지네이션 바 (게시판 스타일 1 · 2 · 3 · ... · N) ────────
 function renderPaginationBar(current, totalPages, totalItems) {
   if (totalPages <= 1) return '';
@@ -2435,6 +2659,28 @@ function getLeads() {
 async function handleStageChange(leadId, newStage, selectEl) {
   const lead = baseLeads.find(l => l.id === leadId);
   if (!lead || !lead._id) return;
+
+  // ── 안전 게이트: 컨택중 이동 시 실제 이메일 필수 ─────────
+  // 컨택중 = B2B 메일 발송 준비 상태. 메일 없으면 발송 불가 → 이동 자체 차단
+  if (newStage === 'contacted') {
+    const email = (lead.Email || '').trim();
+    const isValid = email && !/^Not found/i.test(email) && /@/.test(email);
+    if (!isValid) {
+      alert(
+        `❌ 컨택중으로 이동 불가\n\n` +
+        `"${lead.Company}" 리드에 유효한 이메일이 없습니다.\n\n` +
+        `해결책:\n` +
+        `1) 검증완료 페이지에서 "🔍 메일 크롤링" 실행\n` +
+        `2) 리드 편집으로 이메일 수동 입력\n` +
+        `3) 이메일 확보 불가면 검증실패로 이동`
+      );
+      // 드롭다운이면 원래 값으로 복원
+      if (selectEl && selectEl.tagName === 'SELECT') {
+        selectEl.value = lead.stage || 'imported';
+      }
+      return;
+    }
+  }
 
   const oldStage = lead.stage || 'imported';
   const oldStyle = STAGE_STYLE[oldStage];
