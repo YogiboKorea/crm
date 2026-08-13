@@ -341,8 +341,9 @@ function resetAllFilters() {
   if (els.verify) els.verify.value = "All";
   // 필터 초기화 시 페이지도 1페이지로
   if (state.pagination) state.pagination.currentPage = 1;
-  // 뷰 이동 시 폴더 뷰도 리셋
-  if (state.folderView) state.folderView.openBatch = null;
+  // 뷰 이동 시 폴더 뷰도 리셋 (없으면 초기화)
+  if (!state.folderView) state.folderView = { openBatch: null };
+  state.folderView.openBatch = null;
 }
 
 // ── Loading helpers ──────────────────────────────────────────────
@@ -1123,7 +1124,9 @@ function render() {
       const statsEl = document.getElementById('statsGrid');
       if (statsEl) statsEl.innerHTML = '';
 
-      if (state.folderView.openBatch === null) {
+      // state.folderView 방어 (오래된 세션 등 호환)
+      if (!state.folderView) state.folderView = { openBatch: null };
+      if (state.folderView.openBatch == null) {
         // 폴더 목록 모드
         const cardRenderer = s.stage === 'verifying' ? batchCardVerifying
                           : s.stage === 'verified'  ? batchCardVerified
@@ -2198,6 +2201,19 @@ function renderComposeModal() {
   // 이벤트 바인딩
   document.getElementById('composeCloseBtn')?.addEventListener('click', closeComposeModal);
   document.getElementById('composeCancelBtn')?.addEventListener('click', closeComposeModal);
+  // 백드롭 클릭 → 닫기 (모달 카드 자체 클릭은 stopPropagation)
+  const root = document.getElementById('composeModalRoot');
+  root?.addEventListener('click', (e) => {
+    if (e.target === root) closeComposeModal();
+  });
+  // Esc 키 → 닫기 (한 번만 바인딩)
+  const escHandler = (e) => {
+    if (e.key === 'Escape' && _composeState.isOpen) {
+      closeComposeModal();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
 
   document.getElementById('composeTemplateSel')?.addEventListener('change', (e) => {
     const tid = e.target.value;
