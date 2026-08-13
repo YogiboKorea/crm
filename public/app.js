@@ -4667,6 +4667,58 @@ function openImportCsvModal() {
   if (!modal) return;
   resetImportModal();
   modal.style.display = 'flex';
+  // 예제 양식 다운로드 버튼 바인딩 (매번 재바인딩 — 안전)
+  const dlBtn = document.getElementById('downloadSampleCsvBtn');
+  if (dlBtn) {
+    dlBtn.onclick = downloadSampleCsv;
+  }
+}
+
+// ── 예제 CSV 양식 다운로드 ─────────────────────────────
+// 헤더 정의 순서 = 사용자가 참고할 순서
+const SAMPLE_CSV_HEADERS = [
+  'Company', 'Country', 'Priority', 'Type',
+  'BuyerContact', 'Title', 'Email', 'Phone',
+  'WebsiteContact', 'LinkedInCompany', 'BrandsChannels', 'Notes', 'Status',
+];
+const SAMPLE_CSV_ROWS = [
+  // 실제 K-beauty B2B 리드 예시 (실존 회사 X)
+  ['Acme Beauty Distributors', 'United States', 'A-', 'Distributor',
+   'John Smith', 'Head of Buying', 'partnerships@acmebeauty.com', '+1-555-0100',
+   'https://acmebeauty.com', 'https://linkedin.com/company/acme-beauty',
+   'Sephora, Ulta, Amazon US', '전화 응대 우수. K-beauty 카테고리 신규 진입 관심.', 'New'],
+  ['Kruidvat NL', 'Netherlands', 'B', 'Retailer',
+   'Anna van der Berg', 'Category Manager', 'buying@kruidvat.nl', '+31-20-5551234',
+   'https://www.kruidvat.nl', '',
+   'Beauty of Joseon, COSRX (기존 취급)', '유럽 진출 협의 중. 3월에 카탈로그 발송 예정.', 'Qualified'],
+  ['Watsons China', 'China', 'A-', 'Retailer',
+   'Benjamin Cheung', 'Senior Trading Manager', 'bd_cn@watsons.com.cn', '+86-21-5555-0100',
+   'https://www.watsons.com.cn', 'https://linkedin.com/in/benjamin-cheung',
+   'Multiple K-beauty brands', '중국 오프라인 3000+ 매장. 대형 리테일러.', 'Contacted'],
+];
+
+function csvEscape(v) {
+  const s = String(v ?? '');
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function downloadSampleCsv() {
+  const lines = [
+    SAMPLE_CSV_HEADERS.map(csvEscape).join(','),
+    ...SAMPLE_CSV_ROWS.map(row => row.map(csvEscape).join(',')),
+  ];
+  // Excel 한글 UTF-8 인식용 BOM
+  const csv = '﻿' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'yogico-crm-예제양식.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function resetImportModal() {
@@ -4691,27 +4743,121 @@ function resetImportModal() {
 function initImportCsvModal() {}
 
 function handleCsvFile(file) {
-  if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
-    alert('CSV 파일만 가져올 수 있습니다.');
+  const isCsv = file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv';
+  const isXlsx = /\.xlsx?$/i.test(file.name);
+  if (!isCsv && !isXlsx) {
+    alert(
+      '❌ 지원되지 않는 파일 형식\n\n' +
+      '· CSV (.csv) 파일만 지원합니다.\n' +
+      '· Excel (.xlsx) → "다른 이름으로 저장 → CSV UTF-8" 로 변환 후 업로드하세요.\n\n' +
+      '💡 "⬇ 예제 양식 다운로드" 버튼으로 형식 확인 가능.'
+    );
+    return;
+  }
+  if (isXlsx) {
+    alert(
+      '❌ Excel 파일 (.xlsx) 은 직접 업로드 불가\n\n' +
+      '변환 방법:\n' +
+      '1. Excel 에서 파일 열기\n' +
+      '2. 파일 → 다른 이름으로 저장\n' +
+      '3. 파일 형식: "CSV UTF-8 (쉼표로 분리) (*.csv)" 선택\n' +
+      '4. 저장 후 그 CSV 파일 업로드\n\n' +
+      '💡 "⬇ 예제 양식 다운로드" 버튼으로 예시 확인 가능.'
+    );
     return;
   }
   if (file.size > 5 * 1024 * 1024) {
-    alert('파일 크기가 5MB를 초과합니다.');
+    alert('❌ 파일 크기가 5MB를 초과합니다.\n\n큰 파일은 나눠서 여러 번 업로드하세요.');
     return;
   }
 
   const reader = new FileReader();
   reader.onload = (e) => {
     const text = e.target.result;
+    // 헤더 검증 먼저 — 오류 시 명확한 안내
+    const validation = validateCsvHeaders(text);
+    if (!validation.ok) {
+      alert(validation.message);
+      return;
+    }
     const leads = parseCsv(text);
     if (!leads.length) {
-      alert('CSV 파일에서 데이터를 찾을 수 없습니다. Company와 Country 컬럼이 있는지 확인해주세요.');
+      alert(
+        '❌ 파싱된 리드가 0건\n\n' +
+        '가능한 원인:\n' +
+        '· 헤더만 있고 데이터 행이 없음\n' +
+        '· 모든 행에서 Company 값이 비어있음\n\n' +
+        '💡 "⬇ 예제 양식 다운로드" 버튼으로 올바른 형식 확인.'
+      );
       return;
     }
     importParsedLeads = leads;
     showImportPreview(leads);
   };
   reader.readAsText(file, 'UTF-8');
+}
+
+// ── CSV 헤더 검증 ─────────────────────────────────
+// 필수 컬럼(Company, Country) 있는지 확인 · 인식 안 된 컬럼 리스트 반환
+function validateCsvHeaders(csvText) {
+  const firstLine = (csvText.split(/\r?\n/)[0] || '').trim();
+  if (!firstLine) {
+    return {
+      ok: false,
+      message: '❌ 빈 파일이거나 헤더 라인이 없습니다.\n\n"⬇ 예제 양식 다운로드"로 예시 참고하세요.',
+    };
+  }
+  const headers = splitCsvLine(firstLine).map(h => h.trim());
+  if (headers.length < 2) {
+    return {
+      ok: false,
+      message: '❌ 헤더 컬럼이 부족합니다 (' + headers.length + '개).\n\n' +
+        'CSV 첫 줄은 쉼표로 구분된 컬럼명이어야 합니다. 예:\n' +
+        'Company,Country,Priority,Email,Phone,...\n\n' +
+        '"⬇ 예제 양식 다운로드"로 예시 참고하세요.',
+    };
+  }
+
+  // 필수 컬럼 검사 (case-insensitive)
+  const lowerHeaders = headers.map(h => h.toLowerCase().replace(/\s+/g, ''));
+  const hasCompany = lowerHeaders.some(h => h === 'company' || h === '회사명' || h === '업체명');
+  const hasCountry = lowerHeaders.some(h => h === 'country' || h === '국가');
+  const missing = [];
+  if (!hasCompany) missing.push('Company (회사명)');
+  if (!hasCountry) missing.push('Country (국가)');
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      message: '❌ 필수 컬럼 누락\n\n' +
+        '없는 컬럼:\n' +
+        missing.map(m => '  · ' + m).join('\n') + '\n\n' +
+        '파일에 있는 컬럼:\n  ' +
+        headers.slice(0, 20).join(', ') +
+        (headers.length > 20 ? ` ... (${headers.length}개)` : '') + '\n\n' +
+        '💡 "⬇ 예제 양식 다운로드" 버튼으로 올바른 양식 참고하세요.',
+    };
+  }
+
+  // 인식 안 된 컬럼 — 경고만 (실패 X)
+  const knownAliases = new Set([
+    'company', 'country', 'priority', 'type',
+    'buyercontact', 'buyer contact', 'buyer name', 'contact',
+    'email', 'phone', 'website', 'websitecontact',
+    'brandschannels', 'brands/channels', 'brands',
+    'notes', 'note', 'status', 'title',
+    'evidence', 'approach', 'sources',
+    'linkedincompany', 'linkedin',
+    'owner', 'lastcontact', 'last contact',
+    'nextfollowup', 'next follow-up', 'follow-up', 'followup',
+    'id', 'leadid',
+  ]);
+  const unknown = headers.filter(h => !knownAliases.has(h.toLowerCase().trim()));
+  if (unknown.length > 0 && unknown.length <= 3) {
+    console.warn('[CSV import] 인식 안 된 컬럼 (원본 이름 그대로 저장됨):', unknown);
+  }
+
+  return { ok: true };
 }
 
 function parseCsv(text) {

@@ -250,11 +250,27 @@ export default function Home() {
 
             {/* Step 1: File select */}
             <div id="importStep1">
-              <p style={{ marginBottom: '12px', color: 'var(--muted)', fontSize: '14px' }}>
+              <p style={{ marginBottom: '8px', color: 'var(--muted)', fontSize: '14px' }}>
                 CSV 파일을 선택하면 미리보기와 함께 가져올 수 있습니다.<br />
                 <strong>필수 컬럼:</strong> Company, Country &nbsp;|&nbsp;
                 <strong>선택 컬럼:</strong> Priority, Type, BuyerContact, Email, Phone, WebsiteContact, BrandsChannels, Notes, Status
               </p>
+              <div style={{
+                marginBottom: '14px', padding: '10px 14px',
+                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                border: '1px solid #93c5fd', borderRadius: '10px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+              }}>
+                <div style={{ fontSize: '13px', color: '#1e3a8a' }}>
+                  <b>📋 처음이신가요?</b> 예제 양식을 다운받아 채워서 업로드하세요.<br/>
+                  <span style={{ fontSize: '11px', color: '#3730a3' }}>모든 컬럼 예시 · 3개 샘플 리드 포함 · UTF-8</span>
+                </div>
+                <button type="button" id="downloadSampleCsvBtn" style={{
+                  padding: '8px 14px', fontSize: '12px', fontWeight: 700,
+                  background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px',
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>⬇ 예제 양식 다운로드</button>
+              </div>
 
               <div
                 id="importDropZone"
