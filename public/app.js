@@ -1345,8 +1345,8 @@ async function _renderInner() {
 
   // ── 새 부가 도구 페이지 스켈레톤 ──────────────────────────────
   if (state.view === "tool-b2b-email") {
-    els.viewTitle.textContent = "📤 B2B 메일 관리";
-    els.viewSubtitle.textContent = "템플릿 편집 · 예약 발송 · 발송 이력. 파트너는 자동 제외.";
+    els.viewTitle.textContent = "📝 메일 템플릿 편집";
+    els.viewSubtitle.textContent = "발송에 쓸 메일 문구(제목·본문·변수) 를 저장/편집. 실제 발송은 컨택중 페이지에서.";
     renderB2BEmailManager();
     return;
   }
@@ -1582,14 +1582,22 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
               ${_mailerEnvCache?.dryRun ? ' · 🧪 <b>DRY_RUN</b> 모드 (실제 발송 X)' : ' · 🟢 실전 발송 모드'}
             </div>
           </div>
-          <button id="openBulkComposeBtn" type="button" style="
-            font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
-            background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
-            box-shadow:0 2px 8px rgba(37,99,235,0.3);
-            ${readyToSend.length === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-          " ${readyToSend.length === 0 ? 'disabled' : ''}>
-            ✉ 메일 작성 & 발송 (${readyToSend.length})
-          </button>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button id="openTemplateEditorBtn" type="button" style="
+              font-size:13px;font-weight:600;padding:12px 16px;white-space:nowrap;
+              background:white;color:#2563eb;border:1px solid #93c5fd;border-radius:10px;cursor:pointer;
+            " title="발송에 사용할 메일 문구 (제목/본문) 를 미리 저장/편집">
+              📝 템플릿 편집
+            </button>
+            <button id="openBulkComposeBtn" type="button" style="
+              font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
+              background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
+              box-shadow:0 2px 8px rgba(37,99,235,0.3);
+              ${readyToSend.length === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+            " ${readyToSend.length === 0 ? 'disabled' : ''}>
+              ✉ 메일 작성 & 발송 (${readyToSend.length})
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -1647,6 +1655,10 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   document.getElementById('runCrawlOnVerifiedBtn')?.addEventListener('click', () => runCrawlEmails('verified-no-email'));
   document.getElementById('deleteAllFailedHeroBtn')?.addEventListener('click', () => deleteAllFailedLeads());
   document.getElementById('openBulkComposeBtn')?.addEventListener('click', () => openComposeModal('bulk-contacted'));
+  document.getElementById('openTemplateEditorBtn')?.addEventListener('click', () => {
+    state.view = 'tool-b2b-email';
+    render();
+  });
 }
 
 // ── AI 1차 검증 (verifying stage 파이프라인) ─────────────────

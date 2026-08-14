@@ -58,9 +58,6 @@ export default function Home() {
             </button>
             <div className="nav-divider"></div>
             {/* ── 부가 도구 ────────────────────────────────── */}
-            <button className="nav-item" data-view="tool-b2b-email" type="button" title="B2B 메일 관리">
-              <span className="nav-icon">📤</span><span className="nav-label">B2B 메일 관리</span>
-            </button>
             <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리">
               <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
             </button>
