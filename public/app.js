@@ -4685,12 +4685,11 @@ function openMailAccountModal(editId) {
   `;
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 
+  // 사용자 요청: 반드시 × 버튼 (또는 닫기 버튼) 을 눌러야만 닫히도록.
+  // 백드롭 클릭·Esc 로는 닫히지 않음 (실수로 입력 다 날리는 것 방지).
   const closeModal = () => document.getElementById('mailAccountModalRoot')?.remove();
   document.getElementById('macModalClose')?.addEventListener('click', closeModal);
   document.getElementById('macCancel')?.addEventListener('click', closeModal);
-  document.getElementById('mailAccountModalRoot')?.addEventListener('click', (e) => {
-    if (e.target.id === 'mailAccountModalRoot') closeModal();
-  });
 
   // 프리셋 선택 → 호스트/포트/보안 자동 채움 + 서비스별 가이드 표시
   const applyPreset = (key) => {
