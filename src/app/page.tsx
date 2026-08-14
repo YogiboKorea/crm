@@ -94,7 +94,7 @@ export default function Home() {
             </div>
           </header>
 
-          <section className="toolbar" aria-label="Lead filters">
+          <section id="toolbarSection" className="toolbar" aria-label="Lead filters">
             <label className="search-box">
               <span>Search</span>
               <input id="searchInput" type="search" placeholder="company, country, brand, contact" />

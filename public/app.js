@@ -1096,6 +1096,13 @@ async function _renderInner() {
   clearStageBanner();
   clearVerifyingSubFilterChips();
   clearVerifiedResultTabs();
+
+  // 리드 리스트 아닌 tool 페이지에서는 상단 필터 toolbar 숨김
+  const tb = document.getElementById('toolbarSection');
+  if (tb) {
+    const isToolPage = state.view && state.view.startsWith('tool-');
+    tb.style.display = isToolPage ? 'none' : '';
+  }
   els.navItems.forEach((item) => {
     const itemView = item.dataset.view;
     const itemStatus = item.dataset.statusFilter;
@@ -4558,8 +4565,8 @@ function openMailAccountModal(editId) {
 
   document.getElementById('mailAccountModalRoot')?.remove();
   const modalHtml = `
-    <div id="mailAccountModalRoot" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center">
-      <div style="width:min(560px,95vw);max-height:92vh;background:var(--surface-0);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.3)">
+    <div id="mailAccountModalRoot" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)">
+      <div style="width:min(560px,95vw);max-height:92vh;background:#ffffff;color:#0f172a;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.4)">
         <div style="padding:20px 24px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
           <div style="display:flex;align-items:center;gap:14px">
             <div style="font-size:36px">📮</div>
