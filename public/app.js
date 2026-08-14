@@ -224,6 +224,10 @@ let state = {
   //   'pending'    - readyForOutreach=false (승인 대기)
   //   'no-email'   - Email 필드 비었거나 "Not found" — 승인 불가
   verifiedSubFilter: 'all',
+  // 검증완료 페이지 상단 상위 탭 (성공/실패)
+  //   'success' (default) - verified stage 리드
+  //   'failed'  - archived + not-buyer (구 pipeline-failed)
+  verifiedResultTab: 'success',
   // B2B 메일 매니저 전용 서브 상태
   email: {
     templates: [],
@@ -1091,6 +1095,7 @@ async function _renderInner() {
   // 매 render 마다 stage 배너/서브필터 chip 초기화 — 각 페이지에서 필요 시 다시 그려짐
   clearStageBanner();
   clearVerifyingSubFilterChips();
+  clearVerifiedResultTabs();
   els.navItems.forEach((item) => {
     const itemView = item.dataset.view;
     const itemStatus = item.dataset.statusFilter;
@@ -1200,12 +1205,19 @@ async function _renderInner() {
     // 나머지는 stage 별 50건씩 서버 슬라이스
     const useServerPage = s.stage !== 'verifying' && s.stage !== 'imported';
     if (useServerPage) {
-      const serverStage = s.stage;
+      // 검증완료 페이지는 성공/실패 상위 탭으로 stage 동적 결정
+      let serverStage = s.stage;
+      let displayInfo = s;
+      if (s.stage === 'verified') {
+        const tab = state.verifiedResultTab || 'success';
+        if (tab === 'failed') {
+          serverStage = '__failed';
+          displayInfo = { ...s, title: '🚫 검증 실패', sub: 'AI가 K-beauty 무관으로 판정. 수동으로 성공 탭으로 되돌리기 가능.' };
+        }
+      }
       const sub = serverStage === 'verified' ? (state.verifiedSubFilter || 'all') : null;
       const wantPage = state.pagination?.currentPage || 1;
-      // 카운트 로드 (사이드바/서브필터/폴더 등)
       const counts = _stageCountsCache || await loadStageCounts();
-      // 현재 페이지 데이터 로드
       let pageData;
       try {
         pageData = await loadServerPage(serverStage, wantPage, sub === 'all' ? null : sub);
@@ -1214,9 +1226,15 @@ async function _renderInner() {
         return;
       }
       const totalForBanner = pageData.total;
-      renderStageBanner(s, totalForBanner, totalForBanner);
-      // 검증완료 서브필터 chip (서버 카운트 기반)
-      if (serverStage === 'verified' && counts) {
+      renderStageBanner(displayInfo, totalForBanner, totalForBanner);
+      // 검증완료 페이지 상단에 성공/실패 탭
+      if (s.stage === 'verified' && counts) {
+        renderVerifiedResultTabs(counts.stages.verified, counts.stages.failed);
+      } else {
+        clearVerifiedResultTabs();
+      }
+      // 검증완료 서브필터 chip (성공 탭일 때만 · 서버 카운트 기반)
+      if (s.stage === 'verified' && serverStage === 'verified' && counts) {
         renderVerifiedSubFilterChipsServer(counts.verifiedSub, counts.stages.failed);
       } else {
         clearVerifiedSubFilterChips();
@@ -1224,7 +1242,7 @@ async function _renderInner() {
       clearVerifyingSubFilterChips();
       const statsElServer = document.getElementById('statsGrid');
       if (statsElServer) statsElServer.innerHTML = '';
-      renderServerPagedTable(pageData, s);
+      renderServerPagedTable(pageData, displayInfo);
       return;
     }
 
@@ -1903,6 +1921,58 @@ function renderVerifiedSubFilterChips(allInStage) {
 }
 function clearVerifiedSubFilterChips() {
   const c = document.getElementById('verifiedSubFilterChips');
+  if (c) c.innerHTML = '';
+}
+
+// 검증완료 상단 성공/실패 대형 탭 (한 페이지 안에서 결과 분류)
+function renderVerifiedResultTabs(successCount, failedCount) {
+  const containerId = 'verifiedResultTabs';
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    const banner = document.getElementById('stageBannerContainer');
+    if (banner && banner.parentNode) {
+      banner.parentNode.insertBefore(container, banner.nextSibling);
+    } else {
+      const content = document.getElementById('content');
+      content.parentNode.insertBefore(container, content);
+    }
+  }
+  const cur = state.verifiedResultTab || 'success';
+  const tab = (key, label, count, activeColor, activeBg) => {
+    const active = key === cur;
+    return `<button type="button" class="v-result-tab" data-tab="${key}"
+      style="flex:1;padding:14px 18px;font-size:14px;font-weight:${active ? '700' : '500'};
+      background:${active ? activeBg : 'var(--surface-1)'};
+      color:${active ? activeColor : 'var(--text-secondary)'};
+      border:none;border-bottom:3px solid ${active ? activeColor : 'transparent'};
+      cursor:pointer;transition:all 0.15s;
+      display:flex;align-items:center;justify-content:center;gap:8px">
+      <span>${label}</span>
+      <span style="padding:2px 8px;background:${active ? activeColor : 'var(--surface-2)'};color:${active ? 'white' : 'var(--text-tertiary)'};border-radius:99px;font-size:11px;font-weight:700">${(count || 0).toLocaleString()}</span>
+    </button>`;
+  };
+  container.innerHTML = `
+    <div style="margin-top:12px;display:flex;background:var(--surface-1);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      ${tab('success', '✅ 검증 성공', successCount, '#15803d', '#dcfce7')}
+      ${tab('failed',  '🚫 검증 실패', failedCount,  '#dc2626', '#fef2f2')}
+    </div>
+  `;
+  container.querySelectorAll('.v-result-tab').forEach(el => {
+    el.addEventListener('click', () => {
+      state.verifiedResultTab = el.dataset.tab;
+      // 서브필터/페이지 리셋
+      state.verifiedSubFilter = 'all';
+      resetPagination();
+      // 캐시 무효화 (다른 stage 페이지드)
+      _serverPageCache = null;
+      render();
+    });
+  });
+}
+function clearVerifiedResultTabs() {
+  const c = document.getElementById('verifiedResultTabs');
   if (c) c.innerHTML = '';
 }
 
@@ -4287,9 +4357,23 @@ async function renderMailAccountsTool() {
     </div>
 
     ${list.length === 0 ? `
-      <div style="padding:40px;text-align:center;color:var(--text-tertiary);background:var(--surface-1);border:1px dashed var(--border);border-radius:12px">
-        아직 등록된 메일 계정이 없습니다.<br>
-        "+ 계정 추가" 를 눌러 첫 계정을 등록하세요.
+      <div style="padding:60px 32px;text-align:center;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:16px">
+        <div style="font-size:56px;margin-bottom:16px">📮</div>
+        <div style="font-size:18px;font-weight:700;color:#1e40af;margin-bottom:8px">
+          첫 메일 계정을 등록해 주세요
+        </div>
+        <div style="font-size:13px;color:#1e3a8a;line-height:1.6;max-width:480px;margin:0 auto 24px">
+          B2B 메일을 발송하려면 회사 메일 계정 (SMTP) 을 먼저 연결해야 합니다.<br>
+          Gmail · Outlook · Naver · 이카운트 등 대부분의 서비스 지원.
+        </div>
+        <button id="addFirstAccountBtn" class="button primary" type="button"
+          style="font-size:16px;font-weight:700;padding:14px 32px;background:#2563eb;color:white;
+          border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 12px rgba(37,99,235,0.3)">
+          + 첫 계정 추가하기
+        </button>
+        <div style="margin-top:20px;font-size:11px;color:#64748b">
+          🔒 SMTP 비밀번호는 AES-256-GCM 로 암호화 저장. 서버에서만 복호화.
+        </div>
       </div>
     ` : `
       <div style="display:flex;flex-direction:column;gap:10px">
@@ -4299,6 +4383,7 @@ async function renderMailAccountsTool() {
   `;
 
   document.getElementById('addMailAccountBtn')?.addEventListener('click', () => openMailAccountModal());
+  document.getElementById('addFirstAccountBtn')?.addEventListener('click', () => openMailAccountModal());
   document.querySelectorAll('.acc-verify-btn').forEach(b => b.addEventListener('click', () => verifyMailAccount(b.dataset.accId)));
   document.querySelectorAll('.acc-default-btn').forEach(b => b.addEventListener('click', () => setDefaultMailAccount(b.dataset.accId)));
   document.querySelectorAll('.acc-edit-btn').forEach(b => b.addEventListener('click', () => openMailAccountModal(b.dataset.accId)));
@@ -4401,18 +4486,33 @@ function openMailAccountModal(editId) {
   const modalHtml = `
     <div id="mailAccountModalRoot" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center">
       <div style="width:min(560px,95vw);max-height:92vh;background:var(--surface-0);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.3)">
-        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-size:15px;font-weight:700">${isEdit ? '메일 계정 수정' : '메일 계정 추가'}</div>
-            <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">저장 시 자동으로 SMTP 연결 테스트</div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="font-size:36px">📮</div>
+            <div>
+              <div style="font-size:17px;font-weight:800;color:#1e40af">
+                ${isEdit ? '내 메일 계정 수정' : '내 메일 계정 등록'}
+              </div>
+              <div style="font-size:12px;color:#1e3a8a;margin-top:3px;line-height:1.5">
+                ${isEdit ? '이 계정으로 발송할 정보를 업데이트합니다.' : '이 계정으로 로그인해서 메일을 발송할 수 있게 등록합니다.'}<br>
+                <b>비밀번호는 AES 로 안전하게 암호화됩니다.</b>
+              </div>
+            </div>
           </div>
-          <button id="macModalClose" style="background:transparent;border:none;font-size:22px;cursor:pointer;color:var(--text-tertiary);padding:4px 10px">×</button>
+          <button id="macModalClose" style="background:rgba(255,255,255,0.5);border:none;font-size:22px;cursor:pointer;color:#1e40af;padding:2px 12px;border-radius:6px">×</button>
         </div>
 
-        <div style="padding:20px 24px;overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+        <!-- 3단계 표시 -->
+        <div style="padding:14px 24px 0;display:flex;gap:8px;font-size:11px;color:var(--text-tertiary)">
+          <span style="padding:4px 10px;background:#dbeafe;color:#1e40af;border-radius:99px;font-weight:600">① 서비스</span>
+          <span style="padding:4px 10px;background:#dbeafe;color:#1e40af;border-radius:99px;font-weight:600">② 로그인</span>
+          <span style="padding:4px 10px;background:#dbeafe;color:#1e40af;border-radius:99px;font-weight:600">③ 발신자</span>
+        </div>
+
+        <div style="padding:16px 24px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px">
           <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">별칭 (표시용)</label>
-            <input id="macName" type="text" value="${escapeAttr(acc?.accountName || '')}" placeholder="예: PR팀 · 영업 · 개인용"
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">📝 이 계정의 별칭 (내가 식별용)</label>
+            <input id="macName" type="text" value="${escapeAttr(acc?.accountName || '')}" placeholder="예: PR팀 · 영업팀 · 개인 아이디"
               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
           </div>
 
@@ -4481,8 +4581,8 @@ function openMailAccountModal(editId) {
 
         <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
           <button id="macCancel" class="button ghost" type="button" style="font-size:13px;padding:9px 16px">닫기</button>
-          <button id="macSave" class="button primary" type="button" style="font-size:14px;font-weight:700;padding:9px 22px;background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer">
-            ${isEdit ? '💾 수정' : '+ 저장 & 연결 테스트'}
+          <button id="macSave" class="button primary" type="button" style="font-size:14px;font-weight:700;padding:11px 24px;background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 6px rgba(37,99,235,0.3)">
+            ${isEdit ? '💾 변경사항 저장' : '🚀 내 계정 등록하기'}
           </button>
         </div>
       </div>

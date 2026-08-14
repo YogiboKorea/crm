@@ -41,11 +41,8 @@ export default function Home() {
             <button className="nav-item" data-view="pipeline-verifying" type="button" title="검증 대기">
               <span className="nav-icon">🔍</span><span className="nav-label">검증 대기</span>
             </button>
-            <button className="nav-item" data-view="pipeline-verified" type="button" title="검증 완료 (성공)">
+            <button className="nav-item" data-view="pipeline-verified" type="button" title="검증 완료 (성공/실패 탭)">
               <span className="nav-icon">✅</span><span className="nav-label">검증 완료</span>
-            </button>
-            <button className="nav-item" data-view="pipeline-failed" type="button" title="검증 실패 — 수동으로 검증완료로 되돌리기 가능">
-              <span className="nav-icon">🚫</span><span className="nav-label">검증 실패</span>
             </button>
             <button className="nav-item" data-view="pipeline-contacted" type="button" title="컨택 중">
               <span className="nav-icon">📨</span><span className="nav-label">컨택 중</span>
