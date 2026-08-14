@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { EmailTemplate } from '@/models/EmailTemplate';
+import { MailAccount } from '@/models/MailAccount';
 import { sendMail, renderTemplate } from '@/lib/mailer';
 import { buildVarsFromLead } from '@/lib/template-vars';
+import { decryptSecret } from '@/lib/crypto';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -41,6 +43,7 @@ export async function POST(req: Request) {
   const fontFamily: string = body.fontFamily || 'Pretendard, -apple-system, BlinkMacSystemFont, sans-serif';
   const fontSize: number = Math.min(24, Math.max(10, Number(body.fontSize) || 15));
   const forceDryRun: boolean = body.dryRun === true;
+  const mailAccountId: string | undefined = body.mailAccountId;
 
   if (!templateId && (!explicitSubject || !explicitBody)) {
     return NextResponse.json({ success: false, error: 'templateId 또는 subject+body 필요' }, { status: 400 });
@@ -53,6 +56,28 @@ export async function POST(req: Request) {
   if (templateId) {
     tpl = await EmailTemplate.findById(templateId).lean();
     if (!tpl) return NextResponse.json({ success: false, error: 'template not found' }, { status: 404 });
+  }
+
+  // ── 발송 계정 로드 (mailAccountId 지정 시) ──
+  // 미지정 시 default 계정 또는 env fallback (하위 호환)
+  let smtpConfig: any = undefined;
+  let fromOverride: any = undefined;
+  let usedAccount: any = null;
+  if (mailAccountId) {
+    const acc = await MailAccount.findById(mailAccountId);
+    if (!acc || !acc.isActive) {
+      return NextResponse.json({ success: false, error: '지정된 발송 계정이 없거나 비활성' }, { status: 400 });
+    }
+    try {
+      smtpConfig = {
+        host: acc.smtpHost, port: acc.smtpPort, secure: acc.smtpSecure,
+        user: acc.smtpUser, pass: decryptSecret(acc.smtpPassEnc),
+      };
+      fromOverride = { name: acc.fromName || acc.smtpUser, address: acc.fromAddress };
+      usedAccount = { id: String(acc._id), user: acc.smtpUser, from: acc.fromAddress };
+    } catch (e: any) {
+      return NextResponse.json({ success: false, error: `계정 복호화 실패: ${e?.message}` }, { status: 500 });
+    }
   }
 
   const subjectSrc = explicitSubject ?? tpl?.subject ?? '';
@@ -108,6 +133,8 @@ export async function POST(req: Request) {
         subject: renderedSubject,
         html: htmlPayload,
         text: textPayload,
+        smtpConfig,
+        fromOverride,
       });
     }
 
@@ -168,6 +195,7 @@ export async function POST(req: Request) {
     sent,
     failed,
     dryRun: forceDryRun || process.env.MAIL_DRY_RUN === '1',
+    usedAccount,
     results,
   });
 }

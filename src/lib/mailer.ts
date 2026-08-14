@@ -49,6 +49,15 @@ export interface SendMailInput {
   text?: string;              // 텍스트 본문
   replyTo?: string;
   headers?: Record<string, string>;
+  // ── 특정 MailAccount 로 발송 시 아래 3개 전달 (없으면 env 기본) ──
+  smtpConfig?: {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    pass: string;               // 이미 복호화된 평문 (호출자가 복호화 책임)
+  };
+  fromOverride?: { name: string; address: string };
 }
 
 export interface SendMailResult {
@@ -82,19 +91,31 @@ export async function verifySmtp(): Promise<{ ok: boolean; error?: string; host?
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
   const dryRun = process.env.MAIL_DRY_RUN === '1';
   if (dryRun) {
-    console.log('[mailer:DRY_RUN]', input.to, '·', input.subject);
+    console.log('[mailer:DRY_RUN]', input.to, '·', input.subject, input.smtpConfig ? `(via ${input.smtpConfig.user})` : '');
     return { ok: true, dryRun: true, messageId: `dryrun-${Date.now()}` };
   }
 
-  const fromName = process.env.MAIL_FROM_NAME || 'Yogico';
+  // 특정 계정 자격증명이 전달됐으면 그걸로 임시 transporter 생성
+  // (캐시하지 않음 — 계정별 독립 · 매 발송마다 새로. 대량 발송이면 향후 계정별 캐시 검토)
+  let transporterToUse;
+  if (input.smtpConfig) {
+    transporterToUse = nodemailer.createTransport({
+      host: input.smtpConfig.host,
+      port: input.smtpConfig.port,
+      secure: input.smtpConfig.secure,
+      auth: { user: input.smtpConfig.user, pass: input.smtpConfig.pass },
+    });
+  }
+
+  const fromName = input.fromOverride?.name || process.env.MAIL_FROM_NAME || 'Yogico';
   const fromAddress =
-    process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER;
+    input.fromOverride?.address || process.env.MAIL_FROM_ADDRESS || process.env.SMTP_USER;
   if (!fromAddress) {
     return { ok: false, error: 'MAIL_FROM_ADDRESS/SMTP_USER 누락' };
   }
 
   try {
-    const transporter = getTransporter();
+    const transporter = transporterToUse || getTransporter();
     const info = await transporter.sendMail({
       from: `"${fromName}" <${fromAddress}>`,
       to: input.to,
