@@ -4567,7 +4567,7 @@ function openMailAccountModal(editId) {
         <div style="padding:16px 24px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px">
           <!-- ① 서비스 선택 -->
           <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">① 서비스 선택</label>
+            <label style="font-size:12px;color:#1e40af;font-weight:800;text-transform:uppercase;letter-spacing:0.5px">① 서비스 선택</label>
             <select id="macPreset" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:4px;font-weight:600">
               ${presetOptions.map(p => `<option value="${p.key}" ${p.key === currentPresetKey ? 'selected' : ''}>${p.label}</option>`).join('')}
             </select>
@@ -4581,7 +4581,7 @@ function openMailAccountModal(editId) {
 
           <!-- ② 로그인 정보 -->
           <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">② 로그인 정보</label>
+            <label style="font-size:12px;color:#1e40af;font-weight:800;text-transform:uppercase;letter-spacing:0.5px">② 로그인 정보</label>
           </div>
 
           <div>
@@ -4600,7 +4600,7 @@ function openMailAccountModal(editId) {
 
           <!-- ③ 별칭 + 발신자 -->
           <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">③ 별칭 & 발신자 표시</label>
+            <label style="font-size:12px;color:#1e40af;font-weight:800;text-transform:uppercase;letter-spacing:0.5px">③ 별칭 & 발신자 표시</label>
           </div>
 
           <div>
