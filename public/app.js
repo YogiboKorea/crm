@@ -4339,40 +4339,54 @@ async function renderMailAccountsTool() {
   const list = await loadMailAccounts(true);
 
   els.content.innerHTML = `
-    <div style="background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:12px;padding:16px 20px;margin-bottom:16px">
+    <!-- 이카운트 웹메일 강조 배너 -->
+    <div style="background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1px solid #fcd34d;border-radius:12px;padding:16px 20px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <span style="font-size:22px">📬</span>
-        <strong style="font-size:15px;color:#1e40af">메일 계정 다계정 관리</strong>
+        <span style="font-size:22px">📮</span>
+        <strong style="font-size:15px;color:#92400e">이카운트 웹메일 로그인 (또는 Gmail/네이버 등)</strong>
       </div>
-      <p style="margin:0;font-size:12px;color:#1e3a8a;line-height:1.6">
-        회사 SMTP 계정을 여러 개 등록해서 발송 시 어떤 계정으로 보낼지 선택합니다.
-        <b>비밀번호는 서버에서 AES-256-GCM 으로 암호화</b> 되어 저장되고, 발송 시에만 복호화됩니다.
-        <br>Gmail 등 2FA 활성 계정은 <b>앱 비밀번호</b>가 필요합니다 (Google 계정 → 보안 → 앱 비밀번호).
+      <p style="margin:0;font-size:12px;color:#78350f;line-height:1.6">
+        회사 메일 계정을 등록하면 <b>그 계정으로 B2B 광고 메일 발송</b>이 가능합니다.
+        비밀번호는 서버 AES-256-GCM 암호화 저장 · 발송 시에만 복호화.
+        <br>여러 계정 (PR팀·영업팀·개인) 등록 → 발송 시 어느 계정으로 보낼지 선택.
       </p>
     </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h3 style="margin:0;font-size:14px;font-weight:700">등록된 계정 (${list.length})</h3>
-      <button id="addMailAccountBtn" class="button primary" type="button" style="font-size:13px;padding:8px 14px">+ 계정 추가</button>
+      ${list.length > 0 ? `<button id="addMailAccountBtn" class="button primary" type="button" style="font-size:13px;padding:8px 14px">+ 계정 추가</button>` : ''}
     </div>
 
     ${list.length === 0 ? `
-      <div style="padding:60px 32px;text-align:center;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:16px">
-        <div style="font-size:56px;margin-bottom:16px">📮</div>
-        <div style="font-size:18px;font-weight:700;color:#1e40af;margin-bottom:8px">
-          첫 메일 계정을 등록해 주세요
+      <div style="padding:56px 32px;text-align:center;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:16px">
+        <div style="font-size:56px;margin-bottom:14px">📮</div>
+        <div style="font-size:20px;font-weight:800;color:#1e40af;margin-bottom:8px">
+          이카운트 웹메일에 로그인하기
         </div>
-        <div style="font-size:13px;color:#1e3a8a;line-height:1.6;max-width:480px;margin:0 auto 24px">
-          B2B 메일을 발송하려면 회사 메일 계정 (SMTP) 을 먼저 연결해야 합니다.<br>
-          Gmail · Outlook · Naver · 이카운트 등 대부분의 서비스 지원.
+        <div style="font-size:13px;color:#1e3a8a;line-height:1.7;max-width:520px;margin:0 auto 24px">
+          B2B 광고 메일을 회사 이메일로 자동 발송하려면 먼저 로그인이 필요합니다.<br>
+          <b>이카운트가 아닌 Gmail · Outlook · Naver</b> 도 같은 화면에서 등록 가능.
         </div>
-        <button id="addFirstAccountBtn" class="button primary" type="button"
+
+        <!-- 이카운트 사전 세팅 안내 (emailData 참고) -->
+        <div style="text-align:left;background:white;border:1px solid #cbd5e1;border-radius:10px;padding:14px 18px;max-width:520px;margin:0 auto 20px">
+          <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:8px">
+            ⚡ 이카운트는 로그인 전에 웹메일 설정 2가지가 필요해요
+          </div>
+          <ol style="margin:0;padding-left:20px;font-size:12px;color:#0f172a;line-height:1.7">
+            <li>웹메일 → <b>개인기능설정 → 외부연동설정</b></li>
+            <li><b>메일 클라이언트 사용</b>: "사용" 으로 변경</li>
+            <li><b>해외 로그인 차단</b>: "사용안함" 으로 변경 (Vercel 서버는 해외라서 필수)</li>
+          </ol>
+        </div>
+
+        <button id="addFirstAccountBtn" type="button"
           style="font-size:16px;font-weight:700;padding:14px 32px;background:#2563eb;color:white;
           border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 12px rgba(37,99,235,0.3)">
-          + 첫 계정 추가하기
+          📮 이카운트 웹메일 로그인
         </button>
-        <div style="margin-top:20px;font-size:11px;color:#64748b">
-          🔒 SMTP 비밀번호는 AES-256-GCM 로 암호화 저장. 서버에서만 복호화.
+        <div style="margin-top:14px;font-size:11px;color:#64748b">
+          🔒 로그인 정보는 AES-256-GCM 로 암호화 저장. 서버에서만 복호화.
         </div>
       </div>
     ` : `
@@ -4471,94 +4485,156 @@ function openMailAccountModal(editId) {
   const isEdit = !!editId;
   const acc = isEdit ? (_mailAccounts || []).find(a => a._id === editId) : null;
 
-  // 흔한 SMTP 프리셋 (사용자 편의)
+  // 흔한 SMTP 프리셋 (사용자 편의) — 이카운트 기본
   const presetOptions = [
-    { label: '커스텀', host: '', port: 465, secure: true },
-    { label: 'Gmail', host: 'smtp.gmail.com', port: 465, secure: true },
-    { label: 'Outlook / Office 365', host: 'smtp.office365.com', port: 587, secure: false },
-    { label: 'Naver', host: 'smtp.naver.com', port: 465, secure: true },
-    { label: 'Daum/Hanmail', host: 'smtp.daum.net', port: 465, secure: true },
-    { label: '이카운트 (ECOUNT)', host: 'wsmtp.ecount.com', port: 465, secure: true },
-    { label: 'Cafe24', host: 'smtp.cafe24.com', port: 465, secure: true },
+    { key: 'ecount',  label: '📮 이카운트 (ECOUNT)', host: 'wsmtp.ecount.com', port: 465, secure: true },
+    { key: 'gmail',   label: '📮 Gmail', host: 'smtp.gmail.com', port: 465, secure: true },
+    { key: 'outlook', label: '📮 Outlook / Office 365', host: 'smtp.office365.com', port: 587, secure: false },
+    { key: 'naver',   label: '📮 Naver', host: 'smtp.naver.com', port: 465, secure: true },
+    { key: 'daum',    label: '📮 Daum/Hanmail', host: 'smtp.daum.net', port: 465, secure: true },
+    { key: 'cafe24',  label: '📮 Cafe24', host: 'smtp.cafe24.com', port: 465, secure: true },
+    { key: 'custom',  label: '⚙️ 직접 입력 (커스텀)', host: '', port: 465, secure: true },
   ];
+  // 서비스별 사전 세팅 안내
+  const providerGuides = {
+    ecount: {
+      title: '이카운트는 웹메일에서 2가지 설정이 켜져 있어야 합니다',
+      steps: [
+        '웹메일 로그인 → 개인기능설정 → 외부연동설정',
+        '"메일 클라이언트 사용"을 사용으로 변경',
+        '"해외 로그인 차단"을 사용안함으로 변경 (Vercel 서버는 해외 IP)',
+      ],
+    },
+    gmail: {
+      title: 'Gmail은 계정 비밀번호로 로그인되지 않습니다',
+      steps: [
+        'Google 계정 → 보안 → 2단계 인증 켜기',
+        '같은 화면에서 앱 비밀번호 발급 (16자리)',
+        '아래 비밀번호 칸에는 앱 비밀번호를 입력',
+      ],
+    },
+    naver: {
+      title: '네이버는 IMAP/SMTP 사용 활성화가 필요합니다',
+      steps: [
+        '네이버 메일 → 환경설정 → POP3/IMAP 설정',
+        'IMAP/SMTP 사용 켜기',
+        '2단계 인증 사용 시 애플리케이션 비밀번호 발급',
+      ],
+    },
+    outlook: {
+      title: 'Outlook은 앱 비밀번호 필요',
+      steps: [
+        'Microsoft 계정 → 보안 → 2단계 인증 활성화',
+        '고급 보안 옵션 → 앱 비밀번호 만들기',
+        '앱 비밀번호를 아래 칸에 입력',
+      ],
+    },
+  };
+  // 현재 선택된 프리셋 (호스트 기반 추측 · 신규는 이카운트 기본)
+  const guessPresetKey = (h) => {
+    if (!h) return 'ecount';
+    const l = h.toLowerCase();
+    if (l.includes('ecount')) return 'ecount';
+    if (l.includes('gmail')) return 'gmail';
+    if (l.includes('office365') || l.includes('outlook')) return 'outlook';
+    if (l.includes('naver')) return 'naver';
+    if (l.includes('daum')) return 'daum';
+    if (l.includes('cafe24')) return 'cafe24';
+    return 'custom';
+  };
+  const currentPresetKey = guessPresetKey(acc?.smtpHost);
 
   document.getElementById('mailAccountModalRoot')?.remove();
   const modalHtml = `
     <div id="mailAccountModalRoot" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center">
       <div style="width:min(560px,95vw);max-height:92vh;background:var(--surface-0);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.3)">
-        <div style="padding:20px 24px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="padding:20px 24px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
           <div style="display:flex;align-items:center;gap:14px">
             <div style="font-size:36px">📮</div>
             <div>
-              <div style="font-size:17px;font-weight:800;color:#1e40af">
-                ${isEdit ? '내 메일 계정 수정' : '내 메일 계정 등록'}
+              <div style="font-size:18px;font-weight:800;color:#92400e">
+                ${isEdit ? '메일 계정 수정' : '메일 계정 로그인'}
               </div>
-              <div style="font-size:12px;color:#1e3a8a;margin-top:3px;line-height:1.5">
-                ${isEdit ? '이 계정으로 발송할 정보를 업데이트합니다.' : '이 계정으로 로그인해서 메일을 발송할 수 있게 등록합니다.'}<br>
-                <b>비밀번호는 AES 로 안전하게 암호화됩니다.</b>
+              <div style="font-size:12px;color:#78350f;margin-top:3px;line-height:1.5">
+                ${isEdit ? '이 계정 정보를 업데이트합니다.' : '회사 메일 계정으로 로그인하면 <b>그 계정으로 광고 메일이 발송</b>됩니다.'}<br>
+                🔒 비밀번호는 AES-256 로 서버에서만 복호화.
               </div>
             </div>
           </div>
-          <button id="macModalClose" style="background:rgba(255,255,255,0.5);border:none;font-size:22px;cursor:pointer;color:#1e40af;padding:2px 12px;border-radius:6px">×</button>
-        </div>
-
-        <!-- 3단계 표시 -->
-        <div style="padding:14px 24px 0;display:flex;gap:8px;font-size:11px;color:var(--text-tertiary)">
-          <span style="padding:4px 10px;background:#dbeafe;color:#1e40af;border-radius:99px;font-weight:600">① 서비스</span>
-          <span style="padding:4px 10px;background:#dbeafe;color:#1e40af;border-radius:99px;font-weight:600">② 로그인</span>
-          <span style="padding:4px 10px;background:#dbeafe;color:#1e40af;border-radius:99px;font-weight:600">③ 발신자</span>
+          <button id="macModalClose" style="background:rgba(255,255,255,0.5);border:none;font-size:22px;cursor:pointer;color:#92400e;padding:2px 12px;border-radius:6px">×</button>
         </div>
 
         <div style="padding:16px 24px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+          <!-- ① 서비스 선택 -->
+          <div>
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">① 서비스 선택</label>
+            <select id="macPreset" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:4px;font-weight:600">
+              ${presetOptions.map(p => `<option value="${p.key}" ${p.key === currentPresetKey ? 'selected' : ''}>${p.label}</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- 서비스별 사전 세팅 안내 (프리셋에 따라 동적 표시) -->
+          <div id="macGuide" style="display:none;padding:12px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px">
+            <div id="macGuideTitle" style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:6px"></div>
+            <ol id="macGuideSteps" style="margin:0;padding-left:20px;font-size:12px;color:#0f172a;line-height:1.7"></ol>
+          </div>
+
+          <!-- ② 로그인 정보 -->
+          <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">② 로그인 정보</label>
+          </div>
+
+          <div>
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">📧 이메일 (SMTP 계정)</label>
+            <input id="macUser" type="text" value="${escapeAttr(acc?.smtpUser || '')}" placeholder="me@yogico.kr"
+              style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:2px">
+          </div>
+
+          <div>
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">
+              🔑 비밀번호 ${isEdit ? '<span style="color:var(--text-tertiary);font-weight:400">(변경 시에만 입력. 빈 값이면 기존 유지)</span>' : '<span style="color:#dc2626">*</span>'}
+            </label>
+            <input id="macPass" type="password" placeholder="${isEdit ? '(변경 안 함)' : '이카운트 웹메일 비밀번호 또는 앱 비밀번호'}"
+              style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:2px">
+          </div>
+
+          <!-- ③ 별칭 + 발신자 -->
+          <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">③ 별칭 & 발신자 표시</label>
+          </div>
+
           <div>
             <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">📝 이 계정의 별칭 (내가 식별용)</label>
             <input id="macName" type="text" value="${escapeAttr(acc?.accountName || '')}" placeholder="예: PR팀 · 영업팀 · 개인 아이디"
               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
           </div>
 
-          <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">서비스 프리셋 (선택 시 SMTP 정보 자동 입력)</label>
-            <select id="macPreset" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
-              ${presetOptions.map(p => `<option value="${escapeAttr(p.host)}::${p.port}::${p.secure}">${p.label}</option>`).join('')}
-            </select>
-          </div>
-
-          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
-            <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">SMTP 호스트</label>
-              <input id="macHost" type="text" value="${escapeAttr(acc?.smtpHost || '')}" placeholder="smtp.example.com"
-                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+          <!-- SMTP 상세 (기본 접힘 · 프리셋 선택 시 자동 채워짐) -->
+          <details style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;background:var(--surface-2)">
+            <summary style="cursor:pointer;font-size:12px;color:var(--text-secondary);font-weight:600">⚙️ SMTP 서버 상세 (자동 채워짐 — 필요 시에만 수정)</summary>
+            <div style="margin-top:12px;display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
+              <div>
+                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">SMTP 호스트</label>
+                <input id="macHost" type="text" value="${escapeAttr(acc?.smtpHost || '')}" placeholder="smtp.example.com"
+                  style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:2px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">포트</label>
+                <input id="macPort" type="number" value="${acc?.smtpPort || 465}"
+                  style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:2px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">보안</label>
+                <select id="macSecure" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:2px">
+                  <option value="true" ${acc?.smtpSecure !== false ? 'selected' : ''}>SSL (465)</option>
+                  <option value="false" ${acc?.smtpSecure === false ? 'selected' : ''}>STARTTLS (587)</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">포트</label>
-              <input id="macPort" type="number" value="${acc?.smtpPort || 465}"
-                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            <div style="margin-top:6px;font-size:10px;color:var(--text-tertiary)">
+              이카운트 기본: <code>wsmtp.ecount.com:465</code> SSL. 프리셋 변경 시 자동 반영.
             </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">보안</label>
-              <select id="macSecure" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
-                <option value="true" ${acc?.smtpSecure !== false ? 'selected' : ''}>SSL (465)</option>
-                <option value="false" ${acc?.smtpSecure === false ? 'selected' : ''}>STARTTLS (587)</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">계정 (SMTP User)</label>
-            <input id="macUser" type="text" value="${escapeAttr(acc?.smtpUser || '')}" placeholder="me@company.com"
-              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
-          </div>
-
-          <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">
-              비밀번호 ${isEdit ? '<span style="color:var(--text-tertiary);font-weight:400">(변경 시에만 입력. 빈 값이면 기존 비번 유지)</span>' : '<span style="color:#dc2626">*</span>'}
-            </label>
-            <input id="macPass" type="password" placeholder="${isEdit ? '(변경 안 함)' : '앱 비밀번호 또는 SMTP 비밀번호'}"
-              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
-            <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
-              ⚠ Gmail/Outlook 은 2FA 활성 시 <b>앱 비밀번호</b> 필요. 저장 시 자동 암호화됩니다.
-            </div>
-          </div>
+          </details>
 
           <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">
             <div>
@@ -4597,15 +4673,30 @@ function openMailAccountModal(editId) {
     if (e.target.id === 'mailAccountModalRoot') closeModal();
   });
 
-  // 프리셋 선택 → 호스트/포트/보안 자동 채움
-  document.getElementById('macPreset')?.addEventListener('change', (e) => {
-    const [host, port, secure] = e.target.value.split('::');
-    if (host) {
-      document.getElementById('macHost').value = host;
-      document.getElementById('macPort').value = port;
-      document.getElementById('macSecure').value = secure;
+  // 프리셋 선택 → 호스트/포트/보안 자동 채움 + 서비스별 가이드 표시
+  const applyPreset = (key) => {
+    const preset = presetOptions.find(p => p.key === key);
+    if (preset && preset.host) {
+      document.getElementById('macHost').value = preset.host;
+      document.getElementById('macPort').value = preset.port;
+      document.getElementById('macSecure').value = String(preset.secure);
     }
-  });
+    // 가이드 표시/숨김
+    const guide = providerGuides[key];
+    const guideEl = document.getElementById('macGuide');
+    const titleEl = document.getElementById('macGuideTitle');
+    const stepsEl = document.getElementById('macGuideSteps');
+    if (guide && guideEl) {
+      titleEl.textContent = `⚡ ${guide.title}`;
+      stepsEl.innerHTML = guide.steps.map(s => `<li>${escapeHtml(s)}</li>`).join('');
+      guideEl.style.display = 'block';
+    } else if (guideEl) {
+      guideEl.style.display = 'none';
+    }
+  };
+  document.getElementById('macPreset')?.addEventListener('change', (e) => applyPreset(e.target.value));
+  // 최초 렌더 시 현재 프리셋에 대한 가이드도 즉시 표시
+  applyPreset(currentPresetKey);
 
   document.getElementById('macSave')?.addEventListener('click', async () => {
     const payload = {
