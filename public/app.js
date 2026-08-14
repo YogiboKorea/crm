@@ -1332,6 +1332,12 @@ async function _renderInner() {
     renderB2BEmailManager();
     return;
   }
+  if (state.view === "tool-mail-accounts") {
+    els.viewTitle.textContent = "📬 메일 계정 관리";
+    els.viewSubtitle.textContent = "회사 SMTP 계정을 등록해서 다계정으로 발송 관리.";
+    renderMailAccountsTool();
+    return;
+  }
   if (state.view === "tool-crawler") {
     els.viewTitle.textContent = "🕷 이메일 크롤링";
     els.viewSubtitle.textContent = "웹사이트에서 컨택 이메일 자동 수집.";
@@ -2163,6 +2169,7 @@ var _composeState = {
   isOpen: false,
   recipientIds: [],     // 발송 대상 leadId
   templateId: null,     // 선택된 템플릿
+  mailAccountId: null,  // 발송 계정 (null = env 기본)
   subject: '',
   body: '',
   fontFamily: 'Pretendard, -apple-system, BlinkMacSystemFont, sans-serif',
@@ -2202,8 +2209,9 @@ async function openComposeModal(scope) {
     return;
   }
 
-  // 템플릿 로드
+  // 템플릿 + 메일 계정 로드
   if (state.email.templates.length === 0) await loadEmailTemplates();
+  await loadMailAccounts();
 
   _composeState.isOpen = true;
   _composeState.recipientIds = recipients.map(l => l.leadId);
@@ -2217,6 +2225,11 @@ async function openComposeModal(scope) {
     _composeState.templateId = defaultTpl._id;
     _composeState.subject = defaultTpl.subject;
     _composeState.body = defaultTpl.body;
+  }
+  // 최초 진입 시 기본 발송 계정 선택
+  if (!_composeState.mailAccountId && (_mailAccounts || []).length > 0) {
+    const defAcc = _mailAccounts.find(a => a.isDefault) || _mailAccounts[0];
+    _composeState.mailAccountId = defAcc._id;
   }
 
   await refreshMailerEnv();
@@ -2331,6 +2344,25 @@ function renderComposeModal() {
                 `).join('')}
                 ${recipients.length > 12 ? `<span style="padding:3px 8px;color:var(--text-tertiary);font-size:11px">... + ${recipients.length - 12}명</span>` : ''}
               </div>
+            </div>
+
+            <!-- 발송 계정 선택 -->
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">📮 발송 계정</label>
+              <select id="composeAccountSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+                ${(_mailAccounts || []).length === 0 ? `
+                  <option value="">— 등록된 계정 없음 (env 기본 사용) —</option>
+                ` : (_mailAccounts || []).map(a => `
+                  <option value="${escapeAttr(a._id)}" ${a._id === _composeState.mailAccountId ? 'selected' : ''}>
+                    ${escapeHtml(a.accountName)} · ${escapeHtml(a.smtpUser)}${a.isDefault ? ' (기본)' : ''}
+                  </option>
+                `).join('')}
+              </select>
+              ${(_mailAccounts || []).length === 0 ? `
+                <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+                  💡 <b>📬 메일 계정</b> 페이지에서 계정을 등록하면 여기서 선택 가능
+                </div>
+              ` : ''}
             </div>
 
             <!-- 템플릿 선택 -->
@@ -2468,6 +2500,10 @@ function renderComposeModal() {
     }
     renderComposeModal();
   });
+  document.getElementById('composeAccountSel')?.addEventListener('change', (e) => {
+    _composeState.mailAccountId = e.target.value || null;
+    renderComposeModal();
+  });
   document.getElementById('composeFontSel')?.addEventListener('change', (e) => {
     _composeState.fontFamily = e.target.value;
     renderComposeModal();
@@ -2541,6 +2577,7 @@ async function handleComposeSend() {
         bodyIsHtml: true,
         fontFamily: _composeState.fontFamily,
         fontSize: _composeState.fontSize,
+        mailAccountId: _composeState.mailAccountId || undefined,
         dryRun: !!_composeState.forceDryRun,
       }),
     });
@@ -4210,6 +4247,301 @@ var _crawlState = {
   running: false,
   runResults: [],              // { chunk, processed, found, promoted, ts }
 };
+
+// ══════════════════════════════════════════════════════════════
+// 📬 메일 계정 관리 (다계정 SMTP 등록/관리)
+// ══════════════════════════════════════════════════════════════
+var _mailAccounts = null;   // 캐시 (컴포즈 모달도 공유)
+
+async function loadMailAccounts(force) {
+  if (!force && _mailAccounts) return _mailAccounts;
+  try {
+    const res = await fetch('/api/mail-accounts');
+    const data = await res.json();
+    if (data.success) { _mailAccounts = data.accounts || []; return _mailAccounts; }
+  } catch {}
+  _mailAccounts = [];
+  return _mailAccounts;
+}
+
+async function renderMailAccountsTool() {
+  els.content.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-tertiary)">로드 중...</div>`;
+  const list = await loadMailAccounts(true);
+
+  els.content.innerHTML = `
+    <div style="background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:12px;padding:16px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:22px">📬</span>
+        <strong style="font-size:15px;color:#1e40af">메일 계정 다계정 관리</strong>
+      </div>
+      <p style="margin:0;font-size:12px;color:#1e3a8a;line-height:1.6">
+        회사 SMTP 계정을 여러 개 등록해서 발송 시 어떤 계정으로 보낼지 선택합니다.
+        <b>비밀번호는 서버에서 AES-256-GCM 으로 암호화</b> 되어 저장되고, 발송 시에만 복호화됩니다.
+        <br>Gmail 등 2FA 활성 계정은 <b>앱 비밀번호</b>가 필요합니다 (Google 계정 → 보안 → 앱 비밀번호).
+      </p>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0;font-size:14px;font-weight:700">등록된 계정 (${list.length})</h3>
+      <button id="addMailAccountBtn" class="button primary" type="button" style="font-size:13px;padding:8px 14px">+ 계정 추가</button>
+    </div>
+
+    ${list.length === 0 ? `
+      <div style="padding:40px;text-align:center;color:var(--text-tertiary);background:var(--surface-1);border:1px dashed var(--border);border-radius:12px">
+        아직 등록된 메일 계정이 없습니다.<br>
+        "+ 계정 추가" 를 눌러 첫 계정을 등록하세요.
+      </div>
+    ` : `
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${list.map(mailAccountCardHtml).join('')}
+      </div>
+    `}
+  `;
+
+  document.getElementById('addMailAccountBtn')?.addEventListener('click', () => openMailAccountModal());
+  document.querySelectorAll('.acc-verify-btn').forEach(b => b.addEventListener('click', () => verifyMailAccount(b.dataset.accId)));
+  document.querySelectorAll('.acc-default-btn').forEach(b => b.addEventListener('click', () => setDefaultMailAccount(b.dataset.accId)));
+  document.querySelectorAll('.acc-edit-btn').forEach(b => b.addEventListener('click', () => openMailAccountModal(b.dataset.accId)));
+  document.querySelectorAll('.acc-delete-btn').forEach(b => b.addEventListener('click', () => deleteMailAccount(b.dataset.accId)));
+}
+
+function mailAccountCardHtml(acc) {
+  const verifiedAgo = acc.lastVerifiedAt ? formatRelativeKo(acc.lastVerifiedAt) : null;
+  const hasError = !!acc.lastVerifyError;
+  return `
+    <div style="background:var(--surface-1);border:1px solid ${acc.isDefault ? '#3b82f6' : 'var(--border)'};border-radius:12px;padding:16px 18px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px">
+        <div style="min-width:0;flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <strong style="font-size:15px">${escapeHtml(acc.accountName)}</strong>
+            ${acc.isDefault ? '<span style="padding:2px 8px;background:#dbeafe;color:#1e40af;border-radius:99px;font-size:10px;font-weight:700">✔ 기본</span>' : ''}
+            ${!acc.isActive ? '<span style="padding:2px 8px;background:#f3f4f6;color:#6b7280;border-radius:99px;font-size:10px">비활성</span>' : ''}
+          </div>
+          <div style="font-size:13px;color:var(--text-secondary);font-family:monospace">
+            ${escapeHtml(acc.smtpUser)} · ${escapeHtml(acc.smtpHost)}:${acc.smtpPort}
+          </div>
+          <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">
+            From: ${escapeHtml(acc.fromName || '(no name)')} &lt;${escapeHtml(acc.fromAddress)}&gt;
+          </div>
+          ${verifiedAgo || hasError ? `
+            <div style="font-size:11px;margin-top:6px;color:${hasError ? '#dc2626' : '#059669'}">
+              ${hasError ? '⚠ 마지막 검증 실패: ' + escapeHtml(acc.lastVerifyError.slice(0, 100)) : '✅ 검증됨 ' + verifiedAgo}
+            </div>
+          ` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          <button class="acc-verify-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px" title="지금 SMTP 연결 재검증">🔄 검증</button>
+          ${!acc.isDefault ? `<button class="acc-default-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px" title="기본 계정으로 설정">기본</button>` : ''}
+          <button class="acc-edit-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px">✏ 수정</button>
+          <button class="acc-delete-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px;color:#dc2626">🗑</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function verifyMailAccount(id) {
+  const btn = document.querySelector(`.acc-verify-btn[data-acc-id="${id}"]`);
+  if (btn) { btn.textContent = '⏳ 검증 중'; btn.disabled = true; }
+  try {
+    const res = await fetch(`/api/mail-accounts/${id}/verify`, { method: 'POST' });
+    const data = await res.json();
+    alert(data.success ? `✅ 연결 확인 완료 (${data.verifiedAt})` : `❌ 실패: ${data.error}`);
+    await loadMailAccounts(true);
+    if (state.view === 'tool-mail-accounts') renderMailAccountsTool();
+  } catch (e) {
+    alert('검증 실패: ' + (e.message || 'unknown'));
+    if (btn) { btn.textContent = '🔄 검증'; btn.disabled = false; }
+  }
+}
+
+async function setDefaultMailAccount(id) {
+  try {
+    const res = await fetch(`/api/mail-accounts/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isDefault: true }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    await loadMailAccounts(true);
+    renderMailAccountsTool();
+  } catch (e) { alert('기본 설정 실패: ' + (e.message || 'unknown')); }
+}
+
+async function deleteMailAccount(id) {
+  const acc = (_mailAccounts || []).find(a => a._id === id);
+  if (!acc) return;
+  if (!confirm(`계정 "${acc.accountName}" (${acc.smtpUser}) 을 삭제하시겠습니까?`)) return;
+  try {
+    const res = await fetch(`/api/mail-accounts/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    await loadMailAccounts(true);
+    renderMailAccountsTool();
+  } catch (e) { alert('삭제 실패: ' + (e.message || 'unknown')); }
+}
+
+// 계정 추가/수정 모달
+function openMailAccountModal(editId) {
+  const isEdit = !!editId;
+  const acc = isEdit ? (_mailAccounts || []).find(a => a._id === editId) : null;
+
+  // 흔한 SMTP 프리셋 (사용자 편의)
+  const presetOptions = [
+    { label: '커스텀', host: '', port: 465, secure: true },
+    { label: 'Gmail', host: 'smtp.gmail.com', port: 465, secure: true },
+    { label: 'Outlook / Office 365', host: 'smtp.office365.com', port: 587, secure: false },
+    { label: 'Naver', host: 'smtp.naver.com', port: 465, secure: true },
+    { label: 'Daum/Hanmail', host: 'smtp.daum.net', port: 465, secure: true },
+    { label: '이카운트 (ECOUNT)', host: 'wsmtp.ecount.com', port: 465, secure: true },
+    { label: 'Cafe24', host: 'smtp.cafe24.com', port: 465, secure: true },
+  ];
+
+  document.getElementById('mailAccountModalRoot')?.remove();
+  const modalHtml = `
+    <div id="mailAccountModalRoot" style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center">
+      <div style="width:min(560px,95vw);max-height:92vh;background:var(--surface-0);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.3)">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:15px;font-weight:700">${isEdit ? '메일 계정 수정' : '메일 계정 추가'}</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">저장 시 자동으로 SMTP 연결 테스트</div>
+          </div>
+          <button id="macModalClose" style="background:transparent;border:none;font-size:22px;cursor:pointer;color:var(--text-tertiary);padding:4px 10px">×</button>
+        </div>
+
+        <div style="padding:20px 24px;overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+          <div>
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">별칭 (표시용)</label>
+            <input id="macName" type="text" value="${escapeAttr(acc?.accountName || '')}" placeholder="예: PR팀 · 영업 · 개인용"
+              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+          </div>
+
+          <div>
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">서비스 프리셋 (선택 시 SMTP 정보 자동 입력)</label>
+            <select id="macPreset" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+              ${presetOptions.map(p => `<option value="${escapeAttr(p.host)}::${p.port}::${p.secure}">${p.label}</option>`).join('')}
+            </select>
+          </div>
+
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">SMTP 호스트</label>
+              <input id="macHost" type="text" value="${escapeAttr(acc?.smtpHost || '')}" placeholder="smtp.example.com"
+                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">포트</label>
+              <input id="macPort" type="number" value="${acc?.smtpPort || 465}"
+                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">보안</label>
+              <select id="macSecure" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+                <option value="true" ${acc?.smtpSecure !== false ? 'selected' : ''}>SSL (465)</option>
+                <option value="false" ${acc?.smtpSecure === false ? 'selected' : ''}>STARTTLS (587)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">계정 (SMTP User)</label>
+            <input id="macUser" type="text" value="${escapeAttr(acc?.smtpUser || '')}" placeholder="me@company.com"
+              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+          </div>
+
+          <div>
+            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">
+              비밀번호 ${isEdit ? '<span style="color:var(--text-tertiary);font-weight:400">(변경 시에만 입력. 빈 값이면 기존 비번 유지)</span>' : '<span style="color:#dc2626">*</span>'}
+            </label>
+            <input id="macPass" type="password" placeholder="${isEdit ? '(변경 안 함)' : '앱 비밀번호 또는 SMTP 비밀번호'}"
+              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
+              ⚠ Gmail/Outlook 은 2FA 활성 시 <b>앱 비밀번호</b> 필요. 저장 시 자동 암호화됩니다.
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">발신자 이름</label>
+              <input id="macFromName" type="text" value="${escapeAttr(acc?.fromName || '')}" placeholder="요기보"
+                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">발신 주소</label>
+              <input id="macFromAddress" type="text" value="${escapeAttr(acc?.fromAddress || acc?.smtpUser || '')}" placeholder="hello@company.com"
+                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            </div>
+          </div>
+
+          <label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer">
+            <input type="checkbox" id="macIsDefault" ${acc?.isDefault ? 'checked' : ''}>
+            <span>기본 발송 계정으로 설정</span>
+          </label>
+        </div>
+
+        <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+          <button id="macCancel" class="button ghost" type="button" style="font-size:13px;padding:9px 16px">닫기</button>
+          <button id="macSave" class="button primary" type="button" style="font-size:14px;font-weight:700;padding:9px 22px;background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer">
+            ${isEdit ? '💾 수정' : '+ 저장 & 연결 테스트'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  const closeModal = () => document.getElementById('mailAccountModalRoot')?.remove();
+  document.getElementById('macModalClose')?.addEventListener('click', closeModal);
+  document.getElementById('macCancel')?.addEventListener('click', closeModal);
+  document.getElementById('mailAccountModalRoot')?.addEventListener('click', (e) => {
+    if (e.target.id === 'mailAccountModalRoot') closeModal();
+  });
+
+  // 프리셋 선택 → 호스트/포트/보안 자동 채움
+  document.getElementById('macPreset')?.addEventListener('change', (e) => {
+    const [host, port, secure] = e.target.value.split('::');
+    if (host) {
+      document.getElementById('macHost').value = host;
+      document.getElementById('macPort').value = port;
+      document.getElementById('macSecure').value = secure;
+    }
+  });
+
+  document.getElementById('macSave')?.addEventListener('click', async () => {
+    const payload = {
+      accountName: document.getElementById('macName').value.trim(),
+      smtpHost: document.getElementById('macHost').value.trim(),
+      smtpPort: parseInt(document.getElementById('macPort').value, 10),
+      smtpSecure: document.getElementById('macSecure').value === 'true',
+      smtpUser: document.getElementById('macUser').value.trim(),
+      fromName: document.getElementById('macFromName').value.trim(),
+      fromAddress: document.getElementById('macFromAddress').value.trim(),
+      isDefault: document.getElementById('macIsDefault').checked,
+    };
+    const pass = document.getElementById('macPass').value;
+    if (pass) payload.smtpPass = pass;
+
+    const btn = document.getElementById('macSave');
+    btn.disabled = true; btn.textContent = '⏳ 저장 & 검증 중...';
+
+    try {
+      const url = isEdit ? `/api/mail-accounts/${editId}` : '/api/mail-accounts';
+      const method = isEdit ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'save failed');
+      closeModal();
+      await loadMailAccounts(true);
+      renderMailAccountsTool();
+    } catch (e) {
+      alert('저장 실패: ' + (e.message || 'unknown'));
+      btn.disabled = false; btn.textContent = isEdit ? '💾 수정' : '+ 저장 & 연결 테스트';
+    }
+  });
+}
 
 function renderCrawlerTool() {
   const isKor = (c) => /korea|한국|대한민국/i.test(c || '') && !/north/i.test(c || '');
