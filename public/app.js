@@ -197,7 +197,7 @@ let isMaster = false;
 let edits = {};
 let customLeads = [];
 let state = {
-  view: "pipeline-verified",
+  view: "pipeline-import",
   query: "",
   country: "All",
   status: "All",
