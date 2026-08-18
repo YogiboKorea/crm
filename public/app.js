@@ -285,9 +285,8 @@ async function init() {
   } catch {}
   renderFilters();
   bindEvents();
+  startNavBadgePolling();
 
-  // pipeline-verifying (폴더 뷰) 만 baseLeads 필요, 나머지는 서버 페이지드
-  // → 초기 진입 시 baseLeads 전체 fetch 스킵 (즉시 렌더)
   const needsBaseLeads = state.view === 'pipeline-verifying' || state.view === 'pipeline-import';
   if (needsBaseLeads) {
     await loadLeads();
@@ -463,16 +462,39 @@ async function loadStageCounts(force) {
     const data = await res.json();
     if (data.success) {
       _stageCountsCache = { ...data, ts: now };
+      updateNavBadges(_stageCountsCache);
       return _stageCountsCache;
     }
   } catch (e) { console.error('stage-counts', e); }
   return null;
 }
 
+// 사이드바 nav 배지 갱신 (파이프라인 각 stage 실시간 카운트)
+function updateNavBadges(counts) {
+  if (!counts || !counts.stages) return;
+  const s = counts.stages;
+  document.querySelectorAll('[data-nav-badge]').forEach(el => {
+    const stage = el.dataset.navBadge;
+    const n = s[stage] || 0;
+    el.textContent = n.toLocaleString();
+    el.dataset.count = String(n);
+  });
+}
+
+// 주기 갱신 (30초마다)
+var _navBadgeTimer = null;
+function startNavBadgePolling() {
+  if (_navBadgeTimer) return;
+  loadStageCounts(true);
+  _navBadgeTimer = setInterval(() => loadStageCounts(true), 30 * 1000);
+}
+
 // 데이터 변경 후 캐시 무효화
 function invalidateServerPage() {
   _serverPageCache = null;
   _stageCountsCache = null;
+  _tierCountsCache = null;
+  loadStageCounts(true);
 }
 
 // ── 다크/라이트 테마 토글 ────────────────────────────────
@@ -541,21 +563,14 @@ function bindEvents() {
       return;
     }
 
-    // 2. Home Button
+    // 2. Home Button → 기본 랜딩 (가져오기) 로 이동. 전체 리드 fetch 안 함.
     if (event.target.closest("#homeBtn")) {
-      state.view = "leads";
+      state.view = "pipeline-import";
       resetAllFilters();
       state.selectedLeadIds = new Set();
-      startTopProgress();
-      setContentLoading(true);
-      try {
-        await loadLeads();
-        state.selectedId = getFilteredLeads()[0]?.id || null;
-        render();
-      } finally {
-        setContentLoading(false);
-        finishTopProgress();
-      }
+      resetPagination();
+      _serverPageCache = null;
+      render();
       return;
     }
 
@@ -1244,8 +1259,10 @@ async function _renderInner() {
       // 검증완료 서브필터 chip (성공 탭일 때만 · 서버 카운트 기반)
       if (s.stage === 'verified' && serverStage === 'verified' && counts) {
         renderVerifiedSubFilterChipsServer(counts.verifiedSub, counts.stages.failed);
+        renderVerifiedTierChips();  // A/B/C 등급 breakdown (비동기 로드)
       } else {
         clearVerifiedSubFilterChips();
+        clearVerifiedTierChips();
       }
       clearVerifyingSubFilterChips();
       const statsElServer = document.getElementById('statsGrid');
@@ -1396,9 +1413,11 @@ function renderStats(leads) {
   const today = new Date().toISOString().slice(0, 10);
   const due = all.filter((lead) => lead.nextFollowUp && lead.nextFollowUp <= today && !["Won", "Lost"].includes(lead.status)).length;
 
-  // 검증 버킷별 카운트 — 전체 리드 기준
-  const verifyCounts = { passed: 0, suspicious: 0, invalid: 0, unverified: 0 };
-  for (const l of all) verifyCounts[verifyBucketOf(l)]++;
+  // stage 기반 통과/실패 카운트 (파이프라인과 일치) — 서버 카운트 우선, 없으면 클라이언트 계산
+  const stages = (_stageCountsCache && _stageCountsCache.stages) || {};
+  const passedCount   = stages.verified != null ? stages.verified   : all.filter(l => (l.stage || 'imported') === 'verified').length;
+  const failedCount   = stages.failed   != null ? stages.failed     : all.filter(l => (l.stage || 'imported') === 'failed').length;
+  const archivedCount = stages.archived != null ? stages.archived   : all.filter(l => (l.stage || 'imported') === 'archived').length;
 
   els.stats.innerHTML = [
     stat("Visible", leads.length, "leads"),
@@ -1406,11 +1425,10 @@ function renderStats(leads) {
     stat("Worked", contacted, "worked"),
     stat("Due", due, "followups"),
     stat("No Email", all.filter((lead) => !hasEmail(lead)).length, "emails"),
-    // ── 검증 분류 (클릭으로 필터링) ──
-    statVerify("✅ 통과", verifyCounts.passed, "passed"),
-    statVerify("⚠ 의심", verifyCounts.suspicious, "suspicious"),
-    statVerify("❌ 무효", verifyCounts.invalid, "invalid"),
-    statVerify("⏳ 미검증", verifyCounts.unverified, "unverified"),
+    // ── stage 기반 (사이드바와 일치) ──
+    statVerify("✅ AI 1차 통과", passedCount, "passed"),
+    statVerify("🚫 실패 (컨택 불가)", failedCount, "invalid"),
+    statVerify("📦 보관", archivedCount, "archived"),
   ].join("");
 
   els.stats.querySelectorAll("[data-stat-view]").forEach((button) => {
@@ -2028,6 +2046,70 @@ function renderVerifiedResultTabs(successCount, failedCount) {
 }
 function clearVerifiedResultTabs() {
   const c = document.getElementById('verifiedResultTabs');
+  if (c) c.innerHTML = '';
+}
+
+// ── 검증완료 A/B/C 등급 breakdown ────────────────────
+var _tierCountsCache = null;
+async function loadTierCounts(force) {
+  const now = Date.now();
+  if (!force && _tierCountsCache && (now - _tierCountsCache.ts) < 60 * 1000) {
+    return _tierCountsCache;
+  }
+  try {
+    const res = await fetch('/api/leads/tier-counts');
+    const data = await res.json();
+    if (data.success) {
+      _tierCountsCache = { ...data, ts: now };
+      return _tierCountsCache;
+    }
+  } catch (e) { console.error('tier-counts', e); }
+  return null;
+}
+
+async function renderVerifiedTierChips() {
+  const containerId = 'verifiedTierChips';
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    const subChips = document.getElementById('verifiedSubFilterChips');
+    if (subChips && subChips.parentNode) {
+      subChips.parentNode.insertBefore(container, subChips.nextSibling);
+    } else {
+      const banner = document.getElementById('stageBannerContainer');
+      if (banner && banner.parentNode) banner.parentNode.insertBefore(container, banner.nextSibling);
+    }
+  }
+  container.innerHTML = `<div style="margin-top:10px;font-size:11px;color:var(--text-tertiary)">등급 분류 계산 중...</div>`;
+  const c = await loadTierCounts();
+  if (!c) { container.innerHTML = ''; return; }
+  const tierCard = (label, count, sub, color, bg, bd) => `
+    <div style="flex:1;padding:12px 14px;background:${bg};border:1px solid ${bd};border-radius:12px;
+                display:flex;flex-direction:column;gap:2px;min-width:0">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <span style="font-size:20px;font-weight:800;color:${color}">${count.toLocaleString()}</span>
+        <span style="font-size:12px;color:${color};font-weight:700">${label}</span>
+      </div>
+      <div style="font-size:10px;color:${color};opacity:0.75;line-height:1.3">${sub}</div>
+    </div>
+  `;
+  container.innerHTML = `
+    <div style="margin-top:10px;padding:10px;background:var(--surface-1);border:1px solid var(--border);border-radius:12px">
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:700;margin-bottom:8px">
+        📊 검증완료 리드 우량도 등급 (총 ${c.total.toLocaleString()}건)
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${tierCard('🥇 A급', c.A, '이메일 + 사이트 + 대형 리테일러', '#a16207', '#fef9c3', '#fde047')}
+        ${tierCard('🥈 B급', c.B, '이메일 + 사이트 있음', '#1e40af', '#dbeafe', '#93c5fd')}
+        ${tierCard('🥉 C급', c.C, '이메일/사이트 부족', '#57534e', '#f5f5f4', '#d6d3d1')}
+      </div>
+    </div>
+  `;
+}
+
+function clearVerifiedTierChips() {
+  const c = document.getElementById('verifiedTierChips');
   if (c) c.innerHTML = '';
 }
 
@@ -3336,8 +3418,8 @@ async function renderImportHistory() {
                 : '-';
               return `
                 <tr>
-                  <td><code style="font-size:13px;background:var(--surface2,#f2f5f3);padding:2px 6px;border-radius:4px">${escapeHtml(b.batchId)}</code></td>
-                  <td style="text-align:center;color:var(--muted)">${escapeHtml(dateStr)}</td>
+                  <td><code style="font-size:13px;background:#e0f2fe;color:#0c4a6e;padding:3px 8px;border-radius:6px;font-weight:600;border:1px solid #7dd3fc">${escapeHtml(b.batchId)}</code></td>
+                  <td style="text-align:center;color:var(--text-secondary)">${escapeHtml(dateStr)}</td>
                   <td style="text-align:center;font-weight:700">${b.count}</td>
                   <td style="text-align:center">
                     <button class="button ghost"
@@ -4998,9 +5080,9 @@ function renderCrawlerTool() {
         <strong style="font-size:15px;color:#3730a3">이메일 크롤링 (무료 · 외부 API 안 씀)</strong>
       </div>
       <p style="margin:0;font-size:12px;color:#4c1d95;line-height:1.6">
-        회사 홈페이지 + <code style="background:#fff;padding:1px 5px;border-radius:4px">/contact</code>
-        <code style="background:#fff;padding:1px 5px;border-radius:4px">/about</code>
-        <code style="background:#fff;padding:1px 5px;border-radius:4px">/about-us</code> 순회 →
+        회사 홈페이지 + <code style="background:#fff;color:#4c1d95;padding:1px 5px;border-radius:4px;font-weight:600">/contact</code>
+        <code style="background:#fff;color:#4c1d95;padding:1px 5px;border-radius:4px;font-weight:600">/about</code>
+        <code style="background:#fff;color:#4c1d95;padding:1px 5px;border-radius:4px;font-weight:600">/about-us</code> 순회 →
         mailto: 링크 + 텍스트 이메일 추출 →
         역할별 우선순위 (partnerships > business > sales > marketing > ceo > info) →
         <b>최우선 후보 자동으로 Email 필드 승격</b>

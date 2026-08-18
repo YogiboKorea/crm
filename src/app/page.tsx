@@ -23,7 +23,7 @@ export default function Home() {
             title="사이드바 접기/펴기 (Ctrl+B)" aria-label="사이드바 접기/펴기">
             <span className="sidebar-toggle-icon">‹</span>
           </button>
-          <button id="homeBtn" className="brand" type="button" aria-label="Reset filters and go to Leads">
+          <button id="homeBtn" className="brand" type="button" aria-label="홈으로 (가져오기 화면)" title="홈: 가져오기 페이지로">
             <div className="brand-mark">
               <img src="/assets/logo.png" alt="Yogico" className="brand-logo"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/assets/logo.png'; }} />
@@ -40,21 +40,27 @@ export default function Home() {
             </button>
             <button className="nav-item" data-view="pipeline-verifying" type="button" title="검증 대기">
               <span className="nav-icon">🔍</span><span className="nav-label">검증 대기</span>
+              <span className="nav-badge" data-nav-badge="verifying"></span>
             </button>
             <button className="nav-item" data-view="pipeline-verified" type="button" title="검증 완료 (성공/실패 탭)">
               <span className="nav-icon">✅</span><span className="nav-label">검증 완료</span>
+              <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
             <button className="nav-item" data-view="pipeline-contacted" type="button" title="컨택 중">
               <span className="nav-icon">📨</span><span className="nav-label">컨택 중</span>
+              <span className="nav-badge" data-nav-badge="contacted"></span>
             </button>
             <button className="nav-item" data-view="pipeline-replied" type="button" title="응답 옴">
               <span className="nav-icon">💬</span><span className="nav-label">응답 옴</span>
+              <span className="nav-badge" data-nav-badge="replied"></span>
             </button>
             <button className="nav-item" data-view="pipeline-negotiating" type="button" title="협상 중">
               <span className="nav-icon">🤝</span><span className="nav-label">협상 중</span>
+              <span className="nav-badge" data-nav-badge="negotiating"></span>
             </button>
             <button className="nav-item" data-view="pipeline-partner" type="button" title="파트너 (완료)">
               <span className="nav-icon">⭐</span><span className="nav-label">파트너 (완료)</span>
+              <span className="nav-badge" data-nav-badge="partner"></span>
             </button>
             <div className="nav-divider"></div>
             {/* ── 부가 도구 ────────────────────────────────── */}

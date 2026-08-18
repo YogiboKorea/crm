@@ -263,6 +263,45 @@ code {
 }
 .nav-label {
   transition: opacity 0.15s;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-badge {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.18);
+  border-radius: 99px;
+  text-align: center;
+  line-height: 1.4;
+  transition: all 0.15s;
+}
+.nav-badge:empty {
+  display: none;
+}
+.nav-badge[data-count="0"] {
+  opacity: 0.4;
+}
+.nav-item.active .nav-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+:root:not([data-theme="dark"]) .nav-badge {
+  color: #475569;
+  background: #e2e8f0;
+}
+:root:not([data-theme="dark"]) .nav-item.active .nav-badge {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--brand-text);
+}
+:root[data-sidebar-collapsed="true"] .nav-badge {
+  display: none;
 }
 .nav-divider {
   border-top: 1px solid var(--border-subtle);
