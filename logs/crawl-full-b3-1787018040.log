@@ -1,0 +1,37 @@
+▶ Playwright 크롤러 시작 · limit=1000 concurrency=3 dryRun=false
+✓ 로그인
+✓ 대상 1000 건
+✓ Chromium 실행
+  [1/1000] Kawaii Beauty World (kawaiibeautyworld.c → (none)   5.9s/lead · found=0
+  [2/1000] Kawaii Beauty World (kawaiibeautyworld.c → (none)   5.9s/lead · found=0
+  [3/1000] Kawaii Beauty World → (none)   6.0s/lead · found=0
+  [4/1000] KBC (shopkbc.com) → (none)   6.0s/lead · found=0
+  [5/1000] KBC (Korea Beauty Cosmetics) — shopkbc.c → (none)   4.9s/lead · found=0
+  [6/1000] K-Skin (k-skinhn.com) → (none)   6.0s/lead · found=0
+  [7/1000] K'topia → (none)   5.4s/lead · found=0
+  [8/1000] K's Make Up Addict (ksmakeup-addict.com) → (none)   5.7s/lead · found=0
+  [9/1000] K-lon Skin Bar → (none)   5.7s/lead · found=0
+  [10/1000] K-Mart Rwanda → kmartrwanda@gmail.com   6.8s/lead · found=1
+  [11/1000] K-Farma Albania (@kfarma.al) → (none)   6.5s/lead · found=1
+  [12/1000] K-Care Eesti (kcareeesti.ee) → (none)   6.6s/lead · found=1
+  [13/1000] K-Farma (kfarma.al) → (none)   6.1s/lead · found=1
+  [14/1000] K-Beauty.rs (kbeauty.rs) → office@kbeauty.rs   5.8s/lead · found=2
+  [15/1000] K-beauty.hr → (none)   5.8s/lead · found=2
+  [16/1000] K-LAND (kland.com.tr) → (none)   5.7s/lead · found=2
+  [17/1000] K-Beauty Store Brasil (kbeautystore.com. → (none)   5.6s/lead · found=2
+  [18/1000] K-Beauty SV (k-beauty-sv.com) → (none)   5.3s/lead · found=2
+  [19/1000] K-Beauty Skin → sales@k-beautyskin.com   5.2s/lead · found=3
+  [20/1000] K-Beauty Kuwait → (none)   5.6s/lead · found=3
+  [21/1000] K-Beauty MNL (@kbeautymnl) → (none)   5.5s/lead · found=3
+  [22/1000] K-Beauty ZW (kbeauty.zw) → (none)   5.3s/lead · found=3
+  [23/1000] K-Beauty Kuwait (k-beautykuwait.com) → (none)   5.2s/lead · found=3
+  [24/1000] K-Beauty MX (kbeautymx.com) → (none)   5.2s/lead · found=3
+  [25/1000] K-Beauty Kingdom → (none)   5.1s/lead · found=3
+  [26/1000] K-Beauty in Muscat → (none)   5.4s/lead · found=3
+  [27/1000] K-beauty Chile (Korean Skincare) → (none)   5.4s/lead · found=3
+  [28/1000] K-Beauty Ghana → (none)   5.2s/lead · found=3
+  [29/1000] K-Beauty Argentina (kbeautyargentina.emp → (none)   5.2s/lead · found=3
+  [30/1000] K-Beauty Argentina (empretienda) → (none)   5.2s/lead · found=3
+  [31/1000] K-Beauty BH (kbeauty.bh) → (none)   5.2s/lead · found=3
+  [32/1000] K Beauty Supply Ghana → (none)   5.1s/lead · found=3
+  [33/1000] K Beauty Supply Ghana (kbeautysupplygh.c → (none)   5.1s/lead · found=3

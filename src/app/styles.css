@@ -90,10 +90,10 @@
   --border-default: #33363d;
   --border-strong: #43464e;
 
-  --text-primary: #eef0f2;
-  --text-secondary: #b0b8c1;
-  --text-tertiary: #8b95a1;
-  --text-quaternary: #5e6672;
+  --text-primary: #f5f7fa;
+  --text-secondary: #cfd7e0;
+  --text-tertiary: #a7b0bb;
+  --text-quaternary: #7d8794;
   --text-inverse: #191f28;
 
   --brand: #4b8ff5;
@@ -142,6 +142,31 @@ button { font-family: inherit; }
 input, select, textarea {
   font-family: inherit;
   color: var(--text-primary);
+}
+input::placeholder, textarea::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+/* 편집기/컴포즈 폼 통일 스타일 · 다크모드 무관 항상 흰배경+진한글자 */
+.form-input,
+input.form-input,
+select.form-input,
+textarea.form-input {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.form-input:focus {
+  outline: none;
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+}
+.form-input option {
+  background: #ffffff;
+  color: #0f172a;
 }
 code {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;

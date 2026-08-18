@@ -1,0 +1,14 @@
+=== BATCH 1 시작 · 10:44:07 · limit=150 timeout=480s ===
+  ⚠ 배치 1 타임아웃/hang · rc=124 · 진행 [91/150]
+
+===== 최종 요약 =====
+총 배치: 0
+총 처리: 0
+총 발견: 0
+총 소요: 00:08:03
+
+=== post-crawl cleanup ===
+{"success":true,"moved":0,"matched":0}
+{"success":true,"moved":273,"matched":273}
+verified: 4433 noEmail: 484 approved: 0 pending: 3949
+failed: 372 archived: 665

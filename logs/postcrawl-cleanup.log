@@ -1,0 +1,13 @@
+=== crawl loop 완료 감지 · post-crawl cleanup 시작 13:38:42 ===
+--- archive-uncontactable ---
+{"success":true,"moved":0,"matched":0}
+--- archive-crawl-failed ---
+{"success":true,"moved":0,"matched":0}
+--- final stage counts ---
+verified: 3797
+  noEmail: 0
+  approved: 0
+  pending: 3797
+failed: 1008
+archived: 665
+=== 마무리 13:38:43 ===

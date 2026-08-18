@@ -1,0 +1,48 @@
+=== BATCH 1 시작 · 10:36:41 ===
+
+grep: -P supports only unibyte and UTF-8 locales
+grep: -P supports only unibyte and UTF-8 locales
+누적: 처리 0 · 발견 0
+=== BATCH 2 시작 · 10:41:29 ===
+
+grep: -P supports only unibyte and UTF-8 locales
+grep: -P supports only unibyte and UTF-8 locales
+누적: 처리 0 · 발견 0
+=== BATCH 3 시작 · 10:54:00 ===
+
+grep: -P supports only unibyte and UTF-8 locales
+grep: -P supports only unibyte and UTF-8 locales
+누적: 처리 0 · 발견 0
+=== BATCH 4 시작 · 10:57:52 ===
+▪ 완료 · 시간 3314.2s · 처리 1000 · 발견 511 · 승격 511
+grep: -P supports only unibyte and UTF-8 locales
+grep: -P supports only unibyte and UTF-8 locales
+누적: 처리 0 · 발견 0
+=== BATCH 5 시작 · 11:54:23 ===
+▪ 완료 · 시간 3438.8s · 처리 1000 · 발견 591 · 승격 591
+grep: -P supports only unibyte and UTF-8 locales
+grep: -P supports only unibyte and UTF-8 locales
+누적: 처리 0 · 발견 0
+=== BATCH 6 시작 · 12:52:52 ===
+▪ 완료 · 시간 2483.9s · 처리 706 · 발견 408 · 승격 408
+grep: -P supports only unibyte and UTF-8 locales
+grep: -P supports only unibyte and UTF-8 locales
+누적: 처리 0 · 발견 0
+=== BATCH 7 시작 · 13:35:54 ===
+▪ 완료 · 시간 9.3s · 처리 1 · 발견 0 · 승격 0
+grep: -P supports only unibyte and UTF-8 locales
+grep: -P supports only unibyte and UTF-8 locales
+누적: 처리 0 · 발견 0
+=== BATCH 8 시작 · 13:37:37 ===
+처리할 리드 없음.
+=== 전체 완료 · 배치 8 에서 대상 없음 ===
+
+===== 최종 요약 =====
+총 배치: 8
+총 처리: 0
+총 발견: 0
+총 소요: 03:01:52
+��: 8
+총 처리: 0
+총 발견: 0
+총 소요: 03:01:52

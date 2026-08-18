@@ -111,67 +111,84 @@ async function loginCookie(fetch) {
 }
 
 async function fetchTargets(cookie, fetch, limit) {
-  const url = `${BASE}/api/leads?stage=verified&page=1&limit=1000`;
+  const url = `${BASE}/api/leads?stage=verified&page=1&limit=5000`;
   const res = await fetch(url, { headers: { Cookie: cookie } });
   if (!res.ok) throw new Error(`leads fetch ${res.status}`);
   const data = await res.json();
   const leads = (data.data || []).filter(l => {
     const e = (l.Email || '').trim();
     const noEmail = !e || /^Not found/i.test(e) || !/@/.test(e);
+    const notTried = !l.crawledAt || String(l.crawledAt).trim() === '';
     return noEmail
+      && notTried
       && !isKorean(l.Country)
       && l.WebsiteContact && String(l.WebsiteContact).trim();
   });
   return leads.slice(0, limit);
 }
 
-async function crawlLead(browser, lead, timeoutMs = 15000) {
+// 하드 타임아웃 wrapper (모든 페이지 조회 통틀어 최대 N 초, 초과 시 강제 중단)
+async function withHardTimeout(promise, ms, tag) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`hard-timeout:${tag}`)), ms)),
+  ]);
+}
+
+async function crawlLead(browser, lead, opts = {}) {
+  const perPageMs = opts.perPageMs || 12000;
+  const totalMs = opts.totalMs || 45000;   // 리드 전체 최대 45초 (모든 경로 통틀어)
   const site = normalizeUrl(lead.WebsiteContact);
   if (!site) return { emails: [], error: 'invalid-url' };
   const paths = candidatePaths(site);
   const found = new Set();
-  const ctx = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    viewport: { width: 1366, height: 768 },
-    locale: 'en-US',
-  });
-  const page = await ctx.newPage();
-  // 이미지/폰트/미디어 로딩 차단 (속도)
-  await page.route('**/*', (route) => {
-    const t = route.request().resourceType();
-    if (t === 'image' || t === 'font' || t === 'media') return route.abort();
-    return route.continue();
-  });
-
+  let ctx, page;
   try {
-    for (const url of paths) {
-      if (found.size >= 5) break;
-      try {
-        const res = await page.goto(url, { timeout: timeoutMs, waitUntil: 'domcontentloaded' });
-        if (!res || res.status() >= 400) continue;
-        // JS 렌더 대기 (짧게)
-        await page.waitForTimeout(600);
-        // 1) 페이지 innerHTML 에서 이메일
-        const html = await page.content();
-        extractFromText(html).forEach(e => found.add(e));
-        // 2) mailto: 링크에서 (querySelectorAll 로 정확히)
-        const mailtos = await page.$$eval('a[href^="mailto:"]', els =>
-          els.map(el => (el.getAttribute('href') || '').replace(/^mailto:/, '').split('?')[0])
-        ).catch(() => []);
-        for (const raw of mailtos) {
-          try {
-            const dec = decodeURIComponent(raw).trim();
-            const matches = dec.match(EMAIL_RE);
-            if (matches) matches.forEach(e => found.add(e.toLowerCase()));
-          } catch {}
-        }
-        // 홈에서 발견되면 조기 종료
-        if (url === paths[0] && found.size > 0) break;
-      } catch (e) { /* 페이지 하나 실패 무시 */ }
-    }
+    ctx = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      viewport: { width: 1366, height: 768 },
+      locale: 'en-US',
+    });
+    page = await ctx.newPage();
+    // 이미지/폰트/미디어 로딩 차단 (속도)
+    await page.route('**/*', (route) => {
+      const t = route.request().resourceType();
+      if (t === 'image' || t === 'font' || t === 'media' || t === 'stylesheet') return route.abort();
+      return route.continue();
+    });
+
+    // 리드 전체를 하드 타임아웃으로 감쌈 — hang 감지되면 context 강제 종료
+    await withHardTimeout((async () => {
+      for (const url of paths) {
+        if (found.size >= 5) break;
+        try {
+          await withHardTimeout((async () => {
+            const res = await page.goto(url, { timeout: perPageMs, waitUntil: 'domcontentloaded' });
+            if (!res || res.status() >= 400) return;
+            await page.waitForTimeout(400);
+            const html = await page.content();
+            extractFromText(html).forEach(e => found.add(e));
+            const mailtos = await page.$$eval('a[href^="mailto:"]', els =>
+              els.map(el => (el.getAttribute('href') || '').replace(/^mailto:/, '').split('?')[0])
+            ).catch(() => []);
+            for (const raw of mailtos) {
+              try {
+                const dec = decodeURIComponent(raw).trim();
+                const matches = dec.match(EMAIL_RE);
+                if (matches) matches.forEach(e => found.add(e.toLowerCase()));
+              } catch {}
+            }
+          })(), perPageMs + 2000, `page:${url}`);
+          if (url === paths[0] && found.size > 0) break;
+        } catch (e) { /* 페이지 하나 실패 무시 */ }
+      }
+    })(), totalMs, `lead:${lead.leadId}`);
+  } catch (e) {
+    // hard-timeout: hang 감지 → 결과는 지금까지 모은 것으로
   } finally {
-    await page.close();
-    await ctx.close();
+    // 컨텍스트 강제 종료 (일부 사이트는 close 도 hang 됨 → race)
+    try { await Promise.race([page?.close(), new Promise(r => setTimeout(r, 3000))]); } catch {}
+    try { await Promise.race([ctx?.close(), new Promise(r => setTimeout(r, 3000))]); } catch {}
   }
 
   const clean = [...found].filter(e => !isNoise(e));
@@ -195,16 +212,14 @@ function normalizeUrl(raw) {
 }
 
 async function updateLead(cookie, fetch, lead, emails) {
-  if (!emails.length) return;
+  const now = new Date().toISOString();
+  const body = emails.length
+    ? { Email: emails[0], crawledEmails: emails, crawledAt: now, updatedInfoAt: now }
+    : { crawledEmails: [], crawledAt: now, updatedInfoAt: now };
   const res = await fetch(`${BASE}/api/leads/${lead._id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Cookie: cookie },
-    body: JSON.stringify({
-      Email: emails[0],
-      crawledEmails: emails,
-      crawledAt: new Date().toISOString(),
-      updatedInfoAt: new Date().toISOString(),
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) console.error(`update ${lead.leadId} failed: ${res.status}`);
 }
@@ -236,29 +251,44 @@ async function pool(items, worker, size) {
   console.log(`✓ 대상 ${targets.length} 건`);
   if (!targets.length) { console.log('처리할 리드 없음.'); process.exit(0); }
 
-  const browser = await chromium.launch({ headless: true });
+  const BROWSER_RECYCLE_EVERY = 40;   // 40건마다 브라우저 재시작 (메모리 leak 방지)
+  let browser = await chromium.launch({ headless: true });
   console.log('✓ Chromium 실행');
 
   let done = 0;
   let found = 0;
   let promoted = 0;
+  let lastRecycle = 0;
   const t0 = Date.now();
 
-  await pool(targets, async (lead, i) => {
-    const { emails } = await crawlLead(browser, lead);
-    done++;
-    if (emails.length) {
-      found++;
-      if (!DRY_RUN) {
-        await updateLead(cookie, fetch, lead, emails);
-        promoted++;
+  // 청크 단위로 pool 실행 → 청크 사이에 브라우저 재시작 (hang 누적 방지)
+  const chunkSize = BROWSER_RECYCLE_EVERY;
+  for (let i = 0; i < targets.length; i += chunkSize) {
+    const chunk = targets.slice(i, i + chunkSize);
+    await pool(chunk, async (lead) => {
+      const { emails } = await crawlLead(browser, lead);
+      done++;
+      if (emails.length && !DRY_RUN) {
+        found++;
+        try { await updateLead(cookie, fetch, lead, emails); promoted++; } catch {}
+      } else if (!DRY_RUN) {
+        // 시도했지만 못 찾은 것도 crawledAt 저장 → UI 에서 "이미 시도됨" 으로 처리
+        try { await updateLead(cookie, fetch, lead, []); } catch {}
       }
-    }
-    const rate = Math.round(done / ((Date.now() - t0) / 1000));
-    console.log(`  [${done}/${targets.length}] ${lead.Company.slice(0, 40)} → ${emails.length ? emails[0] : '(none)'}   ~${rate}/s`);
-  }, CONCURRENCY);
+      if (emails.length && DRY_RUN) found++;
+      const rate = ((Date.now() - t0) / done / 1000).toFixed(1);
+      console.log(`  [${done}/${targets.length}] ${lead.Company.slice(0, 40)} → ${emails.length ? emails[0] : '(none)'}   ${rate}s/lead · found=${found}`);
+    }, CONCURRENCY);
 
-  await browser.close();
+    // 청크 끝나면 브라우저 재시작 (마지막 청크 아니면)
+    if (i + chunkSize < targets.length) {
+      console.log(`  ↺ 브라우저 재시작 (누적 ${done}건 · 발견 ${found}건)`);
+      try { await Promise.race([browser.close(), new Promise(r => setTimeout(r, 5000))]); } catch {}
+      browser = await chromium.launch({ headless: true });
+    }
+  }
+
+  try { await Promise.race([browser.close(), new Promise(r => setTimeout(r, 5000))]); } catch {}
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`▪ 완료 · 시간 ${secs}s · 처리 ${done} · 발견 ${found} · 승격 ${promoted}`);
 })().catch(e => {

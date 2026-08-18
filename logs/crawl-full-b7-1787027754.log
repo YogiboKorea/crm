@@ -1,0 +1,6 @@
+▶ Playwright 크롤러 시작 · limit=1000 concurrency=3 dryRun=false
+✓ 로그인
+✓ 대상 1 건
+✓ Chromium 실행
+  [1/1] GlowSecret → (none)   9.2s/lead · found=0
+▪ 완료 · 시간 9.3s · 처리 1 · 발견 0 · 승격 0

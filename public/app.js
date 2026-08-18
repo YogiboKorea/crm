@@ -232,6 +232,7 @@ let state = {
   email: {
     templates: [],
     variables: [],
+    variableGroups: [],
     currentTemplateId: null,
     editor: null,           // { name, language, subject, body, purpose, bodyIsHtml, isActive }
     previewLeadId: null,
@@ -1473,12 +1474,13 @@ function computeVerificationCounts(stage) {
   const isKorean = (c) => /korea|한국|대한민국/i.test(c || '') && !/north/i.test(c || '');
   const inStage = baseLeads.filter((l) => (l.stage || 'imported') === stage && !l.deleted && !isKorean(l.Country));
   const aiPending = inStage.filter((l) => !l.verification?.aiVerifiedAt).length;
-  const crawlPending = inStage.filter((l) =>
+  const noEmailWithSite = inStage.filter((l) =>
     (!l.Email || String(l.Email).trim() === '') &&
-    l.WebsiteContact && String(l.WebsiteContact).trim() !== '' &&
-    (!Array.isArray(l.crawledEmails) || l.crawledEmails.length === 0)
-  ).length;
-  return { aiPending, crawlPending };
+    l.WebsiteContact && String(l.WebsiteContact).trim() !== ''
+  );
+  const crawlPending = noEmailWithSite.filter((l) => !l.crawledAt).length;
+  const crawlTriedNoResult = noEmailWithSite.filter((l) => !!l.crawledAt).length;
+  return { aiPending, crawlPending, crawlTriedNoResult };
 }
 
 function renderStageBanner(stageInfo, totalCount, filteredCount) {
@@ -1609,35 +1611,64 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
       </div>
     `;
   } else if (stageInfo.stage === 'verified') {
-    const { crawlPending } = computeVerificationCounts('verified');
-    heroCard = `
-      <div class="verify-hero" style="margin-top:12px">
-        <div class="verify-hero-card" style="
-          padding:20px;border-radius:16px;
-          background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);
-          border:1px solid #86efac;display:flex;align-items:center;gap:20px;
-        ">
-          <div style="font-size:40px" class="pulse-icon">✅</div>
-          <div style="flex:1">
-            <div style="font-size:12px;color:#166534;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">AI 검증 통과 리드</div>
-            <div style="font-size:14px;color:#14532d;margin-top:2px">
-              메일 없는 <b>${crawlPending.toLocaleString()}건</b> 크롤링 대기 · 크롤 후 발송 승인 → 컨택 시작
+    const { crawlPending, crawlTriedNoResult } = computeVerificationCounts('verified');
+    // 두 케이스: (A) 아직 시도 안 된 리드가 있음 → 실행 버튼 / (B) 다 시도했음 → 완료 상태
+    if (crawlPending > 0) {
+      heroCard = `
+        <div class="verify-hero" style="margin-top:12px">
+          <div class="verify-hero-card" style="
+            padding:20px;border-radius:16px;
+            background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);
+            border:1px solid #86efac;display:flex;align-items:center;gap:20px;
+          ">
+            <div style="font-size:40px" class="pulse-icon">✅</div>
+            <div style="flex:1">
+              <div style="font-size:12px;color:#166534;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">AI 검증 통과 리드</div>
+              <div style="font-size:14px;color:#14532d;margin-top:2px">
+                메일 없는 <b>${crawlPending.toLocaleString()}건</b> 크롤링 대기 · 크롤 후 발송 승인 → 컨택 시작
+              </div>
             </div>
+            <button id="runCrawlOnVerifiedBtn" class="button primary" type="button" style="
+              font-size:14px;font-weight:700;padding:12px 20px;
+              background:#15803d;color:white;border:none;border-radius:10px;cursor:pointer;
+              box-shadow:0 2px 8px rgba(21,128,61,0.3);
+            ">
+              🔍 메일 크롤링 실행 (${crawlPending}건)
+            </button>
           </div>
-          <button id="runCrawlOnVerifiedBtn" class="button primary" type="button" style="
-            font-size:14px;font-weight:700;padding:12px 20px;
-            background:#15803d;color:white;border:none;border-radius:10px;cursor:pointer;
-            box-shadow:0 2px 8px rgba(21,128,61,0.3);
-            ${crawlPending === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-          " ${crawlPending === 0 ? 'disabled' : ''}>
-            🔍 메일 크롤링 실행 (${crawlPending}건)
-          </button>
+          <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center">
+            🇰🇷 한국 기업 자동 제외 · 발견된 메일은 최우선 후보(partnerships/business) 자동 Email 승격
+          </div>
         </div>
-        <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center">
-          🇰🇷 한국 기업 자동 제외 · 발견된 메일은 최우선 후보(partnerships/business) 자동 Email 승격
+      `;
+    } else {
+      // 완료 상태 — 시도한 결과가 없거나 남은 대상 없음
+      const doneMsg = crawlTriedNoResult > 0
+        ? `크롤링 완료 · <b>${crawlTriedNoResult.toLocaleString()}건</b> 은 사이트에 이메일 미공개 (보관 처리 권장)`
+        : `모든 대상 크롤링 완료 — 메일링 승인으로 이동해주세요`;
+      heroCard = `
+        <div class="verify-hero" style="margin-top:12px">
+          <div class="verify-hero-card" style="
+            padding:20px;border-radius:16px;
+            background:linear-gradient(135deg,#e0f2fe 0%,#bae6fd 100%);
+            border:1px solid #7dd3fc;display:flex;align-items:center;gap:20px;
+          ">
+            <div style="font-size:40px">✅</div>
+            <div style="flex:1">
+              <div style="font-size:12px;color:#075985;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">크롤링 완료</div>
+              <div style="font-size:14px;color:#0c4a6e;margin-top:2px">${doneMsg}</div>
+            </div>
+            <button id="goApproveBtn" class="button primary" type="button" style="
+              font-size:14px;font-weight:700;padding:12px 20px;
+              background:#0284c7;color:white;border:none;border-radius:10px;cursor:pointer;
+              box-shadow:0 2px 8px rgba(2,132,199,0.3);
+            ">
+              ➡ 메일링 승인으로 이동
+            </button>
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
   }
 
   container.innerHTML = `
@@ -1660,6 +1691,11 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   document.getElementById('runAiVerifyOnVerifyingBtn')?.addEventListener('click', () => runVerifyingStageAi());
   document.getElementById('runCrawlOnVerifyingBtn')?.addEventListener('click', () => runCrawlEmails('verifying-no-email'));
   document.getElementById('runCrawlOnVerifiedBtn')?.addEventListener('click', () => runCrawlEmails('verified-no-email'));
+  document.getElementById('goApproveBtn')?.addEventListener('click', () => {
+    state.verifiedSubFilter = 'pending';
+    resetPagination();
+    render();
+  });
   document.getElementById('deleteAllFailedHeroBtn')?.addEventListener('click', () => deleteAllFailedLeads());
   document.getElementById('openBulkComposeBtn')?.addEventListener('click', () => openComposeModal('bulk-contacted'));
   document.getElementById('openTemplateEditorBtn')?.addEventListener('click', () => {
@@ -1963,17 +1999,17 @@ function renderVerifiedResultTabs(successCount, failedCount) {
     const active = key === cur;
     return `<button type="button" class="v-result-tab" data-tab="${key}"
       style="flex:1;padding:14px 18px;font-size:14px;font-weight:${active ? '700' : '500'};
-      background:${active ? activeBg : 'var(--surface-1)'};
-      color:${active ? activeColor : 'var(--text-secondary)'};
+      background:${active ? activeBg : '#f1f5f9'};
+      color:${active ? activeColor : '#475569'};
       border:none;border-bottom:3px solid ${active ? activeColor : 'transparent'};
       cursor:pointer;transition:all 0.15s;
       display:flex;align-items:center;justify-content:center;gap:8px">
       <span>${label}</span>
-      <span style="padding:2px 8px;background:${active ? activeColor : 'var(--surface-2)'};color:${active ? 'white' : 'var(--text-tertiary)'};border-radius:99px;font-size:11px;font-weight:700">${(count || 0).toLocaleString()}</span>
+      <span style="padding:2px 8px;background:${active ? activeColor : '#e2e8f0'};color:${active ? 'white' : '#64748b'};border-radius:99px;font-size:11px;font-weight:700">${(count || 0).toLocaleString()}</span>
     </button>`;
   };
   container.innerHTML = `
-    <div style="margin-top:12px;display:flex;background:var(--surface-1);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <div style="margin-top:12px;display:flex;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden">
       ${tab('success', '✅ 검증 성공', successCount, '#15803d', '#dcfce7')}
       ${tab('failed',  '🚫 검증 실패', failedCount,  '#dc2626', '#fef2f2')}
     </div>
@@ -2424,7 +2460,7 @@ function renderComposeModal() {
 
             <!-- 수신자 chip (많으면 접힘) -->
             <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">받는 사람 (${recipients.length})</label>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">받는 사람 (${recipients.length})</label>
               <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;max-height:80px;overflow-y:auto;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)">
                 ${recipients.slice(0, 12).map(l => `
                   <span style="padding:3px 8px;background:#dbeafe;color:#1e40af;border-radius:99px;font-size:11px;font-weight:500">
@@ -2437,7 +2473,7 @@ function renderComposeModal() {
 
             <!-- 발송 계정 선택 -->
             <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">📮 발송 계정</label>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">📮 발송 계정</label>
               <select id="composeAccountSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
                 ${(_mailAccounts || []).length === 0 ? `
                   <option value="">— 등록된 계정 없음 (env 기본 사용) —</option>
@@ -2456,7 +2492,7 @@ function renderComposeModal() {
 
             <!-- 템플릿 선택 -->
             <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">템플릿</label>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">템플릿</label>
               <select id="composeTemplateSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
                 <option value="">— 커스텀 (템플릿 없이) —</option>
                 ${state.email.templates.map(t => `
@@ -2470,13 +2506,13 @@ function renderComposeModal() {
             <!-- 폰트 -->
             <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
               <div>
-                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">폰트</label>
+                <label style="font-size:11px;color:var(--text-secondary);font-weight:700">폰트</label>
                 <select id="composeFontSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
                   ${COMPOSE_FONTS.map(f => `<option value="${escapeAttr(f.key)}" ${f.key === _composeState.fontFamily ? 'selected' : ''}>${f.label}</option>`).join('')}
                 </select>
               </div>
               <div>
-                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">크기</label>
+                <label style="font-size:11px;color:var(--text-secondary);font-weight:700">크기</label>
                 <select id="composeSizeSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
                   ${COMPOSE_SIZES.map(s => `<option value="${s}" ${s === _composeState.fontSize ? 'selected' : ''}>${s}px</option>`).join('')}
                 </select>
@@ -2485,17 +2521,17 @@ function renderComposeModal() {
 
             <!-- 제목 -->
             <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">제목</label>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">제목</label>
               <input id="composeSubjectInput" type="text" value="${escapeAttr(_composeState.subject)}"
-                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px"
+                style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a"
                 placeholder="예: Partnership inquiry — {{Company}}">
             </div>
 
             <!-- 본문 -->
             <div style="display:flex;flex-direction:column;flex:1;min-height:200px">
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">본문 (변수 {{Company}} 등 사용 가능)</label>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">본문 (템플릿 편집에서 저장한 변수 자동 치환됨)</label>
               <textarea id="composeBodyInput"
-                style="width:100%;flex:1;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:${_composeState.fontFamily};margin-top:2px;resize:vertical;min-height:250px;line-height:1.6"
+                style="width:100%;flex:1;padding:12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:${_composeState.fontFamily};margin-top:2px;resize:vertical;min-height:250px;line-height:1.6;background:#ffffff;color:#0f172a"
               >${escapeHtml(_composeState.body)}</textarea>
             </div>
           </div>
@@ -3920,10 +3956,16 @@ async function loadEmailTemplates() {
     if (!data.success) throw new Error(data.error || 'load failed');
     state.email.templates = data.templates || [];
     state.email.variables = data.variables || [];
+    state.email.variableGroups = data.variableGroups || [
+      { key: 'recipient', label: '받는 사람', icon: '👤', color: '#0ea5e9' },
+      { key: 'company',   label: '상대 회사', icon: '🏢', color: '#8b5cf6' },
+      { key: 'sender',    label: '발송자 정보', icon: '✉',  color: '#059669' },
+    ];
   } catch (e) {
     console.error('[templates] load failed', e);
     state.email.templates = [];
     state.email.variables = [];
+    state.email.variableGroups = [];
   }
 }
 
@@ -4059,10 +4101,153 @@ function insertVariableIntoBody(varKey) {
   ta.value = before + insertText + after;
   state.email.editor.body = ta.value;
   state.email.dirty = true;
-  // 커서를 삽입 뒤로
   const pos = start + insertText.length;
   ta.focus();
   ta.setSelectionRange(pos, pos);
+}
+
+// ── 자동완성 (typeahead) ─────────────────────────────
+// 사용법: 본문에서 "{{" 를 타이핑하면 한글 라벨 드롭다운 표시
+// 화살표 ↑/↓ 로 이동 · Enter 선택 · Esc 닫기 · 클릭 선택
+var _varSuggest = { el: null, ta: null, items: [], active: 0, triggerPos: -1 };
+
+function ensureSuggestBox() {
+  if (_varSuggest.el && document.body.contains(_varSuggest.el)) return _varSuggest.el;
+  const box = document.createElement('div');
+  box.id = 'varSuggestBox';
+  box.style.cssText = `
+    position:fixed;z-index:9999;min-width:220px;max-width:320px;
+    background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.15);
+    padding:6px;display:none;font-family:inherit;
+  `;
+  document.body.appendChild(box);
+  _varSuggest.el = box;
+  return box;
+}
+
+function hideSuggest() {
+  if (_varSuggest.el) _varSuggest.el.style.display = 'none';
+  _varSuggest.items = [];
+  _varSuggest.triggerPos = -1;
+}
+
+function renderSuggest() {
+  const box = ensureSuggestBox();
+  const groupsMap = {};
+  (state.email.variableGroups || []).forEach(g => { groupsMap[g.key] = g; });
+  box.innerHTML = _varSuggest.items.map((v, i) => {
+    const grp = groupsMap[v.group] || { icon: '📎', color: '#6366f1' };
+    const bg = i === _varSuggest.active ? '#eef2ff' : '#ffffff';
+    const bd = i === _varSuggest.active ? '#a5b4fc' : 'transparent';
+    return `
+      <div class="var-suggest-item" data-idx="${i}" data-key="${escapeAttr(v.key)}"
+        style="padding:8px 10px;border-radius:8px;cursor:pointer;background:${bg};border:1px solid ${bd};
+               display:flex;align-items:center;gap:10px;transition:all 0.05s">
+        <span style="font-size:16px">${grp.icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#0f172a;line-height:1.2">${escapeHtml(v.label)}</div>
+          <div style="font-size:10px;color:#64748b;font-family:'Menlo',monospace;margin-top:1px">{{${escapeHtml(v.key)}}}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  box.querySelectorAll('.var-suggest-item').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      _varSuggest.active = parseInt(el.dataset.idx, 10);
+      renderSuggest();
+    });
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      pickSuggest(parseInt(el.dataset.idx, 10));
+    });
+  });
+}
+
+function positionSuggestBox(ta) {
+  const box = ensureSuggestBox();
+  const rect = ta.getBoundingClientRect();
+  box.style.display = 'block';
+  const boxH = box.offsetHeight || 260;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const spaceAbove = rect.top;
+  // 아래 공간이 부족하면 위로
+  const top = (spaceBelow < boxH + 12 && spaceAbove > boxH + 12)
+    ? Math.max(8, rect.top - boxH - 6)
+    : rect.bottom + 4;
+  box.style.left = Math.max(8, Math.min(window.innerWidth - 340, rect.left)) + 'px';
+  box.style.top = top + 'px';
+}
+
+function pickSuggest(idx) {
+  const ta = _varSuggest.ta;
+  if (!ta || !_varSuggest.items[idx]) { hideSuggest(); return; }
+  const v = _varSuggest.items[idx];
+  const cursor = ta.selectionStart;
+  const before = ta.value.substring(0, _varSuggest.triggerPos);
+  const after = ta.value.substring(cursor);
+  const insert = `{{${v.key}}}`;
+  ta.value = before + insert + after;
+  state.email.editor.body = ta.value;
+  state.email.dirty = true;
+  const pos = before.length + insert.length;
+  ta.focus();
+  ta.setSelectionRange(pos, pos);
+  hideSuggest();
+}
+
+function updateSuggest(ta) {
+  const cursor = ta.selectionStart;
+  const text = ta.value.substring(0, cursor);
+  // "{{" 이후 커서까지 문자열 잡기 (닫는 "}}" 없이)
+  const m = text.match(/\{\{([^\{\}]*)$/);
+  if (!m) { hideSuggest(); return; }
+  const query = m[1].toLowerCase();
+  const triggerPos = cursor - m[0].length;
+  _varSuggest.triggerPos = triggerPos;
+  _varSuggest.ta = ta;
+  const all = state.email.variables || [];
+  const items = all.filter(v => {
+    if (!query) return true;
+    return v.key.toLowerCase().includes(query)
+      || (v.label || '').toLowerCase().includes(query)
+      || (v.description || '').toLowerCase().includes(query);
+  }).slice(0, 8);
+  if (!items.length) { hideSuggest(); return; }
+  _varSuggest.items = items;
+  if (_varSuggest.active >= items.length) _varSuggest.active = 0;
+  renderSuggest();
+  positionSuggestBox(ta);
+}
+
+function attachVariableAutocomplete(textareaId) {
+  const ta = document.getElementById(textareaId);
+  if (!ta || ta.dataset.varAutocomplete === '1') return;
+  ta.dataset.varAutocomplete = '1';
+  ta.addEventListener('input', () => updateSuggest(ta));
+  ta.addEventListener('click', () => updateSuggest(ta));
+  ta.addEventListener('keyup', (e) => {
+    if (['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) updateSuggest(ta);
+  });
+  ta.addEventListener('keydown', (e) => {
+    if (!_varSuggest.items.length || (_varSuggest.el && _varSuggest.el.style.display === 'none')) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      _varSuggest.active = (_varSuggest.active + 1) % _varSuggest.items.length;
+      renderSuggest();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      _varSuggest.active = (_varSuggest.active - 1 + _varSuggest.items.length) % _varSuggest.items.length;
+      renderSuggest();
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      pickSuggest(_varSuggest.active);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      hideSuggest();
+    }
+  });
+  ta.addEventListener('blur', () => setTimeout(hideSuggest, 150));
 }
 
 async function renderB2BEmailManager() {
@@ -4131,14 +4316,22 @@ async function renderB2BEmailManager() {
             const active = t._id === currentId;
             const bg = active ? 'var(--brand-primary)' : 'transparent';
             const fg = active ? 'white' : 'var(--text-primary)';
-            const sub = active ? 'rgba(255,255,255,0.8)' : 'var(--text-tertiary)';
+            const sub = active ? 'rgba(255,255,255,0.85)' : 'var(--text-tertiary)';
+            const langLabel = t.language === 'ko' ? '한국어' : '영문';
+            const purposeMap = { intro:'1차 소개', followup:'팔로우업', 're-engage':'재컨택', 'partner-onboarding':'파트너 온보딩', other:'기타' };
+            const purposeLabel = purposeMap[t.purpose] || t.purpose || '1차 소개';
+            const badgeBg = active ? 'rgba(255,255,255,0.2)' : 'var(--surface-2)';
+            const badgeFg = active ? 'rgba(255,255,255,0.95)' : 'var(--text-secondary)';
             return `
               <div class="tpl-item" data-tpl-id="${escapeAttr(t._id)}"
-                style="padding:8px 10px;border-radius:8px;cursor:pointer;background:${bg};color:${fg};border:1px solid ${active ? 'transparent' : 'var(--border)'};transition:all 0.1s">
-                <div style="font-size:12px;font-weight:600;line-height:1.3;margin-bottom:2px">
-                  ${escapeHtml(t.name)} ${t.isActive === false ? '<span style="opacity:0.5;font-weight:400">(비활성)</span>' : ''}
+                style="padding:10px 12px;border-radius:8px;cursor:pointer;background:${bg};color:${fg};border:1px solid ${active ? 'transparent' : 'var(--border)'};transition:all 0.1s">
+                <div style="font-size:13px;font-weight:600;line-height:1.35;margin-bottom:4px">
+                  ${escapeHtml(t.name)} ${t.isActive === false ? '<span style="opacity:0.5;font-weight:400;font-size:11px">(비활성)</span>' : ''}
                 </div>
-                <div style="font-size:10px;color:${sub}">${t.language === 'ko' ? '🇰🇷 KO' : '🇺🇸 EN'} · ${escapeHtml(t.purpose || 'intro')}</div>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:99px;background:${badgeBg};color:${badgeFg}">${langLabel}</span>
+                  <span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:99px;background:${badgeBg};color:${badgeFg}">${escapeHtml(purposeLabel)}</span>
+                </div>
               </div>
             `;
           }).join('')}
@@ -4160,23 +4353,23 @@ async function renderB2BEmailManager() {
         </div>
 
         <div>
-          <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">템플릿 이름</label>
+          <label style="font-size:11px;color:var(--text-secondary);font-weight:700">템플릿 이름</label>
           <input id="templateNameInput" type="text" value="${escapeAttr(ed.name)}"
-            style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px"
+            style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a"
             placeholder="예: 1차 소개 (영문)">
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">언어</label>
-            <select id="templateLangInput" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
-              <option value="en" ${ed.language === 'en' ? 'selected' : ''}>🇺🇸 English</option>
-              <option value="ko" ${ed.language === 'ko' ? 'selected' : ''}>🇰🇷 한국어</option>
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">언어</label>
+            <select id="templateLangInput" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a">
+              <option value="en" ${ed.language === 'en' ? 'selected' : ''}>영문 (English)</option>
+              <option value="ko" ${ed.language === 'ko' ? 'selected' : ''}>한국어</option>
             </select>
           </div>
           <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">용도</label>
-            <select id="templatePurposeInput" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">용도</label>
+            <select id="templatePurposeInput" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a">
               <option value="intro" ${ed.purpose === 'intro' ? 'selected' : ''}>1차 소개</option>
               <option value="followup" ${ed.purpose === 'followup' ? 'selected' : ''}>팔로우업</option>
               <option value="re-engage" ${ed.purpose === 're-engage' ? 'selected' : ''}>재컨택</option>
@@ -4187,38 +4380,54 @@ async function renderB2BEmailManager() {
         </div>
 
         <div>
-          <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">제목 (변수 사용 가능)</label>
+          <label style="font-size:11px;color:var(--text-secondary);font-weight:700">제목 (변수 사용 가능 · <code style="background:#eef2ff;padding:1px 4px;border-radius:4px;color:#4338ca">{{</code> 타이핑하면 자동완성)</label>
           <input id="templateSubjectInput" type="text" value="${escapeAttr(ed.subject)}"
-            style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px"
+            style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a"
             placeholder="예: Partnership inquiry — {{Company}}">
         </div>
 
-        <!-- 변수 chip 팔레트 -->
+        <!-- 변수 팔레트 (그룹별 카드 · 비개발자 친화) -->
         <div>
-          <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">📎 삽입할 변수 (클릭하면 본문 커서 위치에 삽입)</label>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">
-            ${state.email.variables.map(v => `
-              <button type="button" class="var-chip" data-var-key="${escapeAttr(v.key)}"
-                title="${escapeAttr(v.label)} — 예: ${escapeAttr(v.example)}"
-                style="padding:3px 8px;font-size:11px;font-family:monospace;
-                  border:1px solid #a5b4fc;background:#eef2ff;color:#4338ca;
-                  border-radius:99px;cursor:pointer;font-weight:600">
-                {{${escapeHtml(v.key)}}}
-              </button>
-            `).join('')}
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">
+              📎 클릭해서 본문에 넣을 값 (예: "회사명" 을 누르면 메일마다 각 회사 이름으로 자동 대체됨)
+            </label>
           </div>
+          ${(state.email.variableGroups || []).map(grp => {
+            const items = (state.email.variables || []).filter(v => v.group === grp.key);
+            if (items.length === 0) return '';
+            return `
+              <div style="margin-top:8px;padding:8px 10px;background:${grp.color}0d;border:1px solid ${grp.color}55;border-radius:10px">
+                <div style="font-size:11px;font-weight:700;color:${grp.color};margin-bottom:6px;display:flex;align-items:center;gap:4px">
+                  <span style="font-size:14px">${grp.icon}</span> ${escapeHtml(grp.label)}
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">
+                  ${items.map(v => `
+                    <button type="button" class="var-chip" data-var-key="${escapeAttr(v.key)}"
+                      title="${escapeAttr(v.description || v.label)} · 예시: ${escapeAttr(v.example)}"
+                      style="text-align:left;padding:6px 10px;background:white;
+                        border:1px solid ${grp.color}55;border-radius:8px;cursor:pointer;
+                        transition:all 0.1s;display:flex;flex-direction:column;gap:1px">
+                      <span style="font-size:12px;font-weight:700;color:#1e293b">${escapeHtml(v.label)}</span>
+                      <span style="font-size:10px;color:#64748b;font-family:'Menlo','Consolas',monospace">{{${escapeHtml(v.key)}}}</span>
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
 
         <div style="display:flex;flex-direction:column;flex:1;min-height:200px">
           <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;display:flex;justify-content:space-between;align-items:center">
-            <span>본문 (변수 사용 가능)</span>
+            <span>본문 (변수 사용 가능 · 본문에 <code style="background:#eef2ff;padding:1px 4px;border-radius:4px;color:#4338ca">{{</code> 타이핑하면 자동완성 뜸)</span>
             <label style="font-weight:400;font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
               <input type="checkbox" id="templateHtmlInput" ${ed.bodyIsHtml ? 'checked' : ''}>
               HTML 본문
             </label>
           </label>
           <textarea id="templateBodyInput"
-            style="width:100%;flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:'Menlo','Consolas',monospace;margin-top:2px;resize:vertical;min-height:200px;line-height:1.5">${escapeHtml(ed.body)}</textarea>
+            style="width:100%;flex:1;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:'Menlo','Consolas',monospace;margin-top:2px;resize:vertical;min-height:200px;line-height:1.5;background:#ffffff;color:#0f172a">${escapeHtml(ed.body)}</textarea>
         </div>
       </div>
 
@@ -4230,8 +4439,8 @@ async function renderB2BEmailManager() {
         </div>
 
         <div>
-          <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">리드 선택 (변수가 실제 값으로 치환됨)</label>
-          <select id="previewLeadSelect" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;margin-top:2px">
+          <label style="font-size:11px;color:var(--text-secondary);font-weight:700">리드 선택 (변수가 실제 값으로 치환됨)</label>
+          <select id="previewLeadSelect" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;margin-top:2px;background:#ffffff;color:#0f172a">
             <option value="">— 예시 값 (리드 미지정) —</option>
             ${previewCandidates.map(l => `
               <option value="${escapeAttr(l.leadId)}" ${l.leadId === state.email.previewLeadId ? 'selected' : ''}>
@@ -4318,6 +4527,10 @@ async function renderB2BEmailManager() {
   bindEditor('templateSubjectInput', 'subject');
   bindEditor('templateBodyInput', 'body');
   bindEditor('templateHtmlInput', 'bodyIsHtml', 'checked');
+
+  // 자동완성: 본문에 {{ 타이핑하면 한글 라벨 드롭다운
+  attachVariableAutocomplete('templateBodyInput');
+  attachVariableAutocomplete('templateSubjectInput');
 
   // 미리보기 리드 선택 → 자동 렌더
   document.getElementById('previewLeadSelect')?.addEventListener('change', (e) => {
@@ -4604,13 +4817,13 @@ function openMailAccountModal(editId) {
           </div>
 
           <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">📧 이메일 (SMTP 계정)</label>
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">📧 이메일 (SMTP 계정)</label>
             <input id="macUser" type="text" value="${escapeAttr(acc?.smtpUser || '')}" placeholder="me@yogico.kr"
               style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:2px">
           </div>
 
           <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">
               🔑 비밀번호 ${isEdit ? '<span style="color:var(--text-tertiary);font-weight:400">(변경 시에만 입력. 빈 값이면 기존 유지)</span>' : '<span style="color:#dc2626">*</span>'}
             </label>
             <input id="macPass" type="password" placeholder="${isEdit ? '(변경 안 함)' : '이카운트 웹메일 비밀번호 또는 앱 비밀번호'}"
@@ -4623,7 +4836,7 @@ function openMailAccountModal(editId) {
           </div>
 
           <div>
-            <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">📝 이 계정의 별칭 (내가 식별용)</label>
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">📝 이 계정의 별칭 (내가 식별용)</label>
             <input id="macName" type="text" value="${escapeAttr(acc?.accountName || '')}" placeholder="예: PR팀 · 영업팀 · 개인 아이디"
               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
           </div>
@@ -4633,17 +4846,17 @@ function openMailAccountModal(editId) {
             <summary style="cursor:pointer;font-size:12px;color:var(--text-secondary);font-weight:600">⚙️ SMTP 서버 상세 (자동 채워짐 — 필요 시에만 수정)</summary>
             <div style="margin-top:12px;display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
               <div>
-                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">SMTP 호스트</label>
+                <label style="font-size:11px;color:var(--text-secondary);font-weight:700">SMTP 호스트</label>
                 <input id="macHost" type="text" value="${escapeAttr(acc?.smtpHost || '')}" placeholder="smtp.example.com"
                   style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:2px">
               </div>
               <div>
-                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">포트</label>
+                <label style="font-size:11px;color:var(--text-secondary);font-weight:700">포트</label>
                 <input id="macPort" type="number" value="${acc?.smtpPort || 465}"
                   style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:2px">
               </div>
               <div>
-                <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">보안</label>
+                <label style="font-size:11px;color:var(--text-secondary);font-weight:700">보안</label>
                 <select id="macSecure" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-top:2px">
                   <option value="true" ${acc?.smtpSecure !== false ? 'selected' : ''}>SSL (465)</option>
                   <option value="false" ${acc?.smtpSecure === false ? 'selected' : ''}>STARTTLS (587)</option>
@@ -4657,12 +4870,12 @@ function openMailAccountModal(editId) {
 
           <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px">
             <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">발신자 이름</label>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">발신자 이름</label>
               <input id="macFromName" type="text" value="${escapeAttr(acc?.fromName || '')}" placeholder="요기보"
                 style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-tertiary);font-weight:600">발신 주소</label>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">발신 주소</label>
               <input id="macFromAddress" type="text" value="${escapeAttr(acc?.fromAddress || acc?.smtpUser || '')}" placeholder="hello@company.com"
                 style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
             </div>

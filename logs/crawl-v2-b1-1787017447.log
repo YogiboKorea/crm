@@ -1,0 +1,109 @@
+▶ Playwright 크롤러 시작 · limit=150 concurrency=3 dryRun=false
+✓ 로그인
+✓ 대상 150 건
+✓ Chromium 실행
+  [1/150] Skin Store Pakistan (skinstorepakistan.c → (none)   18.9s/lead · found=0
+  [2/150] Shoppers Stop → (none)   9.9s/lead · found=0
+  [3/150] Shiny Skin BD → (none)   7.8s/lead · found=0
+  [4/150] Skincare.ge → (none)   7.0s/lead · found=0
+  [5/150] Skin Care (skincare.ge) → (none)   5.8s/lead · found=0
+  [6/150] Sephora Poland (LVMH) → (none)   5.1s/lead · found=0
+  [7/150] Sephora Romania (LVMH) → (none)   4.4s/lead · found=0
+  [8/150] Seven Blossoms (sevenblossoms.co.za) → (none)   4.0s/lead · found=0
+  [9/150] Sephora USA — K-beauty category → (none)   3.7s/lead · found=0
+  [10/150] Sephora Mexico — K-beauty (skincare core → (none)   3.4s/lead · found=0
+  [11/150] Sephora Singapore → (none)   3.2s/lead · found=0
+  [12/150] Sephora France (LVMH) → (none)   3.0s/lead · found=0
+  [13/150] Seven Blossoms (sevenblossoms.co.za) → (none)   3.0s/lead · found=0
+  [14/150] Saks Fifth Avenue → (none)   2.9s/lead · found=0
+  [15/150] Saran Cute (sarancute.com.mx) → (none)   2.8s/lead · found=0
+  [16/150] Selfcare ZW (selfcare-zw.com) → (none)   2.7s/lead · found=0
+  [17/150] Sekelem Beaute (sekelem.com) → (none)   2.6s/lead · found=0
+  [18/150] Sapphire Beauty Booth → (none)   3.1s/lead · found=0
+  [19/150] Recap Beauty → (none)   3.0s/lead · found=0
+  [20/150] PURESEOUL - Ilham Ali (new contact) → (none)   3.1s/lead · found=0
+  [21/150] PURESEOUL → (none)   3.4s/lead · found=0
+  [22/150] Pieleza Ecuador → (none)   3.3s/lead · found=0
+  [23/150] OOTD Beauty (LOOKS by Tops) → (none)   3.7s/lead · found=0
+  [24/150] OVS S.p.A. (OVS Beauty) → (none)   3.8s/lead · found=0
+  [25/150] OOTD Beauty (Tops LOOKS Bangkok) → (none)   3.9s/lead · found=0
+  [26/150] Nykaa (FSN E-Commerce Ventures) → (none)   3.9s/lead · found=0
+  [27/150] O-Kare Shop (okareshop.com) → (none)   3.8s/lead · found=0
+  [28/150] Pugy Korean Beauty → (none)   3.6s/lead · found=0
+  [29/150] Nourish Your Skincare (nourishyourskinca → (none)   3.6s/lead · found=0
+  [30/150] Nuty Cosmetics → (none)   3.5s/lead · found=0
+  [31/150] Notino → (none)   3.7s/lead · found=0
+  [32/150] Nayda KBeauty (naydakbeauty.com) → (none)   4.6s/lead · found=0
+  [33/150] Namshi (Apparel Group / Noon) → (none)   4.5s/lead · found=0
+  [34/150] Nayda KBeauty → (none)   4.4s/lead · found=0
+  [35/150] Namshi → (none)   4.4s/lead · found=0
+  [36/150] MyDutyFree (Baku, Heydar Aliyev Airport) → (none)   4.3s/lead · found=0
+  [37/150] Myntra Beauty (Flipkart Group / Walmart) → (none)   4.3s/lead · found=0
+  [38/150] Nayda KBeauty → (none)   4.2s/lead · found=0
+  [39/150] Nahdi Medical (Nahdi Online) → (none)   4.3s/lead · found=0
+  [40/150] Moida K-Beauty → (none)   5.1s/lead · found=0
+  ↺ 브라우저 재시작 (누적 40건 · 발견 0건)
+  [42/150] MohammediKurdi (mohammedikurdi.com) → (none)   5.0s/lead · found=0
+  [43/150] MohammediKurdi (mohammedikurdi.com) → (none)   4.9s/lead · found=0
+  [43/150] MohammediKurdi → (none)   4.9s/lead · found=0
+  [44/150] Mimimi.KG → (none)   4.8s/lead · found=0
+  [45/150] Mizuki (mizukimv.com) → (none)   4.9s/lead · found=0
+  [46/150] Mizuki (mizukimv.com) → (none)   4.9s/lead · found=0
+  [47/150] Meliora Beauty Shop (meliorabeautyshop.e → (none)   4.9s/lead · found=0
+  [48/150] Mend Bahamas (mendbhs.com) → (none)   4.9s/lead · found=0
+  [49/150] Meliora Beauty Shop → (none)   5.0s/lead · found=0
+  [50/150] Medicare Vietnam → (none)   5.0s/lead · found=0
+  [51/150] Military Prestige Marketing, LLC → (none)   5.0s/lead · found=0
+  [52/150] Mimi K-Beauty (IMI Beauty) — Mall of San → (none)   4.9s/lead · found=0
+  [53/150] MakeUpHye → (none)   4.8s/lead · found=0
+  [54/150] Massy Distribution (Jamaica) Limited → (none)   4.8s/lead · found=0
+  [55/150] Me Cosmetics Bahrain (mebeautycosmetics. → (none)   4.7s/lead · found=0
+  [56/150] Macy's — K-Beauty category → (none)   4.7s/lead · found=0
+  [57/150] London Drugs (Western Canada) → (none)   4.7s/lead · found=0
+  [58/150] Luma (holaluma.com) → (none)   4.7s/lead · found=0
+  [59/150] LOOKS Beauty Store (Tops / Central Retai → (none)   4.7s/lead · found=0
+  [60/150] LOOKFANTASTIC (THG) → (none)   4.7s/lead · found=0
+  [61/150] M Cosmetic → (none)   4.6s/lead · found=0
+  [62/150] Loft (Seibu HD / Loft Co.) → (none)   4.6s/lead · found=0
+  [63/150] Life Healthcare Group (LHG) → (none)   4.5s/lead · found=0
+  [64/150] lecoreane → (none)   4.6s/lead · found=0
+  [65/150] KÜTY (kuty.mx) → (none)   4.6s/lead · found=0
+  [66/150] LeCoreane → (none)   4.5s/lead · found=0
+  [67/150] Landing International → (none)   4.6s/lead · found=0
+  [68/150] La Paz Cosmetics → (none)   4.6s/lead · found=0
+  [69/150] Kukalemon → (none)   4.7s/lead · found=0
+  [70/150] Kukalemon (kukalemon.com) → (none)   4.7s/lead · found=0
+  [71/150] Ksisters Hungary (ksisters.hu) → (none)   4.6s/lead · found=0
+  [72/150] LECO (leco.rs) → (none)   4.6s/lead · found=0
+  [73/150] Kutie Beauty Mexico (kbeautymexico.com) → (none)   4.6s/lead · found=0
+  [74/150] Ksisters (ksisters.lv) → (none)   4.5s/lead · found=0
+  [75/150] Ksisters → (none)   4.5s/lead · found=0
+  [76/150] Kristyl Beauty → (none)   4.5s/lead · found=0
+  [77/150] Kronans Apotek → (none)   4.5s/lead · found=0
+  [78/150] Kosmetics CR (kosmeticscr.com) → (none)   4.4s/lead · found=0
+  [79/150] KoreShop → (none)   4.4s/lead · found=0
+  [80/150] koreancosmetic.gr → (none)   4.4s/lead · found=0
+  ↺ 브라우저 재시작 (누적 80건 · 발견 0건)
+  [81/150] Koreshop (koreshop.com.tr) → (none)   4.4s/lead · found=0
+  [82/150] Koreanbeauty.ma → (none)   4.5s/lead · found=0
+  [83/150] Koreancare.bg → (none)   4.5s/lead · found=0
+  [84/150] KoreanBeauty.ma → (none)   4.5s/lead · found=0
+  [85/150] Koreanbeauty.no → (none)   4.6s/lead · found=0
+  [86/150] Korean Shop Monte (en.koreanshopmonte.co → (none)   4.5s/lead · found=0
+  [87/150] Korean Skin Lab (koreanskinlabcy.com) → (none)   4.5s/lead · found=0
+  [88/150] Korean Shop (kshopcosmetics.com) → (none)   4.5s/lead · found=0
+  [89/150] Korean Shop Serbia → (none)   4.5s/lead · found=0
+  [90/150] Korean Megastore Belle (KMBelle) → (none)   4.5s/lead · found=0
+  [91/150] Korean Megastore Belle (KM Belle) → (none)   4.5s/lead · found=0
+C:\Users\Yogibo Design\Desktop\vercelData\node_modules\playwright-core\lib\coreBundle.js:463
+    throw new Error(message || "Assertion error");
+          ^
+
+Error: Assertion error
+    at assert (C:\Users\Yogibo Design\Desktop\vercelData\node_modules\playwright-core\lib\coreBundle.js:463:11)
+    at _CRSession._onMessage (C:\Users\Yogibo Design\Desktop\vercelData\node_modules\playwright-core\lib\coreBundle.js:34801:11)
+    at CRConnection._onMessage (C:\Users\Yogibo Design\Desktop\vercelData\node_modules\playwright-core\lib\coreBundle.js:34738:20)
+    at Immediate.<anonymous> (C:\Users\Yogibo Design\Desktop\vercelData\node_modules\playwright-core\lib\coreBundle.js:39193:30)
+    at process.processImmediate (node:internal/timers:505:21)
+
+Node.js v24.3.0

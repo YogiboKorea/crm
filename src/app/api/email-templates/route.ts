@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { EmailTemplate } from '@/models/EmailTemplate';
-import { TEMPLATE_VARS } from '@/lib/template-vars';
+import { TEMPLATE_VARS, TEMPLATE_VAR_GROUPS } from '@/lib/template-vars';
 
 export const runtime = 'nodejs';
 
@@ -21,7 +21,10 @@ export async function GET() {
         key: v.key,
         label: v.label,
         example: v.example,
+        description: v.description,
+        group: v.group,
       })),
+      variableGroups: TEMPLATE_VAR_GROUPS,
     });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message || 'unknown' }, { status: 500 });
