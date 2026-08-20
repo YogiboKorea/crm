@@ -136,8 +136,9 @@ const LeadSchema: Schema = new Schema({
   // 새 파이프라인 stage
   stage: {
     type: String,
-    enum: ['imported', 'verifying', 'verified', 'contacted', 'replied', 'negotiating', 'partner', 'archived'],
+    enum: ['imported', 'verifying', 'verified', 'contacted', 'replied', 'negotiating', 'partner', 'archived', 'failed'],
     default: 'imported',
+    index: true,
   },
   stageChangedAt: { type: String, default: '' },
   becamePartnerAt: { type: String, default: '' },
@@ -192,5 +193,15 @@ const LeadSchema: Schema = new Schema({
     aiVerifiedAt: { type: String, default: '' },
   },
 }, { timestamps: true });
+
+// ── 복합 인덱스 (핫 쿼리 최적화) ─────────────────────────
+// 파이프라인 카운트 · 서브필터 · 티어 계산 등에서 반복 사용됨
+LeadSchema.index({ stage: 1, readyForOutreach: 1 });
+LeadSchema.index({ stage: 1, crawledAt: 1 });
+LeadSchema.index({ stage: 1, 'verification.aiVerdict': 1 });
+LeadSchema.index({ stage: 1, Country: 1 });
+LeadSchema.index({ stage: 1, createdAt: -1 });   // 페이지네이션 정렬
+LeadSchema.index({ leadId: 1 }, { unique: true });
+LeadSchema.index({ importBatch: 1 });
 
 export const Lead = mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);

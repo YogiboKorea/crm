@@ -35,45 +35,45 @@ export default function Home() {
           </button>
           <nav className="nav" aria-label="Pipeline">
             {/* ── 새 파이프라인 (좌 → 우 순서) ─ 접힘 상태에서 아이콘만 보이도록 span 분리 ─ */}
-            <button className="nav-item active" data-view="pipeline-import" type="button" title="가져오기 (Import)">
+            <button className="nav-item active" data-view="pipeline-import" type="button" title="가져오기 — CSV/엑셀 업로드로 리드 데이터를 신규 등록">
               <span className="nav-icon">📥</span><span className="nav-label">가져오기 (Import)</span>
             </button>
-            <button className="nav-item" data-view="pipeline-verifying" type="button" title="검증 대기">
+            <button className="nav-item" data-view="pipeline-verifying" type="button" title="검증 대기 — 새로 가져온 리드가 AI 1차 검증을 기다리는 상태">
               <span className="nav-icon">🔍</span><span className="nav-label">검증 대기</span>
               <span className="nav-badge" data-nav-badge="verifying"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-verified" type="button" title="검증 완료 (성공/실패 탭)">
-              <span className="nav-icon">✅</span><span className="nav-label">검증 완료</span>
+            <button className="nav-item" data-view="pipeline-verified" type="button" title="발송 대기 — AI 검증 통과. 승인 후 메일 발송할 대상 리드">
+              <span className="nav-icon">✅</span><span className="nav-label">발송 대기</span>
               <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-contacted" type="button" title="이메일 컨택">
-              <span className="nav-icon">📨</span><span className="nav-label">이메일 컨택</span>
+            <button className="nav-item" data-view="pipeline-contacted" type="button" title="첫 메일 발송함 — 이미 메일을 보냈고 답장을 기다리는 리드">
+              <span className="nav-icon">📨</span><span className="nav-label">첫 메일 발송함</span>
               <span className="nav-badge" data-nav-badge="contacted"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-replied" type="button" title="응답 옴">
-              <span className="nav-icon">💬</span><span className="nav-label">응답 옴</span>
+            <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드 (아직 협상 얘기 시작 전)">
+              <span className="nav-icon">💬</span><span className="nav-label">답장 받음</span>
               <span className="nav-badge" data-nav-badge="replied"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-negotiating" type="button" title="협상 중">
-              <span className="nav-icon">🤝</span><span className="nav-label">협상 중</span>
+            <button className="nav-item" data-view="pipeline-negotiating" type="button" title="대화 진행 중 — 조건/일정/가격 등 실제 협상 오가는 상태">
+              <span className="nav-icon">🤝</span><span className="nav-label">대화 진행 중</span>
               <span className="nav-badge" data-nav-badge="negotiating"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-partner" type="button" title="파트너 (완료)">
-              <span className="nav-icon">⭐</span><span className="nav-label">파트너 (완료)</span>
+            <button className="nav-item" data-view="pipeline-partner" type="button" title="파트너십 확정 — 계약/합의 완료된 실 파트너 업체">
+              <span className="nav-icon">⭐</span><span className="nav-label">파트너십 확정</span>
               <span className="nav-badge" data-nav-badge="partner"></span>
             </button>
             <div className="nav-divider"></div>
             {/* ── 부가 도구 ────────────────────────────────── */}
-            <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리">
+            <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 발송에 쓸 SMTP 계정과 서명 정보 등록">
               <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
             </button>
-            <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 템플릿 설정">
-              <span className="nav-icon">📝</span><span className="nav-label">메일 템플릿 설정</span>
+            <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 양식 — 발송할 메일 제목/본문 작성 (회사명 자동 대체)">
+              <span className="nav-icon">📝</span><span className="nav-label">메일 양식</span>
             </button>
-            <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트">
+            <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트 — K-beauty B2B 시드 (웹 발굴) 를 내 리드로 추가">
               <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>
             </button>
-            <button className="nav-item" data-view="tool-import-history" type="button" title="Import History">
+            <button className="nav-item" data-view="tool-import-history" type="button" title="Import History — CSV 배치 기록 조회 및 롤백">
               <span className="nav-icon">📋</span><span className="nav-label">Import History</span>
             </button>
           </nav>

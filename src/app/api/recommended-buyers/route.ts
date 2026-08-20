@@ -12,17 +12,25 @@ export async function GET() {
     const existing = await Lead.find({
       Company: { $in: RECOMMENDED_BUYERS.map((b) => b.company) },
     })
-      .select('leadId Company Country')
+      .select('leadId Company Country stage')
       .lean();
 
-    const existingKey = new Set(
-      existing.map((l: any) => `${l.Company}::${l.Country}`),
-    );
+    // Company+Country 조합 → 기존 lead 정보 매핑
+    const existingMap = new Map<string, { leadId: string; stage: string }>();
+    for (const l of existing as any[]) {
+      const key = `${l.Company}::${l.Country}`;
+      existingMap.set(key, { leadId: l.leadId, stage: l.stage || 'imported' });
+    }
 
-    const data = RECOMMENDED_BUYERS.map((b) => ({
-      ...b,
-      imported: existingKey.has(`${b.company}::${b.country}`),
-    }));
+    const data = RECOMMENDED_BUYERS.map((b) => {
+      const match = existingMap.get(`${b.company}::${b.country}`);
+      return {
+        ...b,
+        imported: !!match,
+        existingLeadId: match?.leadId || null,
+        existingStage: match?.stage || null,
+      };
+    });
 
     return NextResponse.json({ success: true, data });
   } catch (e: any) {
@@ -44,6 +52,11 @@ export async function POST(req: Request) {
   }
 
   const selected: string[] = Array.isArray(body?.companies) ? body.companies : [];
+  // 지정된 stage 로 바로 이동시키기 (기본 'verifying' — 기존 파이프라인 그대로)
+  const requestedStage: string = body?.stage || 'verifying';
+  const validStages = new Set(['imported','verifying','verified','contacted','replied','negotiating','partner','archived']);
+  const targetStage = validStages.has(requestedStage) ? requestedStage : 'verifying';
+
   const toImport = selected.length
     ? RECOMMENDED_BUYERS.filter((b) => selected.includes(b.company))
     : RECOMMENDED_BUYERS;
@@ -116,6 +129,9 @@ export async function POST(req: Request) {
             favorite: false,
             importBatch: batchId,
             importedAt,
+            stage: targetStage,
+            stageChangedAt: importedAt,
+            readyForOutreach: targetStage === 'contacted' || targetStage === 'partner',
           },
         },
       });
