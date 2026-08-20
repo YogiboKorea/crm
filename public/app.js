@@ -3526,8 +3526,9 @@ const STAGE_STYLE = {
   negotiating: { bg: '#fed7aa', fg: '#9a3412', label: '🤝 협상 중' },
   partner:     { bg: '#f3e8ff', fg: '#6b21a8', label: '⭐ 파트너' },
   archived:    { bg: '#f3f4f6', fg: '#6b7280', label: '📦 보관함' },
+  failed:      { bg: '#fee2e2', fg: '#991b1b', label: '🚫 검증 실패' },
 };
-const STAGE_ORDER = ['imported','verifying','verified','contacted','replied','negotiating','partner','archived'];
+const STAGE_ORDER = ['imported','verifying','verified','contacted','replied','negotiating','partner','archived','failed'];
 
 // 각 stage 에서 실무적으로 자주 이동하는 다음 단계들 (원클릭 버튼)
 const STAGE_QUICK_MOVES = {
