@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { Lead } from '@/models/Lead';
+import { MailAccount } from '@/models/MailAccount';
 import { renderTemplate } from '@/lib/mailer';
-import { buildVarsFromLead, buildExampleVars } from '@/lib/template-vars';
+import { buildVarsFromLead, buildExampleVars, buildSignatureBlock } from '@/lib/template-vars';
 
 export const runtime = 'nodejs';
 
@@ -23,8 +24,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     let vars: Record<string, string>;
     let leadInfo: any = null;
+    let accountInfo: any = null;
+    let accProfile: any = null;
     const body = await req.json().catch(() => ({}));
     const leadId = body?.leadId as string | undefined;
+    const mailAccountId = body?.mailAccountId as string | undefined;
+
+    if (mailAccountId) {
+      accProfile = await MailAccount.findById(mailAccountId).lean();
+      if (accProfile) accountInfo = { id: String(accProfile._id), name: accProfile.accountName, from: accProfile.fromAddress };
+    }
 
     if (leadId) {
       const lead = await Lead.findOne({ leadId }).lean() as any;
@@ -36,7 +45,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const subject = renderTemplate(t.subject, vars);
-    const bodyRendered = renderTemplate(t.body, vars);
+    let bodyRendered = renderTemplate(t.body, vars);
+
+    // appendAccountSignature (기본 true) 이고 계정이 선택되어 있으면 서명 자동 부착
+    const appendSig = t.appendAccountSignature !== false;
+    if (appendSig && accProfile) {
+      const sig = buildSignatureBlock(accProfile, { html: !!t.bodyIsHtml });
+      if (sig) bodyRendered = bodyRendered + (t.bodyIsHtml ? sig : sig);
+    }
 
     // 치환되지 않은 변수 감지 (미리보기 후에도 {{X}} 남아있으면 리스트)
     const missing: string[] = [];
@@ -53,6 +69,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       bodyIsHtml: !!t.bodyIsHtml,
       missing,
       leadInfo,
+      accountInfo,
     });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message || 'unknown' }, { status: 500 });

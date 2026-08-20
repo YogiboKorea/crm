@@ -49,6 +49,7 @@ export async function POST(req: Request) {
       bodyIsHtml: body.bodyIsHtml === true,
       purpose: body.purpose || 'intro',
       isActive: body.isActive !== false,
+      appendAccountSignature: body.appendAccountSignature !== false,
       createdBy: body.createdBy || '',
     });
     return NextResponse.json({ success: true, template: t });

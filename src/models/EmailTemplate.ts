@@ -12,6 +12,9 @@ export interface IEmailTemplate extends Document {
   bodyIsHtml: boolean;
   purpose: 'intro' | 'followup' | 're-engage' | 'partner-onboarding' | 'other';
   isActive: boolean;
+  // 발송 시 선택된 메일 계정의 서명 블록 (이름/직함/회사/이메일/전화) 자동 추가
+  // 사용자가 본문에 발송자 정보를 손대지 않아도 되게 함
+  appendAccountSignature: boolean;
   createdBy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -29,6 +32,7 @@ const EmailTemplateSchema = new Schema<IEmailTemplate>({
     default: 'intro',
   },
   isActive: { type: Boolean, default: true },
+  appendAccountSignature: { type: Boolean, default: true },
   createdBy: { type: String, default: '' },
 }, { timestamps: true });
 

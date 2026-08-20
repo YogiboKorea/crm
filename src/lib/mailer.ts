@@ -132,11 +132,34 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
 }
 
 /**
- * 템플릿 변수 치환. {{Company}} 같은 플레이스홀더를 lead 값으로 교체.
- * 재귀/조건문 없음 — 단순 문자열 치환만.
+ * 템플릿 변수 치환.
+ * - `{{Company}}` 스타일 (개발자용 · 기존 호환)
+ * - `[회사명]` 한글 마커 (비개발자 친화 · 새 방식)
+ * 재귀/조건문 없음 — 단순 문자열 치환.
  */
+const KO_ALIAS_TO_KEY: Record<string, string> = {
+  '회사명': 'Company',
+  '상대회사': 'Company',
+  '상대 회사명': 'Company',
+  '받는사람': 'BuyerContact',
+  '담당자': 'BuyerContact',
+  '담당자 이름': 'BuyerContact',
+  '담당자 직함': 'Title',
+  '담당자 이메일': 'Email',
+  '담당자 전화번호': 'Phone',
+  '국가': 'Country',
+};
+
 export function renderTemplate(source: string, vars: Record<string, string | undefined>): string {
-  return source.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (_, key) => {
+  // 1. {{Key}} 형식
+  let out = source.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (_, key) => {
     return vars[key] != null ? String(vars[key]) : `{{${key}}}`;
   });
+  // 2. [한글마커] 형식
+  out = out.replace(/\[([^\[\]\n]+?)\]/g, (m, label) => {
+    const key = KO_ALIAS_TO_KEY[label.trim()];
+    if (!key) return m;   // 정의 안 된 마커는 그대로 (일반 대괄호 텍스트 훼손 방지)
+    return vars[key] != null ? String(vars[key]) : m;
+  });
+  return out;
 }

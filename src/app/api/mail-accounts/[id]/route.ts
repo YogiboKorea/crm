@@ -36,7 +36,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   if (!acc) return NextResponse.json({ success: false, error: 'not found' }, { status: 404 });
 
   const update: any = {};
-  const allowed = ['accountName', 'smtpHost', 'smtpPort', 'smtpSecure', 'smtpUser', 'fromName', 'fromAddress', 'isActive'];
+  const allowed = ['accountName', 'smtpHost', 'smtpPort', 'smtpSecure', 'smtpUser', 'fromName', 'fromAddress', 'isActive', 'senderTitle', 'senderPhone', 'senderCompany', 'senderAddress', 'senderWebsite'];
   for (const k of allowed) {
     if (Object.prototype.hasOwnProperty.call(body, k)) update[k] = body[k];
   }

@@ -4,7 +4,7 @@ import { Lead } from '@/models/Lead';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { MailAccount } from '@/models/MailAccount';
 import { sendMail, renderTemplate } from '@/lib/mailer';
-import { buildVarsFromLead } from '@/lib/template-vars';
+import { buildVarsFromLead, buildSignatureBlock } from '@/lib/template-vars';
 import { decryptSecret } from '@/lib/crypto';
 
 export const runtime = 'nodejs';
@@ -86,6 +86,12 @@ export async function POST(req: Request) {
   // 대상 리드 로드
   const leads = await Lead.find({ leadId: { $in: leadIds } }).lean() as any[];
 
+  // 선택된 메일 계정 프로필 로드 → 서명 블록 자동 생성용 (본문에 발송자 변수 불필요)
+  const accProfile = usedAccount ? await MailAccount.findById(usedAccount.id).lean() as any : null;
+  const appendSignature = tpl?.appendAccountSignature !== false;   // 템플릿 없으면 기본 true
+  const sigHtml  = accProfile && appendSignature ? buildSignatureBlock(accProfile, { html: true })  : '';
+  const sigText  = accProfile && appendSignature ? buildSignatureBlock(accProfile, { html: false }) : '';
+
   const now = new Date().toISOString();
   const results: any[] = [];
   let sent = 0;
@@ -101,22 +107,20 @@ export async function POST(req: Request) {
       continue;
     }
 
-    // 변수 치환
+    // 변수 치환 (받는사람/회사명만 · 발송자는 서명으로)
     const vars = buildVarsFromLead(lead);
     const renderedSubject = renderTemplate(subjectSrc, vars);
     const renderedBody = renderTemplate(bodySrc, vars);
 
-    // HTML 모드일 때 폰트 wrapping — 인라인 스타일이 이메일 클라이언트에서 가장 안전
+    // HTML 모드일 때 폰트 wrapping + 서명 블록 자동 추가
     let htmlPayload: string | undefined;
     let textPayload: string | undefined;
     if (bodyIsHtml) {
-      // 개행 → <br> 자동 변환 (사용자가 순수 텍스트로 입력해도 HTML 출력)
       const bodyHtml = renderedBody.includes('<') ? renderedBody : renderedBody.replace(/\n/g, '<br>');
-      htmlPayload = `<div style="font-family:${fontFamily};font-size:${fontSize}px;line-height:1.65;color:#111827">${bodyHtml}</div>`;
-      // 텍스트 fallback (스팸 필터 회피)
-      textPayload = renderedBody.replace(/<[^>]+>/g, '');
+      htmlPayload = `<div style="font-family:${fontFamily};font-size:${fontSize}px;line-height:1.65;color:#111827">${bodyHtml}${sigHtml}</div>`;
+      textPayload = renderedBody.replace(/<[^>]+>/g, '') + sigText;
     } else {
-      textPayload = renderedBody;
+      textPayload = renderedBody + sigText;
     }
 
     // 발송 (또는 DRY_RUN)
@@ -141,7 +145,13 @@ export async function POST(req: Request) {
     if (result.ok) {
       sent++;
       results.push({ leadId: lead.leadId, ok: true, messageId: result.messageId, dryRun });
-      // emailHistory 추가
+      // emailHistory 추가 + 성공 시 stage → 'contacted' 자동 이동
+      // (DRY_RUN 은 실제 발송 아님 → stage 변경 안 함)
+      const setUpdate: any = { lastEmailSentAt: now };
+      if (!dryRun && lead.stage !== 'contacted' && lead.stage !== 'replied' && lead.stage !== 'negotiating' && lead.stage !== 'partner') {
+        setUpdate.stage = 'contacted';
+        setUpdate.stageChangedAt = now;
+      }
       historyOps.push({
         updateOne: {
           filter: { leadId: lead.leadId },
@@ -149,16 +159,14 @@ export async function POST(req: Request) {
             $push: {
               emailHistory: {
                 subject: renderedSubject,
-                body: renderedBody.slice(0, 500),  // 요약
+                body: renderedBody.slice(0, 500),
                 templateId: templateId || '',
                 to,
                 sentAt: now,
-                status: dryRun ? 'sent' : 'sent',
+                status: 'sent',
               },
             },
-            $set: {
-              lastEmailSentAt: now,
-            },
+            $set: setUpdate,
           },
         },
       });

@@ -148,23 +148,79 @@ input::placeholder, textarea::placeholder {
   opacity: 1;
 }
 
+/* 리드 리스트 체크박스 크게 (터치/클릭 편의) */
+.lead-select,
+input[type="checkbox"].lead-select {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #2563eb;
+  margin: 4px;
+}
+/* 체크박스 들어있는 셀에 여백 확대 → 클릭 히트 영역 넓힘 */
+td:has(> .lead-select) {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+/* 컴포즈 모달: 항상 라이트 모드 톤으로 강제 (다크모드에서도 흰 배경 카드) */
+#composeModalRoot {
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-tertiary: #64748b;
+  --border: #e5e7eb;
+  --surface-0: #ffffff;
+  --surface-1: #f8fafc;
+  --surface-2: #f1f5f9;
+  color: #0f172a;
+}
+#composeModalRoot input,
+#composeModalRoot select,
+#composeModalRoot textarea {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+#composeModalRoot input::placeholder,
+#composeModalRoot textarea::placeholder {
+  color: #94a3b8 !important;
+}
+#composeModalRoot label,
+#composeModalRoot h1, #composeModalRoot h2, #composeModalRoot h3, #composeModalRoot h4 {
+  color: #0f172a;
+}
+
 /* 편집기/컴포즈 폼 통일 스타일 · 다크모드 무관 항상 흰배경+진한글자 */
 .form-input,
 input.form-input,
 select.form-input,
-textarea.form-input {
+textarea.form-input,
+/* 메일 계정 모달 인풋 전체 */
+#macUser, #macPass, #macName,
+#macHost, #macPort, #macSecure,
+#macFromName, #macFromAddress,
+#macSenderTitle, #macSenderPhone, #macSenderCompany,
+#macSenderAddress, #macSenderWebsite,
+#macPreset {
   background: #ffffff !important;
   color: #0f172a !important;
   border: 1px solid #cbd5e1 !important;
   border-radius: 8px;
   font-size: 13px;
 }
-.form-input:focus {
+.form-input:focus,
+#macUser:focus, #macPass:focus, #macName:focus,
+#macHost:focus, #macPort:focus, #macSecure:focus,
+#macFromName:focus, #macFromAddress:focus,
+#macSenderTitle:focus, #macSenderPhone:focus, #macSenderCompany:focus,
+#macSenderAddress:focus, #macSenderWebsite:focus,
+#macPreset:focus {
   outline: none;
   border-color: #6366f1 !important;
   box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
 }
-.form-input option {
+.form-input option,
+#macSecure option, #macPreset option {
   background: #ffffff;
   color: #0f172a;
 }

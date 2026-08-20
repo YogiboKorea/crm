@@ -26,7 +26,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const body = await req.json();
     const update: any = {};
-    const allowed = ['name', 'language', 'subject', 'body', 'bodyIsHtml', 'purpose', 'isActive'];
+    const allowed = ['name', 'language', 'subject', 'body', 'bodyIsHtml', 'purpose', 'isActive', 'appendAccountSignature'];
     for (const k of allowed) {
       if (Object.prototype.hasOwnProperty.call(body, k)) update[k] = body[k];
     }

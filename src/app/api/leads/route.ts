@@ -33,17 +33,13 @@ const LIST_PROJECTION = {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    // 기본을 50,000 으로 (전체 반환 — 기존 클라이언트 호환)
     const limit = parseInt(searchParams.get('limit') || '50000');
-    // full=1 이면 모든 필드 반환 (Export 등)
     const full = searchParams.get('full') === '1';
-    // ── 서버 페이지네이션 ─────────────────────────────
-    // ?stage=X&page=N&limit=50 → 해당 stage 만 페이지 단위로
-    const stage = searchParams.get('stage');   // e.g. 'verified', 'verifying', 'contacted', '__failed'
-    const sub = searchParams.get('sub');       // 서브필터 (unverified/maybe/approved/pending/no-email)
+    const stage = searchParams.get('stage');
+    const sub = searchParams.get('sub');
+    const tier = searchParams.get('tier');   // 'A' | 'B' | 'C' (verified 전용)
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
 
-    // 필터 구성
     const filter: any = {};
     if (stage === '__failed') {
       filter.stage = 'archived';
@@ -51,7 +47,6 @@ export async function GET(req: Request) {
     } else if (stage) {
       filter.stage = stage;
     }
-    // 서브필터
     if (stage === 'verifying') {
       if (sub === 'unverified') {
         filter.$or = [
@@ -70,17 +65,38 @@ export async function GET(req: Request) {
     }
 
     await dbConnect();
+
+    // ── tier 필터 (verified 전용, 계산 필드라 별도 처리) ──
+    if (stage === 'verified' && (tier === 'A' || tier === 'B' || tier === 'C')) {
+      const { getLeadTier } = await import('@/lib/lead-tier');
+      const allMatching = await Lead.find(filter, { Company: 1, Email: 1, WebsiteContact: 1 }).lean();
+      const matchIds = allMatching.filter((l) => getLeadTier(l as any) === tier).map((l) => l._id);
+      const tierFilter = { ...filter, _id: { $in: matchIds } };
+      const skip = (page - 1) * limit;
+      const query = Lead.find(tierFilter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+      if (!full) query.select(LIST_PROJECTION);
+      const leads = await query.exec();
+      const total = matchIds.length;
+      return NextResponse.json({
+        success: true,
+        data: leads,
+        total,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      });
+    }
+
     const skip = (page - 1) * limit;
     const query = Lead.find(filter)
       .sort({ createdAt: -1 })
-      .skip(stage ? skip : 0)          // stage 지정 시에만 페이지네이션
+      .skip(stage ? skip : 0)
       .limit(limit)
       .lean();
     if (!full) query.select(LIST_PROJECTION);
 
     const [leads, total] = await Promise.all([
       query.exec(),
-      // stage 지정 시 필터 카운트, 아니면 전체 estimatedDocumentCount
       stage ? Lead.countDocuments(filter) : Lead.estimatedDocumentCount(),
     ]);
 

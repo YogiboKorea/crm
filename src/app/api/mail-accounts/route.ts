@@ -45,6 +45,7 @@ export async function POST(req: Request) {
   const {
     accountName, smtpHost, smtpPort, smtpSecure,
     smtpUser, smtpPass, fromName, fromAddress, isDefault,
+    senderTitle, senderPhone, senderCompany, senderAddress, senderWebsite,
   } = body;
 
   // 필수값 검증
@@ -93,6 +94,11 @@ export async function POST(req: Request) {
       smtpPassEnc: encryptSecret(String(smtpPass)),
       fromName: String(fromName || '').trim(),
       fromAddress: String(fromAddress).trim(),
+      senderTitle: String(senderTitle || '').trim(),
+      senderPhone: String(senderPhone || '').trim(),
+      senderCompany: String(senderCompany || '').trim(),
+      senderAddress: String(senderAddress || '').trim(),
+      senderWebsite: String(senderWebsite || '').trim(),
       isDefault: shouldDefault,
       isActive: true,
       lastVerifiedAt: now,

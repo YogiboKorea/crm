@@ -46,8 +46,8 @@ export default function Home() {
               <span className="nav-icon">✅</span><span className="nav-label">검증 완료</span>
               <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-contacted" type="button" title="컨택 중">
-              <span className="nav-icon">📨</span><span className="nav-label">컨택 중</span>
+            <button className="nav-item" data-view="pipeline-contacted" type="button" title="이메일 컨택">
+              <span className="nav-icon">📨</span><span className="nav-label">이메일 컨택</span>
               <span className="nav-badge" data-nav-badge="contacted"></span>
             </button>
             <button className="nav-item" data-view="pipeline-replied" type="button" title="응답 옴">
@@ -66,6 +66,9 @@ export default function Home() {
             {/* ── 부가 도구 ────────────────────────────────── */}
             <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리">
               <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
+            </button>
+            <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 템플릿 설정">
+              <span className="nav-icon">📝</span><span className="nav-label">메일 템플릿 설정</span>
             </button>
             <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트">
               <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>

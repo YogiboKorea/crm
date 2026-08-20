@@ -224,6 +224,8 @@ let state = {
   //   'pending'    - readyForOutreach=false (승인 대기)
   //   'no-email'   - Email 필드 비었거나 "Not found" — 승인 불가
   verifiedSubFilter: 'all',
+  tierFilter: null,   // 검증완료 A/B/C 등급 필터
+
   // 검증완료 페이지 상단 상위 탭 (성공/실패)
   //   'success' (default) - verified stage 리드
   //   'failed'  - archived + not-buyer (구 pipeline-failed)
@@ -234,6 +236,9 @@ let state = {
     variables: [],
     variableGroups: [],
     currentTemplateId: null,
+    previewAccountId: null,
+    wizardStep: 1,           // 템플릿 생성 마법사 스텝 (1..4)
+
     editor: null,           // { name, language, subject, body, purpose, bodyIsHtml, isActive }
     previewLeadId: null,
     previewResult: null,    // { subject, body, missing }
@@ -425,8 +430,8 @@ async function loadLeads(opts) {
 var _serverPageCache = null;   // { stage, page, sub, leads, total, totalPages, ts }
 const SERVER_PAGE_CACHE_TTL_MS = 30 * 1000;   // 30초
 
-async function loadServerPage(stage, page, sub, force) {
-  const cacheKey = `${stage}::${sub || ''}::${page}`;
+async function loadServerPage(stage, page, sub, force, tier) {
+  const cacheKey = `${stage}::${sub || ''}::${tier || ''}::${page}`;
   const now = Date.now();
   if (!force && _serverPageCache && _serverPageCache.cacheKey === cacheKey && (now - _serverPageCache.ts) < SERVER_PAGE_CACHE_TTL_MS) {
     return _serverPageCache;
@@ -434,6 +439,7 @@ async function loadServerPage(stage, page, sub, force) {
   const params = new URLSearchParams();
   params.set('stage', stage);
   if (sub) params.set('sub', sub);
+  if (tier) params.set('tier', tier);
   params.set('page', String(page));
   params.set('limit', '50');
   const res = await fetch(`/api/leads?${params.toString()}`);
@@ -441,7 +447,7 @@ async function loadServerPage(stage, page, sub, force) {
   if (!data.success) throw new Error(data.error || 'load page failed');
   _serverPageCache = {
     cacheKey,
-    stage, page, sub,
+    stage, page, sub, tier,
     leads: (data.data || []).map(l => ({ ...l, id: l.leadId })),
     total: data.total || 0,
     totalPages: data.totalPages || 1,
@@ -1203,7 +1209,7 @@ async function _renderInner() {
     'pipeline-verifying':   { stage: 'verifying',   title: '🔍 검증 대기',          sub: '검증 진행 중이거나 필요한 회사들.' },
     'pipeline-verified':    { stage: 'verified',    title: '✅ 검증 완료',          sub: '검증 통과 = B2B 메일 컨택 대상. 메일 없으면 크롤링 실행.' },
     'pipeline-failed':      { stage: '__failed',    title: '🚫 검증 실패',          sub: 'AI가 K-beauty 무관으로 판정. 잘못 판정된 것은 수동으로 검증완료로 되돌리기 가능.' },
-    'pipeline-contacted':   { stage: 'contacted',   title: '📨 컨택 중',            sub: '첫 메일 발송 완료. 응답 대기 중.' },
+    'pipeline-contacted':   { stage: 'contacted',   title: '📨 이메일 컨택',        sub: '첫 메일 발송 완료. 응답 대기 중.' },
     'pipeline-replied':     { stage: 'replied',     title: '💬 응답 옴',            sub: '상대방 답장 옴. 팔로우업 필요.' },
     'pipeline-negotiating': { stage: 'negotiating', title: '🤝 협상 중',            sub: '미팅/샘플/조건 협상 단계.' },
     'pipeline-partner':     { stage: 'partner',     title: '⭐ 파트너 (최종 완료)', sub: '계약 성사된 파트너. 자동 메일 발송 대상에서 자동 제외됨.' },
@@ -1239,11 +1245,12 @@ async function _renderInner() {
         }
       }
       const sub = serverStage === 'verified' ? (state.verifiedSubFilter || 'all') : null;
+      const tier = serverStage === 'verified' ? (state.tierFilter || null) : null;
       const wantPage = state.pagination?.currentPage || 1;
       const counts = _stageCountsCache || await loadStageCounts();
       let pageData;
       try {
-        pageData = await loadServerPage(serverStage, wantPage, sub === 'all' ? null : sub);
+        pageData = await loadServerPage(serverStage, wantPage, sub === 'all' ? null : sub, false, tier);
       } catch (e) {
         els.content.innerHTML = emptyState('페이지 로드 실패: ' + (e.message || 'unknown'));
         return;
@@ -1371,7 +1378,7 @@ async function _renderInner() {
   // ── 새 부가 도구 페이지 스켈레톤 ──────────────────────────────
   if (state.view === "tool-b2b-email") {
     els.viewTitle.textContent = "📝 메일 템플릿 편집";
-    els.viewSubtitle.textContent = "발송에 쓸 메일 문구(제목·본문·변수) 를 저장/편집. 실제 발송은 컨택중 페이지에서.";
+    els.viewSubtitle.textContent = "발송에 쓸 메일 문구(제목·본문·변수) 를 저장/편집. 실제 발송은 이메일 컨택 페이지에서.";
     renderB2BEmailManager();
     return;
   }
@@ -1587,7 +1594,7 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
       </div>
     `;
   } else if (stageInfo.stage === 'contacted') {
-    // 컨택 중 = B2B 메일 발송 진입점
+    // 이메일 컨택 = B2B 메일 발송 진입점
     const contactedLeads = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted');
     const readyToSend = contactedLeads.filter(l => {
       const e = (l.Email || '').trim();
@@ -1610,12 +1617,6 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
             </div>
           </div>
           <div style="display:flex;gap:8px;flex-shrink:0">
-            <button id="openTemplateEditorBtn" type="button" style="
-              font-size:13px;font-weight:600;padding:12px 16px;white-space:nowrap;
-              background:white;color:#2563eb;border:1px solid #93c5fd;border-radius:10px;cursor:pointer;
-            " title="발송에 사용할 메일 문구 (제목/본문) 를 미리 저장/편집">
-              📝 템플릿 편집
-            </button>
             <button id="openBulkComposeBtn" type="button" style="
               font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
               background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
@@ -1915,7 +1916,7 @@ function renderVerifyingSubFilterChips(allInStage) {
 }
 function clearVerifyingSubFilterChips() {
   const c = document.getElementById('verifyingSubFilterChips');
-  if (c) c.innerHTML = '';
+  if (c && c.parentNode) c.parentNode.removeChild(c);
 }
 
 // 검증완료 페이지 서브필터 chip + 벌크 승인 버튼
@@ -1994,7 +1995,7 @@ function renderVerifiedSubFilterChips(allInStage) {
 }
 function clearVerifiedSubFilterChips() {
   const c = document.getElementById('verifiedSubFilterChips');
-  if (c) c.innerHTML = '';
+  if (c && c.parentNode) c.parentNode.removeChild(c);
 }
 
 // 검증완료 상단 성공/실패 대형 탭 (한 페이지 안에서 결과 분류)
@@ -2046,7 +2047,7 @@ function renderVerifiedResultTabs(successCount, failedCount) {
 }
 function clearVerifiedResultTabs() {
   const c = document.getElementById('verifiedResultTabs');
-  if (c) c.innerHTML = '';
+  if (c && c.parentNode) c.parentNode.removeChild(c);
 }
 
 // ── 검증완료 A/B/C 등급 breakdown ────────────────────
@@ -2068,6 +2069,13 @@ async function loadTierCounts(force) {
 }
 
 async function renderVerifiedTierChips() {
+  // 캐시 없으면 fetch — 그동안 아무것도 렌더 안 함 (다른 탭 이동시 잔상 방지)
+  const c = await loadTierCounts();
+  if (!c) return;
+  // 렌더 시점에도 verified 성공 탭 유지 중인지 확인 (fetch 중 사용자가 탭 변경했을 수 있음)
+  if (state.view !== 'pipeline-verified' || (state.verifiedResultTab && state.verifiedResultTab !== 'success')) {
+    return;
+  }
   const containerId = 'verifiedTierChips';
   let container = document.getElementById(containerId);
   if (!container) {
@@ -2081,36 +2089,60 @@ async function renderVerifiedTierChips() {
       if (banner && banner.parentNode) banner.parentNode.insertBefore(container, banner.nextSibling);
     }
   }
-  container.innerHTML = `<div style="margin-top:10px;font-size:11px;color:var(--text-tertiary)">등급 분류 계산 중...</div>`;
-  const c = await loadTierCounts();
-  if (!c) { container.innerHTML = ''; return; }
-  const tierCard = (label, count, sub, color, bg, bd) => `
-    <div style="flex:1;padding:12px 14px;background:${bg};border:1px solid ${bd};border-radius:12px;
-                display:flex;flex-direction:column;gap:2px;min-width:0">
-      <div style="display:flex;align-items:baseline;gap:8px">
-        <span style="font-size:20px;font-weight:800;color:${color}">${count.toLocaleString()}</span>
-        <span style="font-size:12px;color:${color};font-weight:700">${label}</span>
+  const cur = state.tierFilter || null;
+  const tierCard = (key, label, count, sub, color, bg, bd) => {
+    const active = cur === key;
+    return `
+      <div class="tier-card" data-tier="${key}"
+        style="flex:1;padding:12px 14px;background:${active ? color : bg};
+               border:2px solid ${active ? color : bd};border-radius:12px;
+               display:flex;flex-direction:column;gap:2px;min-width:0;cursor:pointer;
+               transition:all 0.15s;box-shadow:${active ? '0 4px 12px ' + color + '55' : 'none'}">
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span style="font-size:20px;font-weight:800;color:${active ? 'white' : color}">${count.toLocaleString()}</span>
+          <span style="font-size:12px;color:${active ? 'white' : color};font-weight:700">${label}</span>
+        </div>
+        <div style="font-size:10px;color:${active ? 'rgba(255,255,255,0.9)' : color};opacity:${active ? 1 : 0.75};line-height:1.3">${sub}</div>
       </div>
-      <div style="font-size:10px;color:${color};opacity:0.75;line-height:1.3">${sub}</div>
-    </div>
-  `;
+    `;
+  };
+  const cCount = c.C || 0;
   container.innerHTML = `
     <div style="margin-top:10px;padding:10px;background:var(--surface-1);border:1px solid var(--border);border-radius:12px">
-      <div style="font-size:11px;color:var(--text-secondary);font-weight:700;margin-bottom:8px">
-        📊 검증완료 리드 우량도 등급 (총 ${c.total.toLocaleString()}건)
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--text-secondary);font-weight:700">
+          📊 등급 클릭해서 필터 · 총 ${c.total.toLocaleString()}건
+        </div>
+        ${cur ? `<button type="button" id="clearTierBtn" style="font-size:11px;padding:3px 10px;background:var(--surface-2);color:var(--text-secondary);border:1px solid var(--border);border-radius:99px;cursor:pointer">✕ 전체 보기</button>` : ''}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${tierCard('🥇 A급', c.A, '이메일 + 사이트 + 대형 리테일러', '#a16207', '#fef9c3', '#fde047')}
-        ${tierCard('🥈 B급', c.B, '이메일 + 사이트 있음', '#1e40af', '#dbeafe', '#93c5fd')}
-        ${tierCard('🥉 C급', c.C, '이메일/사이트 부족', '#57534e', '#f5f5f4', '#d6d3d1')}
+        ${tierCard('A', '🥇 A급', c.A, '이메일 + 사이트 + 대형 리테일러', '#a16207', '#fef9c3', '#fde047')}
+        ${tierCard('B', '🥈 B급', c.B, '이메일 + 사이트 있음', '#1e40af', '#dbeafe', '#93c5fd')}
+        ${cCount > 0 ? tierCard('C', '🥉 C급', cCount, '이메일/사이트 부족', '#57534e', '#f5f5f4', '#d6d3d1') : ''}
       </div>
     </div>
   `;
+  container.querySelectorAll('.tier-card').forEach(el => {
+    el.addEventListener('click', () => {
+      const t = el.dataset.tier;
+      state.tierFilter = (state.tierFilter === t) ? null : t;
+      resetPagination();
+      _serverPageCache = null;
+      render();
+    });
+  });
+  const clearBtn = document.getElementById('clearTierBtn');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    state.tierFilter = null;
+    resetPagination();
+    _serverPageCache = null;
+    render();
+  });
 }
 
 function clearVerifiedTierChips() {
   const c = document.getElementById('verifiedTierChips');
-  if (c) c.innerHTML = '';
+  if (c && c.parentNode) c.parentNode.removeChild(c);
 }
 
 // 검증완료 서브필터 chip — 서버 카운트 기반 (전체 리드 fetch 없이)
@@ -2496,14 +2528,15 @@ function renderComposeModal() {
 
   const modalHtml = `
     <div id="composeModalRoot" style="
-      position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.5);
+      position:fixed;inset:0;z-index:9999;
+      background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
       display:flex;align-items:center;justify-content:center;
     ">
       <div style="
         width:min(1200px, 95vw);height:min(800px, 92vh);
-        background:var(--surface-0);border-radius:16px;
+        background:#ffffff;color:#0f172a;border-radius:16px;
         display:flex;flex-direction:column;overflow:hidden;
-        box-shadow:0 24px 64px rgba(0,0,0,0.3);
+        box-shadow:0 24px 64px rgba(0,0,0,0.5);
       ">
         <!-- 헤더 -->
         <div style="
@@ -3488,7 +3521,7 @@ const STAGE_STYLE = {
   imported:    { bg: '#f1f5f9', fg: '#475569', label: '📥 가져오기' },
   verifying:   { bg: '#fef9c3', fg: '#854d0e', label: '🔍 검증 대기' },
   verified:    { bg: '#dcfce7', fg: '#166534', label: '✅ 검증 완료' },
-  contacted:   { bg: '#dbeafe', fg: '#1e40af', label: '📨 컨택 중' },
+  contacted:   { bg: '#dbeafe', fg: '#1e40af', label: '📨 이메일 컨택' },
   replied:     { bg: '#e0e7ff', fg: '#3730a3', label: '💬 응답 옴' },
   negotiating: { bg: '#fed7aa', fg: '#9a3412', label: '🤝 협상 중' },
   partner:     { bg: '#f3e8ff', fg: '#6b21a8', label: '⭐ 파트너' },
@@ -3664,14 +3697,14 @@ async function handleStageChange(leadId, newStage, selectEl) {
   const lead = baseLeads.find(l => l.id === leadId);
   if (!lead || !lead._id) return;
 
-  // ── 안전 게이트: 컨택중 이동 시 실제 이메일 필수 ─────────
-  // 컨택중 = B2B 메일 발송 준비 상태. 메일 없으면 발송 불가 → 이동 자체 차단
+  // ── 안전 게이트: 이메일 컨택 이동 시 실제 이메일 필수 ─────────
+  // 이메일 컨택 = B2B 메일 발송 준비 상태. 메일 없으면 발송 불가 → 이동 자체 차단
   if (newStage === 'contacted') {
     const email = (lead.Email || '').trim();
     const isValid = email && !/^Not found/i.test(email) && /@/.test(email);
     if (!isValid) {
       alert(
-        `❌ 컨택중으로 이동 불가\n\n` +
+        `❌ 이메일 컨택으로 이동 불가\n\n` +
         `"${lead.Company}" 리드에 유효한 이메일이 없습니다.\n\n` +
         `해결책:\n` +
         `1) 검증완료 페이지에서 "🔍 메일 크롤링" 실행\n` +
@@ -4029,6 +4062,7 @@ const DEFAULT_TEMPLATE_EDITOR = {
   purpose: 'intro',
   bodyIsHtml: false,
   isActive: true,
+  appendAccountSignature: true,   // 발송 시 계정 서명 자동 부착
 };
 
 async function loadEmailTemplates() {
@@ -4069,6 +4103,7 @@ function selectTemplate(templateId) {
         purpose: t.purpose || 'intro',
         bodyIsHtml: !!t.bodyIsHtml,
         isActive: t.isActive !== false,
+        appendAccountSignature: t.appendAccountSignature !== false,
       };
     }
   } else {
@@ -4082,9 +4117,10 @@ function startNewTemplate() {
     if (!confirm('편집 중인 내용이 있습니다. 그대로 새 템플릿을 시작할까요?')) return;
   }
   state.email.currentTemplateId = null;
-  state.email.editor = { ...DEFAULT_TEMPLATE_EDITOR, name: '새 템플릿' };
-  state.email.dirty = true;
+  state.email.editor = { ...DEFAULT_TEMPLATE_EDITOR, name: '' };
+  state.email.dirty = false;
   state.email.previewResult = null;
+  state.email.wizardStep = 1;
   renderB2BEmailManager();
 }
 
@@ -4161,7 +4197,7 @@ async function refreshPreview() {
     const res = await fetch(`/api/email-templates/${state.email.currentTemplateId}/preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ leadId: state.email.previewLeadId }),
+      body: JSON.stringify({ leadId: state.email.previewLeadId, mailAccountId: state.email.previewAccountId || null }),
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'preview failed');
@@ -4186,6 +4222,22 @@ function insertVariableIntoBody(varKey) {
   const pos = start + insertText.length;
   ta.focus();
   ta.setSelectionRange(pos, pos);
+}
+
+function insertVariableIntoSubject(varKey) {
+  const inp = document.getElementById('templateSubjectInput');
+  if (!inp) return;
+  const insertText = `{{${varKey}}}`;
+  const start = inp.selectionStart || inp.value.length;
+  const end = inp.selectionEnd || inp.value.length;
+  const before = inp.value.substring(0, start);
+  const after = inp.value.substring(end);
+  inp.value = before + insertText + after;
+  state.email.editor.subject = inp.value;
+  state.email.dirty = true;
+  const pos = start + insertText.length;
+  inp.focus();
+  inp.setSelectionRange(pos, pos);
 }
 
 // ── 자동완성 (typeahead) ─────────────────────────────
@@ -4333,55 +4385,30 @@ function attachVariableAutocomplete(textareaId) {
 }
 
 async function renderB2BEmailManager() {
-  // 최초 진입 시 템플릿 목록 로드
+  // 최초 진입 시 템플릿 + 메일 계정 병렬 로드
   if (state.email.templates.length === 0 && state.email.variables.length === 0) {
     els.content.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-tertiary)">템플릿 로드 중...</div>`;
-    await loadEmailTemplates();
+    await Promise.all([loadEmailTemplates(), loadMailAccounts()]);
     if (!state.email.editor) {
       state.email.editor = { ...DEFAULT_TEMPLATE_EDITOR };
     }
+  } else if (!_mailAccounts) {
+    await loadMailAccounts();
   }
 
-  // 상단 파이프라인 통계
-  const verifiedCount = baseLeads.filter(l => l.stage === 'verified' && l.readyForOutreach).length;
-  const pendingApproval = baseLeads.filter(l => l.stage === 'verified' && !l.readyForOutreach).length;
-  const contactedCount = baseLeads.filter(l => l.stage === 'contacted').length;
-  const partnerCount = baseLeads.filter(l => l.stage === 'partner').length;
-
-  // 발송 대상 리드 (승인 완료 = readyForOutreach, 컨택 중 = 이미 발송된 이력) — 미리보기 대상 후보
+  // 미리보기용 샘플 리드 후보 (승인/컨택중 등에서 100건만)
   const previewCandidates = baseLeads.filter(l =>
     (l.stage === 'verified' && l.readyForOutreach) ||
     l.stage === 'contacted' || l.stage === 'replied' || l.stage === 'negotiating'
-  ).slice(0, 500);
+  ).slice(0, 100);
 
   const templates = state.email.templates;
   const currentId = state.email.currentTemplateId;
   const ed = state.email.editor || { ...DEFAULT_TEMPLATE_EDITOR };
-  const preview = state.email.previewResult;
 
   els.content.innerHTML = `
-    <!-- 파이프라인 스탯 -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px">
-      <div style="background:#dcfce7;padding:12px;border-radius:8px;border:1px solid #86efac">
-        <div style="font-size:11px;color:#166534;margin-bottom:2px">발송 승인 완료</div>
-        <div style="font-size:20px;font-weight:800;color:#166534">${verifiedCount}</div>
-      </div>
-      <div style="background:#fef3c7;padding:12px;border-radius:8px;border:1px solid #fcd34d">
-        <div style="font-size:11px;color:#92400e;margin-bottom:2px">승인 대기</div>
-        <div style="font-size:20px;font-weight:800;color:#92400e">${pendingApproval}</div>
-      </div>
-      <div style="background:#dbeafe;padding:12px;border-radius:8px;border:1px solid #93c5fd">
-        <div style="font-size:11px;color:#1e40af;margin-bottom:2px">이미 컨택 중</div>
-        <div style="font-size:20px;font-weight:800;color:#1e40af">${contactedCount}</div>
-      </div>
-      <div style="background:#f3e8ff;padding:12px;border-radius:8px;border:1px solid #c4b5fd">
-        <div style="font-size:11px;color:#6b21a8;margin-bottom:2px">파트너 (자동 제외)</div>
-        <div style="font-size:20px;font-weight:800;color:#6b21a8">${partnerCount}</div>
-      </div>
-    </div>
-
-    <!-- 3열 레이아웃: 템플릿 목록 · 편집기 · 미리보기 -->
-    <div style="display:grid;grid-template-columns:240px 1fr 1fr;gap:12px;height:calc(100vh - 340px);min-height:520px">
+    <!-- 2열: 문구 목록 · 편집 -->
+    <div style="display:grid;grid-template-columns:220px 1fr;gap:12px;height:calc(100vh - 220px);min-height:600px">
 
       <!-- 템플릿 목록 -->
       <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:12px;overflow:hidden;display:flex;flex-direction:column">
@@ -4420,153 +4447,120 @@ async function renderB2BEmailManager() {
         </div>
       </div>
 
-      <!-- 편집기 -->
-      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <h4 style="margin:0;font-size:13px;font-weight:700">✏️ 편집</h4>
-          <div style="display:flex;gap:6px">
+      <!-- 편집 (한 페이지) -->
+      <div id="tplEditorBox" style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px">
+
+        <!-- 상단 헤더 + 저장 -->
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:800;color:var(--text-primary)">📝 메일 문구 편집</h3>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">
+              발송할 메일 내용을 그대로 쓰세요. 회사명 자리엔 <code style="background:#eef2ff;padding:2px 8px;border-radius:4px;color:#4338ca;font-weight:700">[회사명]</code> 이라고 쓰면 회사마다 자동 채워집니다.
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
             ${state.email.currentTemplateId ? `
-              <button id="deleteTemplateBtn" class="button ghost" type="button" style="font-size:11px;padding:4px 8px;color:#dc2626">🗑 삭제</button>
+              <button id="deleteTemplateBtn" type="button" style="font-size:12px;padding:8px 14px;background:transparent;color:#dc2626;border:1px solid #fca5a5;border-radius:8px;cursor:pointer">🗑 삭제</button>
             ` : ''}
-            <button id="saveTemplateBtn" class="button primary" type="button" style="font-size:11px;padding:4px 10px" ${state.email.loading ? 'disabled' : ''}>
-              ${state.email.loading ? '저장 중...' : (state.email.dirty ? '💾 저장*' : '💾 저장')}
+            <button id="saveTemplateBtn" type="button" style="font-size:13px;font-weight:700;padding:9px 22px;background:${state.email.dirty ? '#15803d' : '#94a3b8'};color:white;border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 6px rgba(21,128,61,0.25)" ${state.email.loading ? 'disabled' : ''}>
+              ${state.email.loading ? '⏳ 저장 중...' : (state.email.dirty ? '💾 저장' : '✅ 저장됨')}
             </button>
           </div>
         </div>
 
+        <!-- 이 문구의 이름 -->
         <div>
-          <label style="font-size:11px;color:var(--text-secondary);font-weight:700">템플릿 이름</label>
+          <label style="font-size:12px;color:var(--text-secondary);font-weight:700">이 문구 이름 <span style="color:#dc2626">*</span></label>
           <input id="templateNameInput" type="text" value="${escapeAttr(ed.name)}"
-            style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a"
-            placeholder="예: 1차 소개 (영문)">
+            style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-top:4px;background:#ffffff;color:#0f172a"
+            placeholder="예: 1차 소개 · 파트너십 문의">
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div>
-            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">언어</label>
-            <select id="templateLangInput" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a">
-              <option value="en" ${ed.language === 'en' ? 'selected' : ''}>영문 (English)</option>
-              <option value="ko" ${ed.language === 'ko' ? 'selected' : ''}>한국어</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">용도</label>
-            <select id="templatePurposeInput" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a">
-              <option value="intro" ${ed.purpose === 'intro' ? 'selected' : ''}>1차 소개</option>
-              <option value="followup" ${ed.purpose === 'followup' ? 'selected' : ''}>팔로우업</option>
-              <option value="re-engage" ${ed.purpose === 're-engage' ? 'selected' : ''}>재컨택</option>
-              <option value="partner-onboarding" ${ed.purpose === 'partner-onboarding' ? 'selected' : ''}>파트너 온보딩</option>
-              <option value="other" ${ed.purpose === 'other' ? 'selected' : ''}>기타</option>
-            </select>
-          </div>
-        </div>
-
+        <!-- 제목 -->
         <div>
-          <label style="font-size:11px;color:var(--text-secondary);font-weight:700">제목 (변수 사용 가능 · <code style="background:#eef2ff;padding:1px 4px;border-radius:4px;color:#4338ca">{{</code> 타이핑하면 자동완성)</label>
+          <label style="font-size:12px;color:var(--text-secondary);font-weight:700">제목 <span style="color:#dc2626">*</span></label>
           <input id="templateSubjectInput" type="text" value="${escapeAttr(ed.subject)}"
-            style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;margin-top:2px;background:#ffffff;color:#0f172a"
-            placeholder="예: Partnership inquiry — {{Company}}">
+            style="width:100%;padding:12px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-top:4px;background:#ffffff;color:#0f172a"
+            placeholder="예: Partnership inquiry — [회사명]">
         </div>
 
-        <!-- 변수 팔레트 (그룹별 카드 · 비개발자 친화) -->
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
-            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">
-              📎 클릭해서 본문에 넣을 값 (예: "회사명" 을 누르면 메일마다 각 회사 이름으로 자동 대체됨)
-            </label>
-          </div>
-          ${(state.email.variableGroups || []).map(grp => {
-            const items = (state.email.variables || []).filter(v => v.group === grp.key);
-            if (items.length === 0) return '';
-            return `
-              <div style="margin-top:8px;padding:8px 10px;background:${grp.color}0d;border:1px solid ${grp.color}55;border-radius:10px">
-                <div style="font-size:11px;font-weight:700;color:${grp.color};margin-bottom:6px;display:flex;align-items:center;gap:4px">
-                  <span style="font-size:14px">${grp.icon}</span> ${escapeHtml(grp.label)}
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">
-                  ${items.map(v => `
-                    <button type="button" class="var-chip" data-var-key="${escapeAttr(v.key)}"
-                      title="${escapeAttr(v.description || v.label)} · 예시: ${escapeAttr(v.example)}"
-                      style="text-align:left;padding:6px 10px;background:white;
-                        border:1px solid ${grp.color}55;border-radius:8px;cursor:pointer;
-                        transition:all 0.1s;display:flex;flex-direction:column;gap:1px">
-                      <span style="font-size:12px;font-weight:700;color:#1e293b">${escapeHtml(v.label)}</span>
-                      <span style="font-size:10px;color:#64748b;font-family:'Menlo','Consolas',monospace">{{${escapeHtml(v.key)}}}</span>
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-
-        <div style="display:flex;flex-direction:column;flex:1;min-height:200px">
-          <label style="font-size:11px;color:var(--text-tertiary);font-weight:600;display:flex;justify-content:space-between;align-items:center">
-            <span>본문 (변수 사용 가능 · 본문에 <code style="background:#eef2ff;padding:1px 4px;border-radius:4px;color:#4338ca">{{</code> 타이핑하면 자동완성 뜸)</span>
-            <label style="font-weight:400;font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
-              <input type="checkbox" id="templateHtmlInput" ${ed.bodyIsHtml ? 'checked' : ''}>
-              HTML 본문
-            </label>
+        <!-- 본문 -->
+        <div style="display:flex;flex-direction:column;flex:1;min-height:280px">
+          <label style="font-size:12px;color:var(--text-secondary);font-weight:700;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <span>본문 <span style="color:var(--text-tertiary);font-weight:500">(회사명 자리에 <code style="background:#eef2ff;padding:1px 6px;border-radius:4px;color:#4338ca;font-weight:700">[회사명]</code> 만 넣으면 됨 · 서명은 자동으로 붙음)</span></span>
           </label>
           <textarea id="templateBodyInput"
-            style="width:100%;flex:1;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:'Menlo','Consolas',monospace;margin-top:2px;resize:vertical;min-height:200px;line-height:1.5;background:#ffffff;color:#0f172a">${escapeHtml(ed.body)}</textarea>
-        </div>
-      </div>
-
-      <!-- 미리보기 -->
-      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <h4 style="margin:0;font-size:13px;font-weight:700">👁 미리보기</h4>
-          <button id="refreshPreviewBtn" class="button secondary" type="button" style="font-size:11px;padding:4px 10px">🔄 새로고침</button>
+            style="width:100%;flex:1;padding:14px 16px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:inherit;margin-top:4px;resize:vertical;min-height:300px;line-height:1.7;background:#ffffff;color:#0f172a"
+            placeholder="예:&#10;&#10;Hi,&#10;&#10;I'm reaching out from Yogi Corporation regarding a potential K-beauty partnership with [회사명].&#10;&#10;We'd love to explore how we can collaborate. Would you have 20 minutes for a quick chat next week?&#10;&#10;Best regards,">${escapeHtml(ed.body)}</textarea>
         </div>
 
-        <div>
-          <label style="font-size:11px;color:var(--text-secondary);font-weight:700">리드 선택 (변수가 실제 값으로 치환됨)</label>
-          <select id="previewLeadSelect" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;margin-top:2px;background:#ffffff;color:#0f172a">
-            <option value="">— 예시 값 (리드 미지정) —</option>
-            ${previewCandidates.map(l => `
-              <option value="${escapeAttr(l.leadId)}" ${l.leadId === state.email.previewLeadId ? 'selected' : ''}>
-                ${escapeHtml(l.Company)} · ${escapeHtml(l.Country || '')} ${l.Email ? '· 📧' : ''}
-              </option>
-            `).join('')}
-          </select>
+        <!-- 서명 미리보기 (선택한 계정 기반) -->
+        <div style="padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px">
+          <div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:6px">✍ 발송 시 자동으로 붙는 서명</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+            <select id="sigAccountSelect" style="flex:1;padding:8px 10px;border:1px solid #86efac;border-radius:6px;font-size:12px;background:#ffffff;color:#0f172a">
+              <option value="">— 서명에 사용할 메일 계정 선택 —</option>
+              ${(_mailAccounts || []).map(a => `
+                <option value="${escapeAttr(a._id)}" ${a._id === state.email.previewAccountId ? 'selected' : ''}>
+                  ${escapeHtml(a.accountName)} · ${escapeHtml(a.fromAddress || a.smtpUser)}
+                </option>
+              `).join('')}
+            </select>
+          </div>
+          ${(() => {
+            const acc = (_mailAccounts || []).find(a => a._id === state.email.previewAccountId);
+            if (!acc) return `<div style="margin-top:8px;font-size:11px;color:#166534">계정을 선택하면 실제 붙을 서명이 여기 표시됩니다.</div>`;
+            const bits = [];
+            if (acc.fromName) bits.push(`<b>${escapeHtml(acc.fromName)}</b>`);
+            if (acc.senderTitle) bits.push(escapeHtml(acc.senderTitle));
+            if (acc.fromName || acc.senderTitle) bits.push('');
+            if (acc.senderCompany) bits.push(`<b>${escapeHtml(acc.senderCompany)}</b>`);
+            if (acc.senderAddress) bits.push(`A: ${escapeHtml(acc.senderAddress)}`);
+            if (acc.senderPhone) bits.push(`M: ${escapeHtml(acc.senderPhone)}`);
+            if (acc.senderWebsite) bits.push(`&nbsp;&nbsp;&nbsp;${escapeHtml(acc.senderWebsite)}`);
+            return `<div style="margin-top:10px;padding:12px 14px;background:white;border:1px solid #86efac;border-radius:6px;font-size:12px;line-height:1.7;color:#111827">${bits.map(b => b === '' ? '<br>' : `<div>${b}</div>`).join('')}</div>`;
+          })()}
         </div>
 
-        ${preview ? `
-          ${preview.missing && preview.missing.length ? `
-            <div style="padding:8px 10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:12px;color:#991b1b">
-              ⚠️ 치환되지 않은 변수: ${preview.missing.map(v => `<code>{{${escapeHtml(v)}}}</code>`).join(', ')}
-              <br><span style="font-size:11px">해당 리드에 값이 없거나, 변수 스펠링이 잘못됨</span>
-            </div>
-          ` : ''}
-
-          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
-            <div style="background:var(--surface-2);padding:10px 14px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text-tertiary)">
-              <div style="font-weight:600;color:var(--text-secondary)">제목</div>
-              <div style="margin-top:2px;color:var(--text-primary);font-size:14px;font-weight:600">${escapeHtml(preview.subject)}</div>
-            </div>
-            <div style="padding:16px;background:var(--surface-0);max-height:500px;overflow-y:auto">
-              ${preview.bodyIsHtml
-                ? `<div style="font-size:14px;line-height:1.6">${preview.body}</div>`
-                : `<pre style="margin:0;font-family:inherit;font-size:14px;line-height:1.6;white-space:pre-wrap;word-wrap:break-word">${escapeHtml(preview.body)}</pre>`
+        <!-- 미리보기 (실제 발송 대상 리드 기준) -->
+        <div style="padding:12px 14px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
+            <div style="font-size:11px;font-weight:700;color:#334155">👁 실제 발송 미리보기 (샘플 회사)</div>
+            <select id="previewLeadSelect" style="max-width:280px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;background:#ffffff;color:#0f172a">
+              <option value="">— 예시 회사 —</option>
+              ${previewCandidates.slice(0, 100).map(l => `
+                <option value="${escapeAttr(l.leadId)}" ${l.leadId === state.email.previewLeadId ? 'selected' : ''}>
+                  ${escapeHtml(l.Company)}
+                </option>
+              `).join('')}
+            </select>
+          </div>
+          ${(() => {
+            const sampleCompany = (() => {
+              if (state.email.previewLeadId) {
+                const l = previewCandidates.find(x => x.leadId === state.email.previewLeadId);
+                if (l) return l.Company || 'Acme Beauty Co.';
               }
-            </div>
-            ${preview.leadInfo ? `
-              <div style="background:var(--surface-2);padding:8px 14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-tertiary)">
-                🎯 대상: <b>${escapeHtml(preview.leadInfo.company)}</b> (${escapeHtml(preview.leadInfo.country || '')})
-                ${preview.leadInfo.email ? ` · 발송지 <b>${escapeHtml(preview.leadInfo.email)}</b>` : ' · 📭 Email 없음'}
+              return previewCandidates[0]?.Company || 'Acme Beauty Co.';
+            })();
+            const applyMarkers = (s) => (s || '').replace(/\[회사명\]/g, sampleCompany).replace(/\{\{\s*Company\s*\}\}/g, sampleCompany);
+            const subj = applyMarkers(ed.subject) || '(제목 없음)';
+            const body = applyMarkers(ed.body) || '(본문 없음)';
+            return `
+              <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+                <div style="padding:10px 14px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#111827">${escapeHtml(subj)}</div>
+                <div style="padding:14px 16px;font-size:13px;line-height:1.65;color:#111827;white-space:pre-wrap">${escapeHtml(body)}</div>
               </div>
-            ` : `
-              <div style="background:var(--surface-2);padding:8px 14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-tertiary)">
-                📝 예시 값으로 렌더링 (리드 선택 시 실제 값으로 치환)
-              </div>
-            `}
-          </div>
-        ` : `
-          <div style="padding:32px;text-align:center;color:var(--text-tertiary);font-size:13px;background:var(--surface-2);border-radius:8px">
-            🔄 새로고침 버튼을 눌러 미리보기 생성
-          </div>
-        `}
+              <div style="margin-top:6px;font-size:10px;color:#64748b">🎯 샘플: <b>${escapeHtml(sampleCompany)}</b> · 실제 발송 시 각 리드별 회사명으로 치환</div>
+            `;
+          })()}
+        </div>
+
+        <!-- 숨겨진 필드 (하위 호환) -->
+        <input type="hidden" id="templateLangInput" value="${escapeAttr(ed.language || 'en')}">
+        <input type="hidden" id="templatePurposeInput" value="${escapeAttr(ed.purpose || 'intro')}">
+        <input type="hidden" id="templateHtmlInput" value="${ed.bodyIsHtml ? '1' : ''}">
+        <input type="hidden" id="templateSigInput" value="1">
       </div>
     </div>
   `;
@@ -4577,12 +4571,19 @@ async function renderB2BEmailManager() {
   document.getElementById('deleteTemplateBtn')?.addEventListener('click', deleteTemplate);
   document.getElementById('refreshPreviewBtn')?.addEventListener('click', refreshPreview);
 
-  document.querySelectorAll('.tpl-item').forEach(el => {
-    el.addEventListener('click', () => selectTemplate(el.dataset.tplId));
+  // 서명 계정 선택 → 미리보기 갱신
+  document.getElementById('sigAccountSelect')?.addEventListener('change', (e) => {
+    state.email.previewAccountId = e.target.value || null;
+    renderB2BEmailManager();
+  });
+  // 미리보기 리드 선택 (본문 안에서 발송 미리보기)
+  document.getElementById('previewLeadSelect')?.addEventListener('change', (e) => {
+    state.email.previewLeadId = e.target.value || null;
+    renderB2BEmailManager();
   });
 
-  document.querySelectorAll('.var-chip').forEach(el => {
-    el.addEventListener('click', () => insertVariableIntoBody(el.dataset.varKey));
+  document.querySelectorAll('.tpl-item').forEach(el => {
+    el.addEventListener('click', () => selectTemplate(el.dataset.tplId));
   });
 
   // 폼 입력 → editor state 반영
@@ -4609,12 +4610,17 @@ async function renderB2BEmailManager() {
   bindEditor('templateSubjectInput', 'subject');
   bindEditor('templateBodyInput', 'body');
   bindEditor('templateHtmlInput', 'bodyIsHtml', 'checked');
+  bindEditor('templateSigInput', 'appendAccountSignature', 'checked');
 
   // 자동완성: 본문에 {{ 타이핑하면 한글 라벨 드롭다운
   attachVariableAutocomplete('templateBodyInput');
   attachVariableAutocomplete('templateSubjectInput');
 
   // 미리보기 리드 선택 → 자동 렌더
+  document.getElementById('previewAccountSelect')?.addEventListener('change', (e) => {
+    state.email.previewAccountId = e.target.value || null;
+    if (state.email.currentTemplateId) refreshPreview();
+  });
   document.getElementById('previewLeadSelect')?.addEventListener('change', (e) => {
     state.email.previewLeadId = e.target.value || null;
     refreshPreview();
@@ -4963,6 +4969,40 @@ function openMailAccountModal(editId) {
             </div>
           </div>
 
+          <!-- ④ 발송자 프로필 (템플릿 {{SenderXxx}} 변수 자동 채움) -->
+          <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+            <label style="font-size:12px;color:#1e40af;font-weight:800;text-transform:uppercase;letter-spacing:0.5px">④ 발송자 프로필</label>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">메일 템플릿의 <code style="background:#eef2ff;padding:1px 5px;border-radius:4px;color:#4338ca;font-weight:600">{{SenderTitle}}</code> <code style="background:#eef2ff;padding:1px 5px;border-radius:4px;color:#4338ca;font-weight:600">{{SenderPhone}}</code> <code style="background:#eef2ff;padding:1px 5px;border-radius:4px;color:#4338ca;font-weight:600">{{SenderCompany}}</code> 변수에 자동 주입됩니다.</div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">🎯 내 직함 (선택)</label>
+              <input id="macSenderTitle" type="text" value="${escapeAttr(acc?.senderTitle || '')}" placeholder="예: Head of Global Partnerships"
+                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">📞 내 전화번호 (M:)</label>
+              <input id="macSenderPhone" type="text" value="${escapeAttr(acc?.senderPhone || '')}" placeholder="예: +82 10 6747 9443"
+                style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">🏢 내 회사명</label>
+            <input id="macSenderCompany" type="text" value="${escapeAttr(acc?.senderCompany || '')}" placeholder="예: Yogi Corporation Inc."
+              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">🏛 주소 (A:)</label>
+            <input id="macSenderAddress" type="text" value="${escapeAttr(acc?.senderAddress || '')}" placeholder="예: 201, 125, Bongeunsa-ro, Gangnam-gu, Seoul, Korea"
+              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-secondary);font-weight:700">🌐 웹사이트</label>
+            <input id="macSenderWebsite" type="text" value="${escapeAttr(acc?.senderWebsite || '')}" placeholder="예: www.yogico.kr"
+              style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+          </div>
+
           <label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer">
             <input type="checkbox" id="macIsDefault" ${acc?.isDefault ? 'checked' : ''}>
             <span>기본 발송 계정으로 설정</span>
@@ -5020,6 +5060,11 @@ function openMailAccountModal(editId) {
       smtpUser: document.getElementById('macUser').value.trim(),
       fromName: document.getElementById('macFromName').value.trim(),
       fromAddress: document.getElementById('macFromAddress').value.trim(),
+      senderTitle: document.getElementById('macSenderTitle')?.value.trim() || '',
+      senderPhone: document.getElementById('macSenderPhone')?.value.trim() || '',
+      senderCompany: document.getElementById('macSenderCompany')?.value.trim() || '',
+      senderAddress: document.getElementById('macSenderAddress')?.value.trim() || '',
+      senderWebsite: document.getElementById('macSenderWebsite')?.value.trim() || '',
       isDefault: document.getElementById('macIsDefault').checked,
     };
     const pass = document.getElementById('macPass').value;

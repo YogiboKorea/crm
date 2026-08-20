@@ -18,6 +18,13 @@ export interface IMailAccount extends Document {
   fromName: string;
   fromAddress: string;
 
+  // 발송자 서명 자동 부착에 사용
+  senderTitle?: string;       // 예: "Head of Global Partnerships" (옵션)
+  senderPhone?: string;       // 예: "+82 10 6747 9443"
+  senderCompany?: string;     // 예: "Yogi Corporation Inc."
+  senderAddress?: string;     // 예: "201, 125, Bongeunsa-ro, Gangnam-gu, Seoul, Korea"
+  senderWebsite?: string;     // 예: "www.yogico.kr"
+
   isDefault: boolean;         // 기본 발송 계정
   isActive: boolean;
 
@@ -40,6 +47,12 @@ const MailAccountSchema = new Schema<IMailAccount>({
 
   fromName: { type: String, default: '' },
   fromAddress: { type: String, required: true },
+
+  senderTitle: { type: String, default: '' },
+  senderPhone: { type: String, default: '' },
+  senderCompany: { type: String, default: '' },
+  senderAddress: { type: String, default: '' },
+  senderWebsite: { type: String, default: '' },
 
   isDefault: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
