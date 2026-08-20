@@ -2427,6 +2427,7 @@ var _composeState = {
   previewLeadId: null,  // 미리보기 대상 (기본: 첫 번째 수신자)
   sending: false,
   resultSummary: null,  // { sent, failed, dryRun }
+  forceDryRun: false,
 };
 
 const COMPOSE_FONTS = [
@@ -2698,7 +2699,7 @@ function renderComposeModal() {
         <!-- 하단 액션 바 -->
         <div style="
           padding:14px 24px;border-top:1px solid var(--border);
-          display:flex;justify-content:space-between;align-items:center;gap:12px;
+          display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
         ">
           <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer">
             <input type="checkbox" id="composeForceDryRunChk" ${_composeState.forceDryRun ? 'checked' : ''}>
@@ -4707,6 +4708,163 @@ async function loadMailAccounts(force) {
   } catch {}
   _mailAccounts = [];
   return _mailAccounts;
+}
+
+async function renderScheduledMailsPage_REMOVED() {
+  return;
+  const statusMap = {
+    pending:  { label: '⏳ 대기 중',   color: '#f59e0b', bg: '#fef3c7' },
+
+  const filterChip = (key, label, color) => {
+    const active = _scheduledStatus === key;
+    return `<button type="button" class="sched-status-chip" data-status="${key}"
+      style="padding:6px 14px;border-radius:99px;border:2px solid ${active ? color : '#cbd5e1'};
+        background:${active ? color : 'transparent'};color:${active ? 'white' : 'var(--text-secondary)'};
+        font-weight:700;font-size:12px;cursor:pointer">
+      ${label}
+    </button>`;
+  };
+
+  const fmtWhen = (iso) => {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    return d.toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+  const fmtRelative = (iso) => {
+    if (!iso) return '';
+    const diff = new Date(iso).getTime() - Date.now();
+    const min = Math.round(diff / 60000);
+    if (Math.abs(min) < 60) return min >= 0 ? `${min}분 후` : `${-min}분 전`;
+    const hr = Math.round(min / 60);
+    if (Math.abs(hr) < 48) return hr >= 0 ? `${hr}시간 후` : `${-hr}시간 전`;
+    const d = Math.round(hr / 24);
+    return d >= 0 ? `${d}일 후` : `${-d}일 전`;
+  };
+
+  els.content.innerHTML = `
+    <div style="max-width:1100px;margin:0 auto">
+      <div style="padding:16px 18px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:12px;margin-bottom:16px;color:#1e3a8a">
+        <div style="font-size:15px;font-weight:800;margin-bottom:6px">📅 예약된 메일 관리</div>
+        <div style="font-size:13px;line-height:1.6">
+          예약 발송한 메일이 여기 모입니다. 5분마다 Vercel Cron 이 자동으로 due 항목을 발송해요.
+          <b>취소</b> · <b>즉시 발송</b> 이 가능하고, 발송되면 각 리드의 emailHistory 에 자동 기록됩니다.
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        ${filterChip('pending',  '⏳ 대기 중',   '#f59e0b')}
+        ${filterChip('sent',     '✅ 발송 완료', '#166534')}
+        ${filterChip('failed',   '❌ 실패',      '#dc2626')}
+        ${filterChip('canceled', '🚫 취소됨',    '#6b7280')}
+        ${filterChip('all',      '📋 전체',      '#334155')}
+      </div>
+
+      ${items.length === 0 ? `
+        <div style="padding:48px;text-align:center;background:var(--surface-1);border:1px dashed var(--border);border-radius:12px;color:var(--text-tertiary);font-size:14px">
+          📭 이 상태의 예약이 없습니다.<br>
+          <span style="font-size:12px">이메일 컨택 페이지에서 발송 대상 선택 → 컴포즈 모달의 "📅 예약 발송" 옵션으로 등록하세요.</span>
+        </div>
+      ` : `
+        <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="background:var(--surface-2);color:var(--text-secondary);text-align:left">
+                <th style="padding:10px 14px;font-weight:700">상태</th>
+                <th style="padding:10px 14px;font-weight:700">회사</th>
+                <th style="padding:10px 14px;font-weight:700">수신자</th>
+                <th style="padding:10px 14px;font-weight:700">예약 시각</th>
+                <th style="padding:10px 14px;font-weight:700;text-align:right">액션</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map((it) => {
+                const s = statusMap[it.status] || statusMap.pending;
+                const canAct = it.status === 'pending';
+                return `
+                  <tr style="border-top:1px solid var(--border)">
+                    <td style="padding:12px 14px">
+                      <span style="background:${s.bg};color:${s.color};padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700">${s.label}</span>
+                      ${it.attempts > 0 ? `<span style="margin-left:6px;font-size:10px;color:var(--text-tertiary)">시도 ${it.attempts}회</span>` : ''}
+                    </td>
+                    <td style="padding:12px 14px">
+                      <div style="font-weight:600;color:var(--text-primary)">${escapeHtml(it.lead?.Company || '(삭제된 리드)')}</div>
+                      ${it.lead?.Country ? `<div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(it.lead.Country)}</div>` : ''}
+                    </td>
+                    <td style="padding:12px 14px;color:var(--text-secondary);font-family:monospace;font-size:12px">${escapeHtml(it.to)}</td>
+                    <td style="padding:12px 14px">
+                      <div style="color:var(--text-primary);font-size:12px">${fmtWhen(it.scheduledFor)}</div>
+                      <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${fmtRelative(it.scheduledFor)}</div>
+                      ${it.lastError ? `<div style="font-size:10px;color:#dc2626;margin-top:4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(it.lastError)}">${escapeHtml(it.lastError)}</div>` : ''}
+                    </td>
+                    <td style="padding:12px 14px;text-align:right">
+                      ${canAct ? `
+                        <button type="button" class="sched-send-now" data-id="${escapeAttr(it._id)}"
+                          style="padding:6px 10px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px">
+                          ⚡ 즉시 발송
+                        </button>
+                        <button type="button" class="sched-cancel" data-id="${escapeAttr(it._id)}"
+                          style="padding:6px 10px;background:transparent;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">
+                          🚫 취소
+                        </button>
+                      ` : `<span style="font-size:11px;color:var(--text-tertiary)">${it.sentAt ? '발송: ' + fmtWhen(it.sentAt) : '-'}</span>`}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `}
+    </div>
+  `;
+
+  // 이벤트 바인딩
+  document.querySelectorAll('.sched-status-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      _scheduledStatus = el.dataset.status;
+      renderScheduledMailsPage();
+    });
+  });
+  document.querySelectorAll('.sched-cancel').forEach(el => {
+    el.addEventListener('click', async () => {
+      if (!confirm('이 예약을 취소하시겠습니까?')) return;
+      try {
+        const res = await fetch(`/api/mail/schedule/${el.dataset.id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        _scheduledCache = null;
+        renderScheduledMailsPage();
+      } catch (e) {
+        alert('취소 실패: ' + (e.message || 'unknown'));
+      }
+    });
+  });
+  document.querySelectorAll('.sched-send-now').forEach(el => {
+    el.addEventListener('click', async () => {
+      if (!confirm('이 예약을 지금 즉시 발송하시겠습니까?')) return;
+      el.textContent = '⏳ 발송 중...';
+      el.disabled = true;
+      try {
+        const res = await fetch(`/api/mail/schedule/${el.dataset.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'send-now' }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        if (data.result?.ok) {
+          alert('✅ 발송 완료' + (data.result.dryRun ? ' (DRY_RUN)' : ''));
+        } else {
+          alert('❌ 발송 실패: ' + (data.result?.error || 'unknown'));
+        }
+        _scheduledCache = null;
+        invalidateServerPage();
+        renderScheduledMailsPage();
+      } catch (e) {
+        alert('즉시 발송 실패: ' + (e.message || 'unknown'));
+      }
+    });
+  });
 }
 
 async function renderMailAccountsTool() {

@@ -7,6 +7,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IEmailSchedule extends Document {
   leadId: string;              // 대상 lead
   templateId: string;
+  mailAccountId?: string;      // 발송에 쓸 SMTP 계정 (없으면 env 기본)
   to: string;                  // 수신자 이메일
   scheduledFor: Date;          // 발송 예정 시각
   status: 'pending' | 'sent' | 'failed' | 'canceled';
@@ -22,6 +23,7 @@ export interface IEmailSchedule extends Document {
 const EmailScheduleSchema = new Schema<IEmailSchedule>({
   leadId: { type: String, required: true, index: true },
   templateId: { type: String, required: true },
+  mailAccountId: { type: String, default: '' },
   to: { type: String, required: true },
   scheduledFor: { type: Date, required: true, index: true },
   status: {
@@ -36,6 +38,9 @@ const EmailScheduleSchema = new Schema<IEmailSchedule>({
   batchId: { type: String, default: '' },
   createdBy: { type: String, default: '' },
 }, { timestamps: true });
+
+// Cron 이 due 항목 pull 할 때 최적화
+EmailScheduleSchema.index({ status: 1, scheduledFor: 1 });
 
 export const EmailSchedule =
   (mongoose.models.EmailSchedule as mongoose.Model<IEmailSchedule>) ||
