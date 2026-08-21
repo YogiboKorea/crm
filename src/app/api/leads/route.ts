@@ -18,7 +18,8 @@ const LIST_PROJECTION = {
   importBatch: 1,
   // 크롤링 상태 (티어 판정 · 배지)
   crawledEmails: 1, crawledAt: 1,
-  // 발송 이력
+  // 발송 이력 (배지 카운터 표시용 · status 만 필요하지만 mongoose 는 배열 서브셋 프로젝션이 까다로워서 전체 포함)
+  emailHistory: 1,
   lastEmailSentAt: 1,
   // 검증 배지 (verifyBucketOf 최소 필드)
   'verification.aiVerdict': 1, 'verification.aiVerifiedAt': 1,

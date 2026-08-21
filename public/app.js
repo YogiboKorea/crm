@@ -405,6 +405,28 @@ function hideGlobalBlocker() {
 var _leadsLastFetch = 0;
 const LEADS_CACHE_TTL_MS = 60 * 1000;   // 60초
 
+// 안전한 JSON fetch 헬퍼 · 세션 만료 등 HTML 응답 시 자동 리다이렉트
+async function safeJsonFetch(url, init) {
+  const res = await fetch(url, init);
+  // 세션 만료 → 로그인 페이지 리다이렉트
+  if (res.status === 401 || res.redirected && /\/login/.test(res.url)) {
+    if (!window.__sessionExpiredNotified) {
+      window.__sessionExpiredNotified = true;
+      alert('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+      window.location.href = '/login';
+    }
+    throw new Error('세션 만료');
+  }
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    // HTML 이 왔다 → 서버 오류 또는 리다이렉트
+    const text = await res.text();
+    console.error(`[safeJsonFetch] 비-JSON 응답: ${url}\n${text.slice(0, 200)}`);
+    throw new Error(`서버 응답 오류 (${res.status})`);
+  }
+  return res.json();
+}
+
 async function loadLeads(opts) {
   const force = opts?.force === true;
   const now = Date.now();
@@ -467,8 +489,7 @@ async function loadStageCounts(force) {
   if (_stageCountsInFlight) return _stageCountsInFlight;  // 이미 진행 중이면 재사용
   _stageCountsInFlight = (async () => {
     try {
-      const res = await fetch('/api/leads/stage-counts');
-      const data = await res.json();
+      const data = await safeJsonFetch('/api/leads/stage-counts');
       if (data.success) {
         _stageCountsCache = { ...data, ts: now };
         updateNavBadges(_stageCountsCache);
@@ -1220,7 +1241,7 @@ async function _renderInner() {
     'pipeline-verifying':   { stage: 'verifying',   title: '🔍 검증 대기',          sub: '검증 진행 중이거나 필요한 회사들.' },
     'pipeline-verified':    { stage: 'verified',    title: '✅ 발송 대기',          sub: 'AI 검증 통과. 승인 후 메일 발송할 대상. 메일 없으면 크롤링.' },
     'pipeline-failed':      { stage: '__failed',    title: '🚫 검증 실패',          sub: 'AI가 K-beauty 무관으로 판정. 잘못 판정된 것은 수동으로 검증완료로 되돌리기 가능.' },
-    'pipeline-contacted':   { stage: 'contacted',   title: '📨 첫 메일 발송함',      sub: '메일 이미 보냈고 답장 기다리는 리드.' },
+    'pipeline-contacted':   { stage: 'contacted',   title: '📨 메일 발송함',        sub: '이미 메일 보낸 리드 · 단체 즉시 발송 / 단체 예약 발송 여기서.' },
     'pipeline-replied':     { stage: 'replied',     title: '💬 답장 받음',            sub: '상대방이 답장 보내옴. 다음 팔로우업 필요.' },
     'pipeline-negotiating': { stage: 'negotiating', title: '🤝 대화 진행 중',        sub: '조건/일정/가격 등 실제 협상 오가는 상태.' },
     'pipeline-partner':     { stage: 'partner',     title: '⭐ 파트너십 확정',        sub: '계약/합의 완료된 실 파트너. 자동 발송 대상에서 자동 제외.' },
@@ -1411,6 +1432,18 @@ async function _renderInner() {
     renderImportHistory();
     return;
   }
+  if (state.view === "tool-scheduled-mails") {
+    els.viewTitle.textContent = "📅 예약 발송 관리";
+    els.viewSubtitle.textContent = "대기 중 예약 · 발송 여부 확인 · 취소 · 즉시 발송.";
+    renderScheduledMailsPage();
+    return;
+  }
+  if (state.view === "tool-user-guide") {
+    els.viewTitle.textContent = "📖 사용 설명서";
+    els.viewSubtitle.textContent = "처음 쓰시는 분을 위한 단계별 가이드 · 각 화면이 어떻게 이어지는지.";
+    renderUserGuidePage();
+    return;
+  }
 
   els.viewTitle.textContent = "Leads";
   els.viewSubtitle.textContent = "Edit, qualify, and manage buyer outreach.";
@@ -1506,6 +1539,42 @@ function renderPipeline() {
 
 // stage 배너 (파이프라인 페이지 상단에 표시)
 // 검증대기/검증완료 stage 에서 실행 대상 카운트 계산
+// 클라이언트 티어 판정 (server-side lead-tier.ts 와 동일 로직)
+var MAJOR_RETAILERS_CLIENT = [
+  'sephora','ulta','walmart','target','costco','amazon',
+  'boots','superdrug','watsons','as watson','mannings',
+  'douglas','nocibe','marionnaud','kruidvat',
+  'dm-drogerie','dm drogerie','rossmann','muller','müller',
+  'etos','trekpleister','ici paris','iciparisxl',
+  'harrods','selfridges','liberty','harvey nichols',
+  'el corte ingles','el corte inglés',
+  'galeries lafayette','printemps','kadewe',
+  'la rinascente','la redoute',
+  'shinsegae','lotte','olive young','chicor','aritaum','hyundai department',
+  'nykaa','purplle','tira','reliance','shoppers stop',
+  'sociolla','cosrx','watson','guardian',
+  'matsumotokiyoshi','matsukiyo','welcia',
+  'ainz','tsuruha','sundrug','tokyu hands','loft',
+  'faces','sephora middle east','gulf',
+  'asos','cult beauty','lookfantastic','feelunique',
+  'beauty bay','mecca','adore beauty',
+  'yesstyle','stylekorean','jolse','stylevana',
+  'falabella','liverpool','palacio de hierro',
+  'beauty distributor','beauty wholesaler','cosmetics distributor',
+];
+function getClientLeadTier(lead) {
+  const email = (lead.Email || '').trim();
+  const hasEmail = email && !/^Not found/i.test(email) && /@/.test(email);
+  if (!hasEmail) return 'C';
+  const site = (lead.WebsiteContact || '').trim();
+  const hasSite = site && (/^https?:\/\/|^www\.|\.(com|net|org|co|io|kr|jp|de|fr|uk|es|it|ru|au|nl|pl|tr|sa|ae|hk|sg|my|vn|th|id|ph|in|br|mx|ar|ca)($|\/)/i.test(site));
+  if (!hasSite) return 'C';
+  const c = (lead.Company || '').toLowerCase();
+  const w = site.toLowerCase();
+  const isMajor = MAJOR_RETAILERS_CLIENT.some(kw => c.includes(kw) || w.includes(kw));
+  return isMajor ? 'A' : 'B';
+}
+
 function computeVerificationCounts(stage) {
   const isKorean = (c) => /korea|한국|대한민국/i.test(c || '') && !/north/i.test(c || '');
   const inStage = baseLeads.filter((l) => (l.stage || 'imported') === stage && !l.deleted && !isKorean(l.Country));
@@ -1605,43 +1674,117 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
       </div>
     `;
   } else if (stageInfo.stage === 'contacted') {
-    // 이메일 컨택 = B2B 메일 발송 진입점
+    // 메일 발송함 = 이미 발송된 리드 · 재발송/팔로우업 (즉시 또는 예약)
     const contactedLeads = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted');
-    const readyToSend = contactedLeads.filter(l => {
+    const withEmail = contactedLeads.filter(l => {
       const e = (l.Email || '').trim();
       return e && !/^Not found/i.test(e) && /@/.test(e);
     });
     const alreadySent = contactedLeads.filter(l => (l.emailHistory || []).length > 0);
+
     heroCard = `
-      <div class="verify-hero" style="margin-top:12px">
-        <div class="verify-hero-card" style="
-          padding:20px;border-radius:16px;
-          background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
-          border:1px solid #93c5fd;display:flex;align-items:center;gap:20px;
-        ">
-          <div style="font-size:40px" class="pulse-icon">📧</div>
-          <div style="flex:1">
-            <div style="font-size:12px;color:#1e40af;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">B2B 메일 발송</div>
-            <div style="font-size:14px;color:#1e3a8a;margin-top:2px">
-              발송 가능 <b>${readyToSend.length}건</b> · 이미 발송 <b>${alreadySent.length}건</b>
-              ${_mailerEnvCache?.dryRun ? ' · 🧪 <b>DRY_RUN</b> 모드 (실제 발송 X)' : ' · 🟢 실전 발송 모드'}
-            </div>
+      <div class="verify-hero" style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+        <!-- 요약 배지 -->
+        <div style="padding:12px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:12px;color:#1e3a8a;font-size:13px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            📨 발송함 리드 <b>${contactedLeads.length.toLocaleString()}건</b> · 이메일 유효 <b>${withEmail.length}건</b>
+            ${_mailerEnvCache?.dryRun ? ' · 🧪 <b>DRY_RUN</b>' : ''}
           </div>
-          <div style="display:flex;gap:8px;flex-shrink:0">
+          <div style="font-size:11px;color:#4c1d95">
+            📊 리드당 최대 3회 · 최소 간격 48h (과도 발송 자동 차단)
+          </div>
+        </div>
+
+        <!-- 2카드: 즉시 / 예약 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border:1px solid #93c5fd;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:32px">📤</div>
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:800;color:#1e40af">단체 즉시 발송</div>
+                <div style="font-size:11px;color:#1e3a8a">지금 바로 · 메일 양식대로 · 회사명 자동 치환</div>
+              </div>
+            </div>
             <button id="openBulkComposeBtn" type="button" style="
-              font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
-              background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
-              box-shadow:0 2px 8px rgba(37,99,235,0.3);
-              ${readyToSend.length === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-            " ${readyToSend.length === 0 ? 'disabled' : ''}>
-              ✉ 메일 작성 & 발송 (${readyToSend.length})
+              font-size:14px;font-weight:700;padding:11px 16px;white-space:nowrap;
+              background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;
+              box-shadow:0 2px 6px rgba(37,99,235,0.3);
+              ${withEmail.length === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+            " ${withEmail.length === 0 ? 'disabled' : ''}>
+              📤 지금 발송 (${withEmail.length})
             </button>
           </div>
+
+          <div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1px solid #fcd34d;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:32px">📅</div>
+              <div style="flex:1">
+                <div style="font-size:14px;font-weight:800;color:#92400e">단체 예약 발송</div>
+                <div style="font-size:11px;color:#78350f">시각 정해서 자동 · Vercel Cron 5분 주기</div>
+              </div>
+            </div>
+            <button id="openBulkScheduleBtn" type="button" style="
+              font-size:14px;font-weight:700;padding:11px 16px;white-space:nowrap;
+              background:#d97706;color:white;border:none;border-radius:8px;cursor:pointer;
+              box-shadow:0 2px 6px rgba(217,119,6,0.3);
+              ${withEmail.length === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+            " ${withEmail.length === 0 ? 'disabled' : ''}>
+              📅 예약 발송 (${withEmail.length})
+            </button>
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text-tertiary);text-align:center">
+          💡 답장 온 리드는 자동 제외 예정 (B2B 메일 관리에서 수집한 답장 매칭 · 개발 중)
         </div>
       </div>
     `;
   } else if (stageInfo.stage === 'verified') {
     const { crawlPending, crawlTriedNoResult } = computeVerificationCounts('verified');
+    // 첫 발송 대상 카운트 · 승인 완료 + 이메일 있음
+    const readySendCount = baseLeads.filter(l =>
+      !l.deleted && (l.stage || 'imported') === 'verified' && l.readyForOutreach &&
+      l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email),
+    ).length;
+    const emailReadyCount = baseLeads.filter(l =>
+      !l.deleted && (l.stage || 'imported') === 'verified' &&
+      l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email),
+    ).length;
+
+    // 등급별 카운트 (원클릭 발송용) — 이메일 유효 리드에서 티어 판정
+    const verifiedWithEmail = baseLeads.filter(l =>
+      !l.deleted && (l.stage || 'imported') === 'verified' &&
+      l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email),
+    );
+    const tierACount = verifiedWithEmail.filter(l => getClientLeadTier(l) === 'A').length;
+    const tierBCount = verifiedWithEmail.filter(l => getClientLeadTier(l) === 'B').length;
+
+    // 등급별 원클릭 발송 카드 (verified 페이지 상단 · 항상 노출)
+    const tierBulkCard = (tierACount > 0 || tierBCount > 0) ? `
+      <div style="margin-top:10px;padding:14px 18px;background:linear-gradient(135deg,#fef9c3 0%,#fef3c7 100%);border:1px solid #fcd34d;border-radius:12px">
+        <div style="font-size:12px;font-weight:800;color:#854d0e;margin-bottom:8px">⚡ 원클릭 등급별 발송함으로 이동</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button id="sendAllTierABtn" type="button" ${tierACount === 0 ? 'disabled' : ''} style="
+            padding:12px 14px;background:${tierACount === 0 ? '#f1f5f9' : 'linear-gradient(135deg,#fbbf24 0%,#f59e0b 100%)'};
+            color:${tierACount === 0 ? '#94a3b8' : 'white'};border:none;border-radius:10px;font-weight:800;font-size:13px;
+            cursor:${tierACount === 0 ? 'not-allowed' : 'pointer'};box-shadow:${tierACount === 0 ? 'none' : '0 2px 8px rgba(245,158,11,0.35)'}
+          ">
+            🥇 A등급 발송함으로 이동 (${tierACount.toLocaleString()})
+          </button>
+          <button id="sendAllTierBBtn" type="button" ${tierBCount === 0 ? 'disabled' : ''} style="
+            padding:12px 14px;background:${tierBCount === 0 ? '#f1f5f9' : 'linear-gradient(135deg,#60a5fa 0%,#3b82f6 100%)'};
+            color:${tierBCount === 0 ? '#94a3b8' : 'white'};border:none;border-radius:10px;font-weight:800;font-size:13px;
+            cursor:${tierBCount === 0 ? 'not-allowed' : 'pointer'};box-shadow:${tierBCount === 0 ? 'none' : '0 2px 8px rgba(59,130,246,0.35)'}
+          ">
+            🥈 B등급 발송함으로 이동 (${tierBCount.toLocaleString()})
+          </button>
+        </div>
+        <div style="margin-top:8px;font-size:10px;color:#78350f;text-align:center">
+          클릭 → 컴포즈 모달 (대상 자동 선택) → 확인 → 발송 → <b>발송함으로 자동 이동</b> · 발송 대기에서 사라짐
+        </div>
+      </div>
+    ` : '';
+
     // 두 케이스: (A) 아직 시도 안 된 리드가 있음 → 실행 버튼 / (B) 다 시도했음 → 완료 상태
     if (crawlPending > 0) {
       heroCard = `
@@ -1669,6 +1812,26 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
           <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center">
             🇰🇷 한국 기업 자동 제외 · 발견된 메일은 최우선 후보(partnerships/business) 자동 Email 승격
           </div>
+          ${emailReadyCount > 0 ? `
+            <div style="margin-top:10px;padding:14px 18px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:12px;display:flex;align-items:center;gap:14px">
+              <div style="font-size:28px">📧</div>
+              <div style="flex:1">
+                <div style="font-size:12px;color:#1e40af;font-weight:700">지금 첫 메일 발송 가능</div>
+                <div style="font-size:12px;color:#1e3a8a;margin-top:2px">
+                  이메일 있는 리드 <b>${emailReadyCount.toLocaleString()}건</b> · 승인 완료 <b>${readySendCount.toLocaleString()}건</b>
+                </div>
+              </div>
+              <button id="openFirstSendBtn" type="button" style="
+                font-size:13px;font-weight:700;padding:10px 18px;
+                background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;
+                box-shadow:0 2px 6px rgba(37,99,235,0.3);
+                ${readySendCount === 0 && emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+              " ${readySendCount === 0 && emailReadyCount === 0 ? 'disabled' : ''}>
+                ✉ 지금 첫 발송
+              </button>
+            </div>
+          ` : ''}
+          ${tierBulkCard}
         </div>
       `;
     } else {
@@ -1688,14 +1851,22 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
               <div style="font-size:12px;color:#075985;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">크롤링 완료</div>
               <div style="font-size:14px;color:#0c4a6e;margin-top:2px">${doneMsg}</div>
             </div>
-            <button id="goApproveBtn" class="button primary" type="button" style="
+            <button id="openFirstSendBtn" type="button" style="
               font-size:14px;font-weight:700;padding:12px 20px;
-              background:#0284c7;color:white;border:none;border-radius:10px;cursor:pointer;
-              box-shadow:0 2px 8px rgba(2,132,199,0.3);
+              background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
+              box-shadow:0 2px 8px rgba(37,99,235,0.3);
+              ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+            " ${emailReadyCount === 0 ? 'disabled' : ''}>
+              ✉ 지금 첫 발송 (${emailReadyCount.toLocaleString()})
+            </button>
+            <button id="goApproveBtn" class="button" type="button" style="
+              font-size:13px;font-weight:600;padding:12px 16px;
+              background:white;color:#0284c7;border:1px solid #7dd3fc;border-radius:10px;cursor:pointer;
             ">
-              ➡ 메일링 승인으로 이동
+              ➡ 승인 대기 보기
             </button>
           </div>
+          ${tierBulkCard}
         </div>
       `;
     }
@@ -1726,8 +1897,18 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     resetPagination();
     render();
   });
+  // 발송 대기 · 첫 발송 진입점 (verified stage · 승인된 리드 or 이메일 있는 리드 대상)
+  document.getElementById('openFirstSendBtn')?.addEventListener('click', () => openComposeModal('bulk-verified'));
+  // 원클릭 등급별 발송 (A/B) — 발송함으로 자동 이동 · 발송 대기에서 사라짐
+  document.getElementById('sendAllTierABtn')?.addEventListener('click', () => openComposeModal('tier-A'));
+  document.getElementById('sendAllTierBBtn')?.addEventListener('click', () => openComposeModal('tier-B'));
   document.getElementById('deleteAllFailedHeroBtn')?.addEventListener('click', () => deleteAllFailedLeads());
   document.getElementById('openBulkComposeBtn')?.addEventListener('click', () => openComposeModal('bulk-contacted'));
+  document.getElementById('openBulkScheduleBtn')?.addEventListener('click', () => {
+    _composeState.useSchedule = true;
+    _composeState.scheduleAt = defaultScheduleTime();
+    openComposeModal('bulk-contacted');
+  });
   document.getElementById('openTemplateEditorBtn')?.addEventListener('click', () => {
     state.view = 'tool-b2b-email';
     render();
@@ -2417,18 +2598,34 @@ function managePipelineAutoRefresh(currentView) {
 var _mailerEnvCache = null;   // { dryRun: boolean, from: string } · var for hoisting
 var _composeState = {
   isOpen: false,
-  recipientIds: [],     // 발송 대상 leadId
-  templateId: null,     // 선택된 템플릿
-  mailAccountId: null,  // 발송 계정 (null = env 기본)
+  recipientIds: [],
+  templateId: null,
+  mailAccountId: null,
   subject: '',
   body: '',
   fontFamily: 'Pretendard, -apple-system, BlinkMacSystemFont, sans-serif',
   fontSize: 15,
-  previewLeadId: null,  // 미리보기 대상 (기본: 첫 번째 수신자)
+  previewLeadId: null,
   sending: false,
-  resultSummary: null,  // { sent, failed, dryRun }
+  resultSummary: null,
   forceDryRun: false,
+  useSchedule: false,   // 📅 예약 발송
+  scheduleAt: '',       // datetime-local 값
 };
+
+// 예약 datetime 헬퍼
+function nowLocalDatetime() {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function defaultScheduleTime() {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 const COMPOSE_FONTS = [
   { key: 'Pretendard, -apple-system, BlinkMacSystemFont, sans-serif', label: 'Pretendard (기본)' },
@@ -2444,14 +2641,33 @@ const COMPOSE_SIZES = [12, 13, 14, 15, 16, 17, 18, 20];
 async function openComposeModal(scope) {
   // 발송 대상 확정
   let recipients = [];
-  if (scope === 'bulk-contacted') {
-    recipients = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted' && l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email));
+  const hasValidEmail = (l) => l && l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email);
+  if (scope === 'bulk-verified') {
+    // 발송 대기 (verified) 승인된 리드 · 첫 발송 대상
+    recipients = baseLeads.filter(l =>
+      !l.deleted && (l.stage || 'imported') === 'verified' && l.readyForOutreach && hasValidEmail(l),
+    );
+    if (!recipients.length) {
+      // 승인된 것 없으면 verified + email 있는 것 다 (사용자 판단 위임)
+      recipients = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'verified' && hasValidEmail(l));
+    }
+  } else if (scope === 'tier-A' || scope === 'tier-B') {
+    // 발송 대기 (verified) 안에서 특정 등급만 한 방에 · 원클릭 발송
+    const wantTier = scope === 'tier-A' ? 'A' : 'B';
+    recipients = baseLeads.filter(l =>
+      !l.deleted && (l.stage || 'imported') === 'verified' && hasValidEmail(l) && getClientLeadTier(l) === wantTier,
+    );
+  } else if (scope === 'bulk-contacted') {
+    // 첫 메일 발송함 (contacted) · 재발송 대상 (답장 안 온 애들 우선)
+    recipients = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted' && hasValidEmail(l));
+  } else if (scope === 'bulk-resend-no-reply') {
+    // 재발송 (답장 없는 리드만) - contacted stage + emailHistory 있음 + replied 로 안 넘어감
+    recipients = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted' && hasValidEmail(l));
   } else if (scope === 'selected') {
     recipients = [...state.selectedLeadIds]
       .map(id => baseLeads.find(l => l.id === id))
-      .filter(l => l && l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email));
+      .filter(hasValidEmail);
   } else if (typeof scope === 'string') {
-    // 단일 leadId
     const l = baseLeads.find(x => x.id === scope || x.leadId === scope);
     if (l) recipients = [l];
   }
@@ -2701,19 +2917,34 @@ function renderComposeModal() {
           padding:14px 24px;border-top:1px solid var(--border);
           display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
         ">
-          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer">
-            <input type="checkbox" id="composeForceDryRunChk" ${_composeState.forceDryRun ? 'checked' : ''}>
-            🧪 이번만 DRY_RUN (실제 발송 안 함)
-          </label>
+          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer">
+              <input type="checkbox" id="composeForceDryRunChk" ${_composeState.forceDryRun ? 'checked' : ''}>
+              🧪 DRY_RUN
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer">
+              <input type="checkbox" id="composeUseScheduleChk" ${_composeState.useSchedule ? 'checked' : ''}>
+              📅 예약 발송
+            </label>
+            ${_composeState.useSchedule ? `
+              <input type="datetime-local" id="composeScheduleAt" value="${escapeAttr(_composeState.scheduleAt || defaultScheduleTime())}"
+                min="${escapeAttr(nowLocalDatetime())}"
+                style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;background:#ffffff;color:#0f172a">
+            ` : ''}
+          </div>
           <div style="display:flex;gap:8px">
             <button type="button" id="composeCancelBtn" class="button ghost" style="font-size:13px;padding:9px 16px">닫기</button>
             <button type="button" id="composeSendBtn" ${_composeState.sending ? 'disabled' : ''} style="
               font-size:14px;font-weight:700;padding:9px 22px;
-              background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;
-              box-shadow:0 2px 6px rgba(37,99,235,0.3);
+              background:${_composeState.useSchedule ? '#d97706' : '#2563eb'};color:white;border:none;border-radius:8px;cursor:pointer;
+              box-shadow:0 2px 6px ${_composeState.useSchedule ? 'rgba(217,119,6,0.3)' : 'rgba(37,99,235,0.3)'};
               ${_composeState.sending ? 'opacity:0.5;cursor:wait' : ''}
             ">
-              ${_composeState.sending ? '⏳ 발송 중...' : `✉ ${recipients.length}명에게 발송`}
+              ${_composeState.sending
+                ? '⏳ 처리 중...'
+                : (_composeState.useSchedule
+                    ? `📅 ${recipients.length}명 예약 발송`
+                    : `✉ ${recipients.length}명 지금 발송`)}
             </button>
           </div>
         </div>
@@ -2801,12 +3032,68 @@ function renderComposeModal() {
   document.getElementById('composeForceDryRunChk')?.addEventListener('change', (e) => {
     _composeState.forceDryRun = e.target.checked;
   });
+  document.getElementById('composeUseScheduleChk')?.addEventListener('change', (e) => {
+    _composeState.useSchedule = e.target.checked;
+    if (e.target.checked && !_composeState.scheduleAt) {
+      _composeState.scheduleAt = defaultScheduleTime();
+    }
+    renderComposeModal();
+  });
+  document.getElementById('composeScheduleAt')?.addEventListener('change', (e) => {
+    _composeState.scheduleAt = e.target.value;
+  });
   document.getElementById('composeSendBtn')?.addEventListener('click', () => handleComposeSend());
 }
 
 async function handleComposeSend() {
   const recipients = _composeState.recipientIds;
   if (!recipients.length) return;
+
+  // 예약 발송 분기
+  if (_composeState.useSchedule) {
+    if (!_composeState.templateId) {
+      alert('예약 발송은 저장된 메일 양식이 필요합니다.\n메일 양식 페이지에서 먼저 저장해주세요.');
+      return;
+    }
+    if (!_composeState.scheduleAt) {
+      alert('예약 시각을 선택해주세요.');
+      return;
+    }
+    const scheduledFor = new Date(_composeState.scheduleAt);
+    if (isNaN(scheduledFor.getTime())) { alert('예약 시각 형식이 올바르지 않습니다.'); return; }
+    if (scheduledFor.getTime() < Date.now()) { alert('과거 시각으로 예약할 수 없습니다.'); return; }
+    const ok = confirm(
+      `📅 ${recipients.length}명 예약 발송\n\n` +
+      `예약 시각: ${scheduledFor.toLocaleString('ko-KR')}\n` +
+      `제목: ${_composeState.subject.slice(0, 60)}\n\n등록하시겠습니까? (Vercel Cron 이 5분마다 실행)`
+    );
+    if (!ok) return;
+    _composeState.sending = true;
+    renderComposeModal();
+    try {
+      const res = await fetch('/api/mail/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadIds: recipients,
+          templateId: _composeState.templateId,
+          scheduledFor: scheduledFor.toISOString(),
+          mailAccountId: _composeState.mailAccountId || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || '예약 실패');
+      alert(`✅ ${data.scheduled}건 예약 완료\n\n예약 시각: ${new Date(data.scheduledFor).toLocaleString('ko-KR')}\n\n"📅 예약 발송 관리" 페이지에서 관리하세요.`);
+      _composeState.resultSummary = { requested: recipients.length, sent: 0, failed: 0, scheduled: data.scheduled };
+    } catch (e) {
+      alert(`예약 실패: ${e.message || 'unknown'}`);
+    } finally {
+      _composeState.sending = false;
+      renderComposeModal();
+    }
+    return;
+  }
+
   const ok = confirm(
     `📧 ${recipients.length}명에게 발송\n\n` +
     (_composeState.forceDryRun ? '🧪 DRY_RUN 모드 (실제 발송 X)\n' : '') +
@@ -3533,7 +3820,7 @@ const STAGE_STYLE = {
   imported:    { bg: '#f1f5f9', fg: '#475569', label: '📥 가져오기' },
   verifying:   { bg: '#fef9c3', fg: '#854d0e', label: '🔍 검증 대기' },
   verified:    { bg: '#dcfce7', fg: '#166534', label: '✅ 발송 대기' },
-  contacted:   { bg: '#dbeafe', fg: '#1e40af', label: '📨 첫 메일 발송함' },
+  contacted:   { bg: '#dbeafe', fg: '#1e40af', label: '📨 메일 발송함' },
   replied:     { bg: '#e0e7ff', fg: '#3730a3', label: '💬 답장 받음' },
   negotiating: { bg: '#fed7aa', fg: '#9a3412', label: '🤝 대화 진행 중' },
   partner:     { bg: '#f3e8ff', fg: '#6b21a8', label: '⭐ 파트너십 확정' },
@@ -3553,6 +3840,21 @@ const STAGE_QUICK_MOVES = {
   partner:     ['negotiating', 'archived'],
   archived:    ['verified', 'verifying', 'imported'],
 };
+
+// 리드 발송 횟수 배지 (emailHistory 중 status='sent' 만 카운트)
+// MAX_SEND_COUNT_PER_LEAD = 3 · 초과 임박 시 색상 강조
+function sendCountBadgeHtml(lead) {
+  const eh = Array.isArray(lead.emailHistory) ? lead.emailHistory : [];
+  const sentCount = eh.filter(h => h && h.status === 'sent').length;
+  if (sentCount === 0) return '';
+  const MAX = 3;
+  const color = sentCount >= MAX ? '#991b1b' : (sentCount >= 2 ? '#92400e' : '#166534');
+  const bg    = sentCount >= MAX ? '#fee2e2' : (sentCount >= 2 ? '#fef3c7' : '#dcfce7');
+  const bd    = sentCount >= MAX ? '#fca5a5' : (sentCount >= 2 ? '#fcd34d' : '#86efac');
+  const lastSent = lead.lastEmailSentAt ? new Date(lead.lastEmailSentAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit' }) : '';
+  const tip = `이 리드에 총 ${sentCount}회 발송됨\n최대 ${MAX}회 · 48h 최소 간격 · 초과 시 자동 차단${lastSent ? '\n최근 발송: ' + lastSent : ''}`;
+  return `<span title="${escapeAttr(tip)}" style="display:inline-block;margin-top:3px;padding:2px 8px;background:${bg};color:${color};border:1px solid ${bd};border-radius:99px;font-size:10px;font-weight:700;line-height:1.4">✉ ${sentCount}회차${sentCount >= MAX ? ' (한도)' : ''}</span>`;
+}
 
 function stageCellHtml(lead) {
   const cur = lead.stage || 'imported';
@@ -3588,6 +3890,7 @@ function stageCellHtml(lead) {
         style="padding:4px 6px;font-size:11px;border:1px solid ${style.fg}40;border-radius:6px;background:${style.bg};color:${style.fg};font-weight:600;cursor:pointer;min-width:120px"
       >${options}</select>
       ${quickBtns ? `<div style="display:flex;gap:3px;flex-wrap:wrap;max-width:180px">${quickBtns}</div>` : ''}
+      ${sendCountBadgeHtml(lead)}
     </div>
   `;
 }
@@ -4710,25 +5013,439 @@ async function loadMailAccounts(force) {
   return _mailAccounts;
 }
 
-async function renderScheduledMailsPage_REMOVED() {
-  return;
+// ══════════════════════════════════════════════════════════════
+// 📖 사용 설명서 (User Guide) 페이지
+// ══════════════════════════════════════════════════════════════
+function renderUserGuidePage() {
+  // 실제 사이드바 · 히어로 · 버튼 텍스트를 그대로 인용해서 초보자도 매칭 쉬움
+  const step = (n, icon, title, subtitle, uiElements, action, tip) => `
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:20px 22px;display:flex;gap:16px;align-items:flex-start">
+      <div style="min-width:44px;height:44px;background:linear-gradient(135deg,#4f8cff 0%,#3b6fe0 100%);color:white;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;box-shadow:0 4px 12px rgba(79,140,255,0.35)">${n}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+          <span style="font-size:20px">${icon}</span>
+          <h3 style="margin:0;font-size:16px;font-weight:800;color:var(--text-primary)">${title}</h3>
+        </div>
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:12px">${subtitle}</div>
+
+        <div style="background:var(--surface-2);border-radius:8px;padding:12px 14px;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">📍 화면에서 볼 것</div>
+          ${uiElements}
+        </div>
+
+        <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 14px;margin-bottom:${tip ? '10px' : '0'}">
+          <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px">👉 여기서 하시는 것</div>
+          <div style="font-size:13px;color:#1e3a8a;line-height:1.6">${action}</div>
+        </div>
+
+        ${tip ? `
+          <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px">
+            <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:4px">💡 팁</div>
+            <div style="font-size:12px;color:#78350f;line-height:1.6">${tip}</div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  const bullet = (items) => `
+    <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text-primary);line-height:1.7">
+      ${items.map(i => `<li>${i}</li>`).join('')}
+    </ul>
+  `;
+
+  els.content.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+      <!-- 시작 안내 -->
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%);border:1px solid #c7d2fe;border-radius:14px;color:#3730a3">
+        <div style="font-size:18px;font-weight:800;margin-bottom:6px">👋 처음이시라면 이 순서대로!</div>
+        <div style="font-size:13px;line-height:1.7">
+          이 프로그램은 <b>해외 K-beauty 업체 리드</b>를 관리하고 <b>단체 메일 발송</b>하는 도구입니다.
+          왼쪽 사이드바 위쪽부터 아래로 순서대로 진행하시면 됩니다.
+          <br>총 <b>7단계</b> · 각 단계마다 자동으로 다음으로 넘어가는 부분이 있습니다.
+        </div>
+      </div>
+
+      <!-- 🗂 사이드바 구조 이해하기 -->
+      <div style="font-size:14px;font-weight:800;color:var(--text-secondary);margin-top:6px;padding:0 4px">
+        🗂 왼쪽 사이드바 · 두 그룹으로 나눠져 있어요
+      </div>
+
+      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:20px 22px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <!-- 그룹 A · 리드 정보 -->
+          <div style="padding:16px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px">
+            <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:10px">📊 리드 정보 (데이터 관리)</div>
+            <div style="font-size:11px;color:#64748b;line-height:1.7;margin-bottom:10px">
+              <b>업체 데이터를 넣고 · 검증하고 · 발송 준비하는</b> 영역. 아직 메일 안 나갑니다.
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#334155">
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">📥 <b>가져오기 (Import)</b> — CSV 업로드</div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">🔍 <b>검증 대기</b> — AI 검증 실행 <span style="background:#e2e8f0;color:#64748b;padding:1px 6px;border-radius:99px;font-size:10px">뱃지</span></div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">✅ <b>발송 대기</b> — 검증 통과 · 발송 준비 <span style="background:#e2e8f0;color:#64748b;padding:1px 6px;border-radius:99px;font-size:10px">뱃지</span></div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">💎 <b>추천 리스트</b> — 웹 발굴 시드</div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">📋 <b>Import History</b> — 배치 롤백</div>
+            </div>
+          </div>
+
+          <!-- 그룹 B · 메일 발송 -->
+          <div style="padding:16px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px">
+            <div style="font-size:13px;font-weight:800;color:#1e40af;margin-bottom:10px">✉ 메일 발송 (실제 컨택)</div>
+            <div style="font-size:11px;color:#3b6fe0;line-height:1.7;margin-bottom:10px">
+              <b>실제 메일이 나가고 · 답장 진행되는</b> 영역. 여기부터가 실제 컨택 단계입니다.
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#1e3a8a">
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">📨 <b>메일 발송함</b> — 발송 완료 리드 · 재발송/예약 <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:99px;font-size:10px">뱃지</span></div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">💬 <b>답장 받음</b> — 상대방 답장 옴 <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:99px;font-size:10px">뱃지</span></div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">🤝 <b>대화 진행 중</b> — 협상 중</div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">⭐ <b>파트너십 확정</b> — 계약 완료</div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe;margin-top:4px">📅 <b>예약 발송 관리</b></div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">📬 <b>메일 계정</b> · 📝 <b>메일 양식</b></div>
+              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">📮 <b>B2B 메일 관리</b> ↗ (외부 창)</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:14px;padding:10px 14px;background:#fef9c3;border:1px solid #facc15;border-radius:8px;font-size:12px;color:#854d0e">
+          💡 <b>뱃지 숫자</b> = 그 stage 에 몇 건 있는지 실시간 · 데이터 변경 시 자동 갱신됩니다. 어디까지 진행됐는지 한눈에 확인!
+        </div>
+      </div>
+
+      <!-- 사전 준비 섹션 -->
+      <div style="font-size:14px;font-weight:800;color:var(--text-secondary);margin-top:6px;padding:0 4px">
+        🛠 사전 준비 (한 번만 하면 됨)
+      </div>
+
+      ${step('A', '📬', '메일 계정 등록',
+        '발송에 쓸 이메일 계정을 등록합니다. 이 계정으로 실제 광고 메일이 나갑니다.',
+        `${bullet([
+          '<b>사이드바 → "📬 메일 계정"</b> 클릭',
+          '오른쪽 위 <b>[+ 새 계정 등록]</b> 버튼 → 모달 열림',
+          '4개 섹션 순서대로 입력: ① 서비스 선택 ② 로그인 ③ 별칭 & 발신자 ④ 발송자 프로필',
+        ])}`,
+        '가장 많이 쓰는 <b>이카운트 (ECOUNT)</b> 는 사전 설정 필수. 아래 서비스별 설정법 참고하세요.',
+        '이 계정에 등록한 <b>이름/직함/회사/주소/전화/웹사이트</b> 는 발송 시 메일 서명으로 자동 붙습니다. 본문에 서명 안 쓰셔도 됩니다.'
+      )}
+
+      <!-- 메일 계정 등록 · 서비스별 상세 -->
+      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:20px 22px">
+        <div style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:14px">🔧 서비스별 상세 설정</div>
+
+        <!-- 등록 모달 UI 목업 -->
+        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:16px;margin-bottom:16px">
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px">👀 실제 등록 모달은 이렇게 생겼어요</div>
+          <div style="background:white;border-radius:10px;padding:14px;border:1px solid #e2e8f0;font-size:12px;color:#0f172a">
+            <div style="background:linear-gradient(135deg,#fef9c3 0%,#fde68a 100%);padding:10px 12px;border-radius:6px;margin-bottom:10px">
+              <b>📮 메일 계정 로그인</b><br>
+              <span style="font-size:11px;color:#78350f">회사 메일 계정으로 로그인하면 그 계정으로 광고 메일이 발송됩니다.</span>
+            </div>
+            <div style="padding:6px 8px;background:#eef2ff;border-radius:4px;color:#4338ca;font-weight:700;margin-bottom:4px">① 서비스 선택 ▾</div>
+            <div style="padding:8px;border:1px dashed #cbd5e1;border-radius:4px;margin-bottom:8px;color:#64748b;font-size:11px">📬 이카운트 (ECOUNT) 등등</div>
+            <div style="padding:6px 8px;background:#eef2ff;border-radius:4px;color:#4338ca;font-weight:700;margin-bottom:4px">② 로그인 정보</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+              <div style="padding:6px 8px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:11px">📧 이메일 (SMTP)</div>
+              <div style="padding:6px 8px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:11px">🔑 비밀번호</div>
+            </div>
+            <div style="padding:6px 8px;background:#eef2ff;border-radius:4px;color:#4338ca;font-weight:700;margin-bottom:4px">③ 별칭 & 발신자 표시</div>
+            <div style="padding:6px 8px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:11px;margin-bottom:8px">📝 이 계정의 별칭 (예: PR팀 · 영업)</div>
+            <div style="padding:6px 8px;background:#eef2ff;border-radius:4px;color:#4338ca;font-weight:700;margin-bottom:4px">④ 발송자 프로필 (템플릿 자동)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px">🎯 내 직함</div>
+              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px">📞 내 전화</div>
+              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px">🏢 내 회사</div>
+              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px">🏛 주소</div>
+              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px;grid-column:1/-1">🌐 웹사이트</div>
+            </div>
+            <div style="margin-top:12px;text-align:right">
+              <span style="padding:6px 14px;background:#4338ca;color:white;border-radius:6px;font-weight:700;font-size:11px">🚀 내 계정 등록하기</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 서비스별 상세 (아코디언 스타일) -->
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <!-- ECOUNT -->
+          <div style="border:1px solid #fbbf24;border-radius:10px;padding:14px 16px;background:linear-gradient(135deg,#fef9c3 0%,#fef3c7 100%)">
+            <div style="font-size:14px;font-weight:800;color:#78350f;margin-bottom:8px">🇰🇷 이카운트 (ECOUNT) · 가장 많이 사용 · 사전 설정 필수!</div>
+            <div style="font-size:12px;color:#78350f;line-height:1.8">
+              <b>1단계 · 이카운트 웹메일 로그인</b> → 우측 <b>[개인기능설정]</b> → <b>[외부연동설정]</b><br>
+              <b>2단계</b>: "메일 클라이언트 사용" → <b>사용</b> 으로 변경 (필수)<br>
+              <b>3단계</b>: "해외 로그인 차단" → <b>사용안함</b> 으로 변경 (필수 · Vercel 은 해외 IP)<br>
+              <b>4단계 · 이 프로그램에서 등록</b>:
+              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
+                이메일: your@yogico.kr<br>
+                비밀번호: (웹메일 로그인 비밀번호)<br>
+                SMTP: <b>wsmtp.ecount.com</b>:465 SSL (자동 채워짐)
+              </div>
+              <div style="margin-top:6px;padding:8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:11px">
+                ⚠ 위 2·3단계 안 하면 <b>"SMTP 인증 실패"</b> 로 등록 안 됨. 이카운트 지원 잦은 오류.
+              </div>
+            </div>
+          </div>
+
+          <!-- Gmail -->
+          <div style="border:1px solid #93c5fd;border-radius:10px;padding:14px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)">
+            <div style="font-size:14px;font-weight:800;color:#1e40af;margin-bottom:8px">🌐 Gmail · 앱 비밀번호 필수 (2단계 인증)</div>
+            <div style="font-size:12px;color:#1e3a8a;line-height:1.8">
+              <b>1단계</b>: Google 계정 → 보안 → <b>2단계 인증 활성화</b> (안 되어있으면 앱 비밀번호 못 만듦)<br>
+              <b>2단계</b>: <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#2563eb">Google 앱 비밀번호</a> 페이지에서 <b>"메일" 앱 비밀번호 생성</b> → 16자리 코드 발급<br>
+              <b>3단계 · 이 프로그램에서 등록</b>:
+              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
+                이메일: your@gmail.com<br>
+                비밀번호: <b>16자리 앱 비밀번호</b> (Gmail 로그인 비번 아님!)<br>
+                SMTP: <b>smtp.gmail.com</b>:465 SSL (자동)
+              </div>
+              <div style="margin-top:6px;padding:8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:11px">
+                ⚠ Gmail 로그인 비밀번호 넣으면 안 됨! 반드시 <b>앱 비밀번호 (App Password)</b>.
+              </div>
+            </div>
+          </div>
+
+          <!-- 네이버 -->
+          <div style="border:1px solid #86efac;border-radius:10px;padding:14px 16px;background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%)">
+            <div style="font-size:14px;font-weight:800;color:#166534;margin-bottom:8px">🇰🇷 네이버 메일 · IMAP/SMTP 활성화 필요</div>
+            <div style="font-size:12px;color:#14532d;line-height:1.8">
+              <b>1단계</b>: 네이버 메일 로그인 → <b>환경설정</b> → <b>POP3/IMAP 설정</b><br>
+              <b>2단계</b>: "IMAP/SMTP 사용함" → <b>사용함</b> 체크 → 저장<br>
+              <b>3단계 · 이 프로그램에서 등록</b>:
+              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
+                이메일: your@naver.com<br>
+                비밀번호: 네이버 계정 비밀번호 (별도 앱 비밀번호 X)<br>
+                SMTP: <b>smtp.naver.com</b>:465 SSL (자동)
+              </div>
+              <div style="margin-top:6px;padding:8px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;color:#78350f;font-size:11px">
+                💡 2단계 인증 켜져있으면 → 네이버도 앱 비밀번호 생성 필요 (내 정보 → 보안 → 앱 비밀번호).
+              </div>
+            </div>
+          </div>
+
+          <!-- Outlook -->
+          <div style="border:1px solid #a78bfa;border-radius:10px;padding:14px 16px;background:linear-gradient(135deg,#f3e8ff 0%,#e9d5ff 100%)">
+            <div style="font-size:14px;font-weight:800;color:#6b21a8;margin-bottom:8px">🌐 Outlook (Office365 · Hotmail)</div>
+            <div style="font-size:12px;color:#581c87;line-height:1.8">
+              <b>1단계</b>: Microsoft 계정 → 보안 → <b>2단계 인증 켜기</b><br>
+              <b>2단계</b>: <b>앱 암호 생성</b> → 새로 만들기 → "메일" 이름으로<br>
+              <b>3단계 · 이 프로그램에서 등록</b>:
+              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
+                이메일: your@outlook.com<br>
+                비밀번호: 앱 암호<br>
+                SMTP: <b>smtp.office365.com</b>:587 STARTTLS (자동)
+              </div>
+            </div>
+          </div>
+
+          <!-- 자체 SMTP -->
+          <div style="border:1px solid #cbd5e1;border-radius:10px;padding:14px 16px;background:#f8fafc">
+            <div style="font-size:14px;font-weight:800;color:#334155;margin-bottom:8px">⚙ 자체 회사 SMTP · 직접 입력</div>
+            <div style="font-size:12px;color:#475569;line-height:1.8">
+              위 프리셋에 없으면 <b>[⚙️ SMTP 서버 상세]</b> 섹션 펼쳐서 직접 입력:
+              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
+                SMTP 호스트: mail.yourcompany.com<br>
+                포트: 465 (SSL) 또는 587 (STARTTLS)<br>
+                보안: SSL 또는 STARTTLS<br>
+                이메일 / 비밀번호: 각자
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${step('B', '📝', '메일 양식 작성',
+        '발송할 메일의 제목·본문을 미리 저장합니다. 회사명 자리만 자동으로 채워지는 형식.',
+        `${bullet([
+          '<b>사이드바 → "📝 메일 양식"</b> 클릭',
+          '<b>제목</b>·<b>본문</b> 입력창에 영문으로 작성',
+          '회사명 넣을 자리엔 <code style="background:#eef2ff;padding:1px 5px;border-radius:4px;color:#4338ca">[회사명]</code> 이라고 씁니다',
+          '오른쪽 위 <b>[💾 저장]</b> 버튼',
+        ])}`,
+        '제목 예: <code>K-beauty partnership inquiry — [회사명]</code> → 발송 시 각 회사명으로 자동 치환됩니다. 서명은 계정에서 자동으로 붙이니 본문에 안 넣어도 됨.',
+        '리치 텍스트 툴바로 <b>굵게 · 밑줄 · 목록 · 정렬</b> 다 됩니다. 툴바 오른쪽 <b>[➕ [회사명]]</b> 버튼 누르면 자동 삽입.'
+      )}
+
+      <!-- 실사용 흐름 섹션 -->
+      <div style="font-size:14px;font-weight:800;color:var(--text-secondary);margin-top:14px;padding:0 4px">
+        🔄 실제 흐름 (반복적으로 하는 것)
+      </div>
+
+      ${step(1, '📥', '가져오기 (Import)',
+        '엑셀/CSV 로 리드 데이터를 대량 등록합니다. 이 프로그램의 시작점.',
+        `${bullet([
+          '<b>사이드바 → "📥 가져오기 (Import)"</b> 클릭 (기본 페이지)',
+          '상단 <b>[⬆ Import]</b> 버튼 → CSV 파일 선택',
+          '자동으로 필드 매핑 → 등록 완료',
+        ])}`,
+        '등록된 리드는 자동으로 <b>검증 대기</b> 상태로 들어갑니다. 잠시 후 왼쪽 <b>"🔍 검증 대기"</b> 뱃지에 숫자가 뜹니다.',
+        '헤더 필수 필드: Company · Country · Email · WebsiteContact. 이미 등록된 리드 (Company+Country 중복) 는 자동 스킵.'
+      )}
+
+      ${step(2, '🔍', '검증 대기 → AI 검증',
+        'AI 가 각 리드를 확인해서 K-beauty B2B 관련성 있는 진짜 바이어인지 판정.',
+        `${bullet([
+          '<b>사이드바 → "🔍 검증 대기"</b> 클릭 (뱃지 숫자 뜬 곳)',
+          '상단 히어로 <b>[🧠 AI 검증 실행]</b> 버튼',
+          '확인창 → 예 → Claude Haiku 가 청크 단위로 검증 (약 $2/1000건)',
+        ])}`,
+        '판정 결과 3가지: <b>beauty-buyer (통과)</b> → 발송 대기 자동 이동 · <b>not-buyer</b> → 보관/실패 · <b>maybe</b> → 발송 대기 (관대 정책). 한국 기업은 자동 제외.',
+        '한 번 검증한 리드는 자동으로 <b>검증 대기</b>에서 사라지고 <b>발송 대기</b>로 이동. 여기서 아무 것도 안 남으면 다음 단계로.'
+      )}
+
+      ${step(3, '✅', '발송 대기 → 이메일 크롤링 (선택)',
+        '메일 주소가 비어있는 리드가 있으면 웹사이트를 크롤해서 이메일 자동 수집.',
+        `${bullet([
+          '<b>사이드바 → "✅ 발송 대기"</b> 클릭',
+          '히어로 카드에 <b>[🔍 메일 크롤링 실행 (N건)]</b> 초록 버튼',
+          '자동으로 각 사이트 방문 → contact/about 페이지에서 이메일 추출',
+        ])}`,
+        '이메일 찾으면 자동으로 리드에 저장. <b>partnerships@ · business@ · sales@</b> 같이 B2B 우선순위 높은 것부터. 크롤 못 찾은 리드는 검증실패로 이동 옵션 있음.',
+        '이미 이메일 있는 리드는 크롤 건너뜁니다. 크롤 완료 후 다음 히어로 카드가 뜹니다.'
+      )}
+
+      ${step(4, '📧', '발송 대기 → 첫 메일 발송',
+        '검증 통과 + 이메일 있는 리드에게 첫 광고 메일 발송.',
+        `${bullet([
+          '<b>발송 대기 페이지</b> 안에서 등급 breakdown 확인 (🥇 A급 / 🥈 B급 / 🥉 C급)',
+          '히어로 하단 노란 카드 <b>[🥇 A등급 발송함으로 이동 (N)]</b> 또는 <b>[🥈 B등급 발송함으로 이동 (N)]</b> 클릭',
+          '컴포즈 모달 열림 → 수신자 자동 선택 → 최종 확인 → <b>[✉ N명 지금 발송]</b>',
+        ])}`,
+        '발송 성공한 리드는 자동으로 <b>메일 발송함</b> stage 로 이동. <b>발송 대기에서는 자동으로 사라짐</b>. 왼쪽 사이드바 뱃지 실시간 갱신.',
+        '🥇 A등급 = Sephora · Watsons · Boots 같은 대형 리테일러 · 최우선 · 🥈 B등급 = 일반 B2B · 🥉 C등급 = 이메일/사이트 부족 (자동 제외됨).<br>등급 카드 클릭하면 그 등급 리드만 목록에서 볼 수도 있음.'
+      )}
+
+      <!-- 발송 대기 페이지 UI 목업 -->
+      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">👀 발송 대기 페이지 하단은 이렇게 생겼어요</div>
+        <div style="background:linear-gradient(135deg,#fef9c3 0%,#fef3c7 100%);border:1px solid #fcd34d;border-radius:10px;padding:14px">
+          <div style="font-size:12px;font-weight:800;color:#854d0e;margin-bottom:8px">⚡ 원클릭 등급별 발송함으로 이동</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="padding:14px;background:linear-gradient(135deg,#fbbf24 0%,#f59e0b 100%);color:white;border-radius:10px;font-weight:800;font-size:13px;text-align:center">🥇 A등급 발송함으로 이동 (139)</div>
+            <div style="padding:14px;background:linear-gradient(135deg,#60a5fa 0%,#3b82f6 100%);color:white;border-radius:10px;font-weight:800;font-size:13px;text-align:center">🥈 B등급 발송함으로 이동 (2,334)</div>
+          </div>
+          <div style="margin-top:8px;font-size:10px;color:#78350f;text-align:center">
+            클릭 → 컴포즈 모달 (대상 자동 선택) → 확인 → 발송 → <b>발송함으로 자동 이동</b>
+          </div>
+        </div>
+      </div>
+
+      ${step(5, '📨', '메일 발송함 → 재발송 / 예약 발송',
+        '이미 첫 메일 보낸 리드 · 답장 안 오면 재발송 · 시각 정해서 예약도 가능.',
+        `${bullet([
+          '<b>사이드바 → "📨 메일 발송함"</b> 클릭',
+          '히어로 두 카드: <b>📤 단체 즉시 발송</b> / <b>📅 단체 예약 발송</b>',
+          '즉시: 클릭 → 컴포즈 → 발송 · 예약: 클릭 → 시각 선택 → <b>[📅 N명 예약 발송]</b>',
+        ])}`,
+        '예약은 <b>Vercel Cron</b> 이 5분마다 확인해서 시각 도래하면 자동 발송. 로컬 개발 환경에선 <b>[⚡즉시 발송]</b> 버튼으로 수동 트리거.',
+        '<b>과도 발송 자동 차단</b>: 리드당 최대 3회 · 마지막 발송 후 48h 안 지나면 자동 스킵. 각 리드 행에 <b>[✉ N회차]</b> 배지로 발송 횟수 표시.'
+      )}
+
+      <!-- 메일 발송함 UI 목업 -->
+      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">👀 메일 발송함 페이지 히어로는 이렇게 생겼어요</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="padding:10px 14px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:10px;color:#1e3a8a;font-size:12px">
+            📨 발송함 리드 <b>N건</b> · 이메일 유효 <b>N건</b> · 📊 리드당 최대 3회 · 최소 간격 48h
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="padding:14px;background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border:1px solid #93c5fd;border-radius:10px">
+              <div style="font-size:12px;font-weight:800;color:#1e40af">📤 단체 즉시 발송</div>
+              <div style="font-size:10px;color:#1e3a8a;margin-bottom:8px">지금 바로 · 회사명 자동 치환</div>
+              <div style="padding:8px;background:#2563eb;color:white;border-radius:6px;font-weight:700;font-size:12px;text-align:center">📤 지금 발송 (N)</div>
+            </div>
+            <div style="padding:14px;background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1px solid #fcd34d;border-radius:10px">
+              <div style="font-size:12px;font-weight:800;color:#92400e">📅 단체 예약 발송</div>
+              <div style="font-size:10px;color:#78350f;margin-bottom:8px">시각 정해서 자동 (Cron 5분 주기)</div>
+              <div style="padding:8px;background:#d97706;color:white;border-radius:6px;font-weight:700;font-size:12px;text-align:center">📅 예약 발송 (N)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${step(6, '📅', '예약 발송 관리 (선택)',
+        '예약 걸어놓은 메일들 확인 · 취소 · 즉시 발송으로 앞당기기.',
+        `${bullet([
+          '<b>사이드바 → "📅 예약 발송 관리"</b> 클릭',
+          '상단 chip 필터: ⏳대기 / ✅완료 / ❌실패 / 🚫취소 / 📋전체',
+          '각 행에 <b>[⚡즉시]</b> <b>[🚫취소]</b> 버튼 (대기중일 때만)',
+        ])}`,
+        '실패한 예약은 왜 실패했는지 사유 표시 (예: "발송 횟수 초과 3/3" · "SMTP 인증 실패" 등).',
+        null
+      )}
+
+      ${step(7, '💬🤝⭐', '답장 받음 → 대화 → 파트너',
+        '상대방이 답장 보내오면 stage 를 수동으로 옮겨서 진행 상황 추적.',
+        `${bullet([
+          '<b>메일 발송함</b> 페이지 리드 행의 <b>stage 셀렉트</b> 클릭 → "💬 답장 받음" 선택',
+          '실제 협상 시작하면 "🤝 대화 진행 중" · 계약 확정하면 "⭐ 파트너십 확정"',
+          '각 stage 는 왼쪽 사이드바에서 필터 · 뱃지로 현재 몇 건인지 확인 가능',
+        ])}`,
+        '<b>답장 자동 감지</b> 는 개발 중 (외부 도구 <b>📮 B2B 메일 관리</b> 와 연동 예정). 지금은 수동으로 stage 옮겨주세요.',
+        '<b>⭐ 파트너십 확정</b> 된 리드는 자동으로 발송 대상에서 제외되므로 재발송/스팸 방지됨.'
+      )}
+
+      <!-- 마무리 -->
+      <div style="padding:16px 20px;background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);border:1px solid #86efac;border-radius:12px;color:#14532d;margin-top:8px">
+        <div style="font-size:14px;font-weight:800;margin-bottom:6px">🎉 이게 전부입니다!</div>
+        <div style="font-size:12px;line-height:1.7">
+          매일/매주 반복 흐름: <b>Import → AI검증 → 크롤 → 등급별 발송함 이동 → (며칠 뒤) 재발송/예약 → 답장 오면 stage 이동 → 파트너</b>.
+          <br>왼쪽 뱃지 숫자만 보고도 어디까지 진행됐는지 한눈에 확인 가능합니다.
+        </div>
+      </div>
+
+      <!-- 자주 묻는 질문 -->
+      <div style="padding:18px 20px;background:var(--surface-1);border:1px solid var(--border);border-radius:12px">
+        <div style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:12px">❓ 자주 묻는 질문</div>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text-secondary);line-height:1.7">
+          <div><b>Q. 실제로 메일이 안 나가요.</b><br>A. <code>.env.local</code> 의 <code>MAIL_DRY_RUN=1</code> 이면 로그만 찍고 실제 발송 안 됨. <code>MAIL_DRY_RUN=0</code> 으로 바꾸고 서버 재시작.</div>
+          <div><b>Q. 예약 걸었는데 시간 됐는데 안 나가요.</b><br>A. 로컬 개발 환경에선 Vercel Cron 이 안 돕니다. <b>Vercel 배포 후</b> 자동 실행. 로컬 테스트는 <b>[⚡즉시]</b> 버튼으로.</div>
+          <div><b>Q. 같은 리드에 여러 번 실수로 보낼까 걱정.</b><br>A. <b>리드당 최대 3회 · 최근 발송 후 48h 안 지나면 자동 차단</b>. 각 리드 행의 <b>[✉ N회차]</b> 배지로 몇 번 보냈는지 실시간 확인.</div>
+          <div><b>Q. A/B/C 등급이 뭔가요?</b><br>A. 이메일 있고 사이트 살아있고 대형 리테일러 = <b>A</b> · 이메일+사이트 = <b>B</b> · 부족 = <b>C</b>. C 는 자동으로 검증실패로 옮겨져 발송 대상 아님.</div>
+          <div><b>Q. 회사명이 메일에 안 들어가요.</b><br>A. 메일 양식 본문에 <code>[회사명]</code> 이라고 넣으셨는지 확인. 이 마커만 자동 치환됨.</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════════
+// 📅 예약 발송 관리 페이지
+// ══════════════════════════════════════════════════════════════
+var _schedStatusFilter = 'pending';   // pending / sent / failed / canceled / all
+
+async function fetchScheduledMails(status) {
+  const res = await fetch(`/api/mail/schedule?status=${encodeURIComponent(status)}&limit=500`);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || 'load failed');
+  return data.items || [];
+}
+
+async function renderScheduledMailsPage() {
+  els.content.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-tertiary)">로드 중...</div>`;
+  let items = [];
+  try {
+    items = await fetchScheduledMails(_schedStatusFilter);
+  } catch (e) {
+    els.content.innerHTML = `<div style="padding:24px;color:#dc2626">불러오기 실패: ${escapeHtml(e.message || 'unknown')}</div>`;
+    return;
+  }
+
   const statusMap = {
     pending:  { label: '⏳ 대기 중',   color: '#f59e0b', bg: '#fef3c7' },
+    sent:     { label: '✅ 발송 완료', color: '#166534', bg: '#dcfce7' },
+    failed:   { label: '❌ 실패',      color: '#991b1b', bg: '#fee2e2' },
+    canceled: { label: '🚫 취소됨',    color: '#6b7280', bg: '#f3f4f6' },
+  };
 
-  const filterChip = (key, label, color) => {
-    const active = _scheduledStatus === key;
+  const chip = (key, label, color) => {
+    const active = _schedStatusFilter === key;
     return `<button type="button" class="sched-status-chip" data-status="${key}"
       style="padding:6px 14px;border-radius:99px;border:2px solid ${active ? color : '#cbd5e1'};
         background:${active ? color : 'transparent'};color:${active ? 'white' : 'var(--text-secondary)'};
-        font-weight:700;font-size:12px;cursor:pointer">
+        font-weight:700;font-size:12px;cursor:pointer;transition:all 0.15s">
       ${label}
     </button>`;
   };
 
   const fmtWhen = (iso) => {
     if (!iso) return '-';
-    const d = new Date(iso);
-    return d.toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
   const fmtRelative = (iso) => {
     if (!iso) return '';
@@ -4743,26 +5460,28 @@ async function renderScheduledMailsPage_REMOVED() {
 
   els.content.innerHTML = `
     <div style="max-width:1100px;margin:0 auto">
-      <div style="padding:16px 18px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:12px;margin-bottom:16px;color:#1e3a8a">
-        <div style="font-size:15px;font-weight:800;margin-bottom:6px">📅 예약된 메일 관리</div>
-        <div style="font-size:13px;line-height:1.6">
-          예약 발송한 메일이 여기 모입니다. 5분마다 Vercel Cron 이 자동으로 due 항목을 발송해요.
-          <b>취소</b> · <b>즉시 발송</b> 이 가능하고, 발송되면 각 리드의 emailHistory 에 자동 기록됩니다.
+      <div style="padding:16px 18px;background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1px solid #fcd34d;border-radius:12px;margin-bottom:16px;color:#78350f">
+        <div style="font-size:15px;font-weight:800;margin-bottom:6px">📅 예약 발송 관리</div>
+        <div style="font-size:13px;line-height:1.7">
+          여기 있는 예약은 Vercel Cron 이 <b>5분마다</b> 확인해서 예약 시각 도래한 항목을 자동으로 발송합니다.
+          <br>· <b>발송 여부 확인</b>: 대기 중/발송 완료/실패/취소 상태로 조회
+          · <b>취소</b>: 대기 중일 때만 · <b>즉시 발송</b>: 예약 시각 전에 지금 바로 보내기
+          <br>· <b>과도 발송 방지</b>: 리드당 최대 3회 · 최근 발송 후 48h 안 지났으면 자동 스킵 (실패로 기록)
         </div>
       </div>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-        ${filterChip('pending',  '⏳ 대기 중',   '#f59e0b')}
-        ${filterChip('sent',     '✅ 발송 완료', '#166534')}
-        ${filterChip('failed',   '❌ 실패',      '#dc2626')}
-        ${filterChip('canceled', '🚫 취소됨',    '#6b7280')}
-        ${filterChip('all',      '📋 전체',      '#334155')}
+        ${chip('pending',  '⏳ 대기 중',   '#f59e0b')}
+        ${chip('sent',     '✅ 발송 완료', '#166534')}
+        ${chip('failed',   '❌ 실패',      '#dc2626')}
+        ${chip('canceled', '🚫 취소됨',    '#6b7280')}
+        ${chip('all',      '📋 전체',      '#334155')}
       </div>
 
       ${items.length === 0 ? `
         <div style="padding:48px;text-align:center;background:var(--surface-1);border:1px dashed var(--border);border-radius:12px;color:var(--text-tertiary);font-size:14px">
           📭 이 상태의 예약이 없습니다.<br>
-          <span style="font-size:12px">이메일 컨택 페이지에서 발송 대상 선택 → 컴포즈 모달의 "📅 예약 발송" 옵션으로 등록하세요.</span>
+          <span style="font-size:12px">"메일 발송함" 페이지의 <b>📅 예약 발송</b> 카드로 등록하세요.</span>
         </div>
       ` : `
         <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;overflow:hidden">
@@ -4777,36 +5496,37 @@ async function renderScheduledMailsPage_REMOVED() {
               </tr>
             </thead>
             <tbody>
-              ${items.map((it) => {
+              ${items.map(it => {
                 const s = statusMap[it.status] || statusMap.pending;
                 const canAct = it.status === 'pending';
                 return `
                   <tr style="border-top:1px solid var(--border)">
                     <td style="padding:12px 14px">
                       <span style="background:${s.bg};color:${s.color};padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700">${s.label}</span>
-                      ${it.attempts > 0 ? `<span style="margin-left:6px;font-size:10px;color:var(--text-tertiary)">시도 ${it.attempts}회</span>` : ''}
+                      ${it.attempts > 0 ? `<div style="margin-top:4px;font-size:10px;color:var(--text-tertiary)">시도 ${it.attempts}회</div>` : ''}
                     </td>
                     <td style="padding:12px 14px">
-                      <div style="font-weight:600;color:var(--text-primary)">${escapeHtml(it.lead?.Company || '(삭제된 리드)')}</div>
-                      ${it.lead?.Country ? `<div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(it.lead.Country)}</div>` : ''}
+                      <div style="font-weight:600;color:var(--text-primary)">${escapeHtml((it.lead && it.lead.Company) || '(삭제된 리드)')}</div>
+                      ${it.lead && it.lead.Country ? `<div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(it.lead.Country)}</div>` : ''}
                     </td>
                     <td style="padding:12px 14px;color:var(--text-secondary);font-family:monospace;font-size:12px">${escapeHtml(it.to)}</td>
                     <td style="padding:12px 14px">
                       <div style="color:var(--text-primary);font-size:12px">${fmtWhen(it.scheduledFor)}</div>
                       <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${fmtRelative(it.scheduledFor)}</div>
-                      ${it.lastError ? `<div style="font-size:10px;color:#dc2626;margin-top:4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(it.lastError)}">${escapeHtml(it.lastError)}</div>` : ''}
+                      ${it.sentAt ? `<div style="font-size:10px;color:#166534;margin-top:2px">발송: ${fmtWhen(it.sentAt)}</div>` : ''}
+                      ${it.lastError ? `<div style="font-size:10px;color:#dc2626;margin-top:4px;max-width:240px" title="${escapeAttr(it.lastError)}">${escapeHtml(it.lastError.slice(0,60))}</div>` : ''}
                     </td>
                     <td style="padding:12px 14px;text-align:right">
                       ${canAct ? `
                         <button type="button" class="sched-send-now" data-id="${escapeAttr(it._id)}"
                           style="padding:6px 10px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-right:4px">
-                          ⚡ 즉시 발송
+                          ⚡ 즉시
                         </button>
                         <button type="button" class="sched-cancel" data-id="${escapeAttr(it._id)}"
                           style="padding:6px 10px;background:transparent;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">
                           🚫 취소
                         </button>
-                      ` : `<span style="font-size:11px;color:var(--text-tertiary)">${it.sentAt ? '발송: ' + fmtWhen(it.sentAt) : '-'}</span>`}
+                      ` : ''}
                     </td>
                   </tr>
                 `;
@@ -4818,10 +5538,9 @@ async function renderScheduledMailsPage_REMOVED() {
     </div>
   `;
 
-  // 이벤트 바인딩
   document.querySelectorAll('.sched-status-chip').forEach(el => {
     el.addEventListener('click', () => {
-      _scheduledStatus = el.dataset.status;
+      _schedStatusFilter = el.dataset.status;
       renderScheduledMailsPage();
     });
   });
@@ -4832,7 +5551,6 @@ async function renderScheduledMailsPage_REMOVED() {
         const res = await fetch(`/api/mail/schedule/${el.dataset.id}`, { method: 'DELETE' });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
-        _scheduledCache = null;
         renderScheduledMailsPage();
       } catch (e) {
         alert('취소 실패: ' + (e.message || 'unknown'));
@@ -4842,7 +5560,7 @@ async function renderScheduledMailsPage_REMOVED() {
   document.querySelectorAll('.sched-send-now').forEach(el => {
     el.addEventListener('click', async () => {
       if (!confirm('이 예약을 지금 즉시 발송하시겠습니까?')) return;
-      el.textContent = '⏳ 발송 중...';
+      el.textContent = '⏳';
       el.disabled = true;
       try {
         const res = await fetch(`/api/mail/schedule/${el.dataset.id}`, {
@@ -4852,12 +5570,8 @@ async function renderScheduledMailsPage_REMOVED() {
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
-        if (data.result?.ok) {
-          alert('✅ 발송 완료' + (data.result.dryRun ? ' (DRY_RUN)' : ''));
-        } else {
-          alert('❌ 발송 실패: ' + (data.result?.error || 'unknown'));
-        }
-        _scheduledCache = null;
+        if (data.result?.ok) alert('✅ 발송 완료' + (data.result.dryRun ? ' (DRY_RUN)' : ''));
+        else alert('❌ 발송 실패: ' + (data.result?.error || 'unknown'));
         invalidateServerPage();
         renderScheduledMailsPage();
       } catch (e) {
@@ -7002,12 +7716,14 @@ function stat(label, value, view = "") {
 
 // 검증 버킷용 stat 카드 — 색상 강조 + 클릭 시 검증 필터 적용
 function statVerify(label, value, bucket) {
-  const colors = {
+  const colors = ({
     passed:     { bg: '#dcfce7', fg: '#166534', accent: '#22c55e' },
     suspicious: { bg: '#fef3c7', fg: '#92400e', accent: '#f59e0b' },
     invalid:    { bg: '#fee2e2', fg: '#991b1b', accent: '#ef4444' },
     unverified: { bg: '#f1f5f9', fg: '#64748b', accent: '#94a3b8' },
-  }[bucket];
+    archived:   { bg: '#f3f4f6', fg: '#6b7280', accent: '#9ca3af' },
+    failed:     { bg: '#fee2e2', fg: '#991b1b', accent: '#ef4444' },
+  }[bucket]) || { bg: '#f1f5f9', fg: '#64748b', accent: '#94a3b8' };
   const active = state.view === 'leads' && state.verify === bucket ? `box-shadow:0 0 0 2px ${colors.accent} inset;` : '';
   return `
     <button class="stat stat-button" data-verify-bucket="${escapeAttr(bucket)}" type="button"

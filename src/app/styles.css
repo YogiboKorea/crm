@@ -359,6 +359,41 @@ code {
 :root[data-sidebar-collapsed="true"] .nav-badge {
   display: none;
 }
+.nav-external {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.6;
+  color: var(--text-tertiary);
+}
+:root[data-sidebar-collapsed="true"] .nav-external {
+  display: none;
+}
+a.nav-item {
+  text-decoration: none;
+}
+
+/* 사이드바 섹션 헤더 */
+.nav-section-label {
+  padding: 12px 12px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-tertiary);
+  opacity: 0.85;
+}
+:root[data-sidebar-collapsed="true"] .nav-section-label {
+  display: none;
+}
+.nav-sub-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 8px 12px;
+  opacity: 0.5;
+}
+:root[data-sidebar-collapsed="true"] .nav-sub-divider {
+  margin: 6px 4px;
+}
 .nav-divider {
   border-top: 1px solid var(--border-subtle);
   margin: 10px 0;

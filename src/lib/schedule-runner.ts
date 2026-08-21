@@ -4,6 +4,7 @@ import { MailAccount } from '@/models/MailAccount';
 import { sendMail, renderTemplate } from './mailer';
 import { buildVarsFromLead, buildSignatureBlock } from './template-vars';
 import { decryptSecret } from './crypto';
+import { checkSendGuard } from './send-limits';
 
 /**
  * 단일 예약 항목을 실제로 발송 · Lead.emailHistory 기록 · stage 전이 (verified→contacted)
@@ -24,6 +25,16 @@ export async function processScheduleItem(doc: any) {
     doc.status = 'failed'; doc.lastError = 'lead not found'; doc.attempts += 1;
     await doc.save();
     return { ok: false, error: 'lead not found' };
+  }
+
+  // 발송 시점 재확인 — 예약 등록 후 시각까지 사이에 이미 여러 번 발송되었을 수 있음
+  const guard = checkSendGuard({ emailHistory: lead.emailHistory, lastEmailSentAt: lead.lastEmailSentAt });
+  if (!guard.ok) {
+    doc.status = 'failed';
+    doc.lastError = `발송 가드: ${guard.reason}`;
+    doc.attempts += 1;
+    await doc.save();
+    return { ok: false, error: doc.lastError };
   }
 
   let smtpConfig: any = undefined;

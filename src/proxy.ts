@@ -5,10 +5,11 @@ import { jwtVerify } from 'jose';
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret');
 
 export async function proxy(req: NextRequest) {
-  // Protect all routes except /login, /api/auth, and public assets
+  // Protect all routes except /login, /api/auth, /api/cron (bearer-protected), and public assets
   if (
     req.nextUrl.pathname.startsWith('/login') ||
     req.nextUrl.pathname.startsWith('/api/auth') ||
+    req.nextUrl.pathname.startsWith('/api/cron') ||
     req.nextUrl.pathname.startsWith('/_next') ||
     req.nextUrl.pathname.startsWith('/assets') ||
     req.nextUrl.pathname === '/favicon.ico'

@@ -6,6 +6,7 @@ import { MailAccount } from '@/models/MailAccount';
 import { sendMail, renderTemplate } from '@/lib/mailer';
 import { buildVarsFromLead, buildSignatureBlock } from '@/lib/template-vars';
 import { decryptSecret } from '@/lib/crypto';
+import { checkSendGuard } from '@/lib/send-limits';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -105,6 +106,19 @@ export async function POST(req: Request) {
       results.push({ leadId: lead.leadId, ok: false, error: 'no valid email' });
       failed++;
       continue;
+    }
+
+    // 과도 발송 방지 (리드당 MAX 회 · 최소 간격) · body.force=true 면 우회 (수동 override)
+    if (body.force !== true) {
+      const guard = checkSendGuard({
+        emailHistory: lead.emailHistory,
+        lastEmailSentAt: lead.lastEmailSentAt,
+      });
+      if (!guard.ok) {
+        results.push({ leadId: lead.leadId, ok: false, error: guard.reason, sentCount: guard.sentCount });
+        failed++;
+        continue;
+      }
     }
 
     // 변수 치환 (받는사람/회사명만 · 발송자는 서명으로)

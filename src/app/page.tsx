@@ -34,7 +34,8 @@ export default function Home() {
             </div>
           </button>
           <nav className="nav" aria-label="Pipeline">
-            {/* ── 새 파이프라인 (좌 → 우 순서) ─ 접힘 상태에서 아이콘만 보이도록 span 분리 ─ */}
+            {/* ══════════ 그룹 A · 리드 정보 (데이터 관리) ══════════ */}
+            <div className="nav-section-label">📊 리드 정보</div>
             <button className="nav-item active" data-view="pipeline-import" type="button" title="가져오기 — CSV/엑셀 업로드로 리드 데이터를 신규 등록">
               <span className="nav-icon">📥</span><span className="nav-label">가져오기 (Import)</span>
             </button>
@@ -46,8 +47,19 @@ export default function Home() {
               <span className="nav-icon">✅</span><span className="nav-label">발송 대기</span>
               <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-contacted" type="button" title="첫 메일 발송함 — 이미 메일을 보냈고 답장을 기다리는 리드">
-              <span className="nav-icon">📨</span><span className="nav-label">첫 메일 발송함</span>
+            <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트 — K-beauty B2B 시드 (웹 발굴) 를 내 리드로 추가">
+              <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>
+            </button>
+            <button className="nav-item" data-view="tool-import-history" type="button" title="Import History — CSV 배치 기록 조회 및 롤백">
+              <span className="nav-icon">📋</span><span className="nav-label">Import History</span>
+            </button>
+
+            <div className="nav-divider"></div>
+
+            {/* ══════════ 그룹 B · 메일 발송 (컨택 진행) ══════════ */}
+            <div className="nav-section-label">✉ 메일 발송</div>
+            <button className="nav-item" data-view="pipeline-contacted" type="button" title="메일 발송함 — 이미 메일 보낸 리드 · 여기서 단체 즉시/예약 재발송">
+              <span className="nav-icon">📨</span><span className="nav-label">메일 발송함</span>
               <span className="nav-badge" data-nav-badge="contacted"></span>
             </button>
             <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드 (아직 협상 얘기 시작 전)">
@@ -62,19 +74,35 @@ export default function Home() {
               <span className="nav-icon">⭐</span><span className="nav-label">파트너십 확정</span>
               <span className="nav-badge" data-nav-badge="partner"></span>
             </button>
-            <div className="nav-divider"></div>
-            {/* ── 부가 도구 ────────────────────────────────── */}
+
+            <div className="nav-sub-divider"></div>
+
+            <button className="nav-item" data-view="tool-scheduled-mails" type="button" title="예약 발송 관리 — 대기중 예약 목록·취소·즉시발송·발송 여부 확인">
+              <span className="nav-icon">📅</span><span className="nav-label">예약 발송 관리</span>
+            </button>
+
             <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 발송에 쓸 SMTP 계정과 서명 정보 등록">
               <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
             </button>
             <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 양식 — 발송할 메일 제목/본문 작성 (회사명 자동 대체)">
               <span className="nav-icon">📝</span><span className="nav-label">메일 양식</span>
             </button>
-            <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트 — K-beauty B2B 시드 (웹 발굴) 를 내 리드로 추가">
-              <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>
-            </button>
-            <button className="nav-item" data-view="tool-import-history" type="button" title="Import History — CSV 배치 기록 조회 및 롤백">
-              <span className="nav-icon">📋</span><span className="nav-label">Import History</span>
+            <a
+              className="nav-item"
+              href="https://bz-rosy.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="B2B 메일 관리 (새 창) — 답장 수집/조회 외부 도구"
+              style={{ textDecoration: 'none' }}
+            >
+              <span className="nav-icon">📮</span>
+              <span className="nav-label">B2B 메일 관리</span>
+              <span className="nav-external" aria-hidden="true">↗</span>
+            </a>
+
+            <div className="nav-divider"></div>
+            <button className="nav-item" data-view="tool-user-guide" type="button" title="사용 설명서 — 처음 쓰시는 분을 위한 단계별 가이드">
+              <span className="nav-icon">📖</span><span className="nav-label">사용 설명서</span>
             </button>
           </nav>
         </aside>
