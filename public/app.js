@@ -506,24 +506,65 @@ function updateNavBadges(counts) {
   if (!counts || !counts.stages) return;
   const s = counts.stages;
   document.querySelectorAll('[data-nav-badge]').forEach(el => {
-    const stage = el.dataset.navBadge;
-    const n = s[stage] || 0;
+    const key = el.dataset.navBadge;
+    // 메일함 배지는 stage 가 아니라 별도 API 에서 채운다 (loadMailCounts)
+    if (key === 'inboxUnread' || key === 'inboxNeedsReply' || key === 'inboxDeadlines' || key === 'inboxTrash') return;
+    const n = s[key] || 0;
     el.textContent = n.toLocaleString();
     el.dataset.count = String(n);
   });
+}
+
+// 메일함 배지 (받은 메일함 · 회신 필요) — 광고·자동발송은 빼고 센다
+var _mailCountsCache = null;
+async function loadMailCounts(force) {
+  const now = Date.now();
+  if (!force && _mailCountsCache && now - _mailCountsCache.ts < 5 * 60 * 1000) {
+    applyMailCountBadges(_mailCountsCache.counts);
+    return _mailCountsCache;
+  }
+  try {
+    // 메일함에서 계정을 골랐으면 배지도 그 계정 기준으로 센다
+    const acc = (typeof _inboxState !== 'undefined' && _inboxState.accountId) || 'all';
+    const data = await safeJsonFetch(`/api/mail/counts?accountId=${encodeURIComponent(acc)}`);
+    if (data && data.success) {
+      _mailCountsCache = { counts: data.counts, ts: now };
+      applyMailCountBadges(data.counts);
+      return _mailCountsCache;
+    }
+  } catch (e) {
+    // 메일 수신을 아직 설정하지 않았을 수 있다 — 배지가 없다고 화면이 죽으면 안 된다
+    console.warn('mail-counts', e);
+  }
+  return null;
+}
+
+function applyMailCountBadges(c) {
+  if (!c) return;
+  const set = (key, n) => {
+    const el = document.querySelector(`[data-nav-badge="${key}"]`);
+    if (!el) return;
+    el.textContent = (n || 0).toLocaleString();
+    el.dataset.count = String(n || 0);
+  };
+  set('inboxUnread', c.inbox);
+  set('inboxNeedsReply', c.needsReply);
+  set('inboxDeadlines', c.deadlines);
+  set('inboxTrash', c.trash);
 }
 
 // 주기 갱신 (5분마다 · 사용자 액션 후에는 invalidateServerPage 로 즉시 갱신 · 창 focus 복귀 시도 자동 갱신)
 var _navBadgeTimer = null;
 function startNavBadgePolling() {
   if (_navBadgeTimer) return;
-  loadStageCounts(true);
-  _navBadgeTimer = setInterval(() => loadStageCounts(true), 5 * 60 * 1000);
+  const refresh = () => { loadStageCounts(true); loadMailCounts(true); };
+  refresh();
+  _navBadgeTimer = setInterval(refresh, 5 * 60 * 1000);
   // 브라우저 창이 다시 포커스되면 즉시 갱신 (다른 창에서 액션 반영)
-  window.addEventListener('focus', () => loadStageCounts(true));
+  window.addEventListener('focus', refresh);
   // 페이지가 다시 보이는 상태로 돌아오면 갱신
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') loadStageCounts(true);
+    if (document.visibilityState === 'visible') refresh();
   });
 }
 
@@ -564,6 +605,42 @@ function bindEvents() {
       const leadId = quickBtn.dataset.quickLead;
       const target = quickBtn.dataset.quickTarget;
       handleStageChange(leadId, target, quickBtn);
+      return;
+    }
+
+    // 0-b. 메일 대화 보기 (보낸 메일 + 받은 답장 타임라인)
+    const convBtn = event.target.closest(".conversation-btn");
+    if (convBtn) {
+      event.stopPropagation();
+      closeMailDetailModal();   // 상세에서 눌렀으면 겹치지 않게 닫는다
+      openConversationModal(convBtn.dataset.convLead);
+      return;
+    }
+
+    // 0-c. 받은 메일함 행 클릭 → 메일 상세
+    const mailRow = event.target.closest("tr.inbox-row");
+    if (mailRow && !event.target.closest("button, a, input")) {
+      event.stopPropagation();
+      openMailDetailModal(mailRow.dataset.mailId);
+      return;
+    }
+    if (event.target.id === "mailDetailRoot") {
+      closeMailDetailModal();
+      return;
+    }
+    if (event.target.closest("#conversationModalClose") || event.target.id === "conversationModalRoot") {
+      closeConversationModal();
+      return;
+    }
+    const quoteToggle = event.target.closest(".conv-quote-toggle");
+    if (quoteToggle) {
+      event.stopPropagation();
+      const box = document.getElementById(quoteToggle.dataset.quoteTarget);
+      if (box) {
+        const showing = box.hasAttribute('hidden');
+        if (showing) box.removeAttribute('hidden'); else box.setAttribute('hidden', '');
+        quoteToggle.textContent = showing ? '▲ 인용문 접기' : '▼ 인용된 이전 대화 보기';
+      }
       return;
     }
 
@@ -702,7 +779,12 @@ function bindEvents() {
       }
       
       // Default: click table row opens edit modal
-      if (event.target.closest("input[type='checkbox'], button.favorite-button, a")) return;
+      // 행 안의 조작 요소는 행 클릭(수정 모달)을 열지 않는다.
+      // 위임 핸들러가 위쪽에서 먼저 처리하고 return 하지만, 순서가 바뀌어도
+      // 오작동하지 않도록 여기서도 막아둔다.
+      if (event.target.closest(
+        "input[type='checkbox'], button.favorite-button, a, .conversation-btn, .stage-quick-move, .stage-select"
+      )) return;
       openEditModal(row.dataset.id);
       return;
     }
@@ -1238,6 +1320,7 @@ async function _renderInner() {
   // ── 새 파이프라인 뷰 (stage 기반) ─────────────────────────────
   const stageMap = {
     'pipeline-import':      { stage: 'imported',    title: '📥 가져오기 (Import)',  sub: '엑셀에서 새로 업로드된 회사들. 검증 진행 대기.' },
+    'pipeline-ai-searched': { stage: 'ai-searched', title: '🤖 AI 서칭 결과',       sub: 'Claude 가 웹에서 자동 발굴한 K-뷰티 B2B 후보. 검토 후 검증대기(추가 검증) / 발송대기(즉시 활용) / 제외로 이동.' },
     'pipeline-verifying':   { stage: 'verifying',   title: '🔍 검증 대기',          sub: '검증 진행 중이거나 필요한 회사들.' },
     'pipeline-verified':    { stage: 'verified',    title: '✅ 발송 대기',          sub: 'AI 검증 통과. 승인 후 메일 발송할 대상. 메일 없으면 크롤링.' },
     'pipeline-failed':      { stage: '__failed',    title: '🚫 검증 실패',          sub: 'AI가 K-beauty 무관으로 판정. 잘못 판정된 것은 수동으로 검증완료로 되돌리기 가능.' },
@@ -1298,7 +1381,10 @@ async function _renderInner() {
       // 검증완료 서브필터 chip (성공 탭일 때만 · 서버 카운트 기반)
       if (s.stage === 'verified' && serverStage === 'verified' && counts) {
         renderVerifiedSubFilterChipsServer(counts.verifiedSub, counts.stages.failed);
-        renderVerifiedTierChips();  // A/B/C 등급 breakdown (비동기 로드)
+        // A/B/C 등급 chip 은 뺐다 — 어차피 전부 확인하고 보낼 것이라
+        // 등급을 나누면 "B는 봐야 하나 말아야 하나"만 늘어난다.
+        // 되살리려면 아래 한 줄 주석을 풀면 된다 (renderVerifiedTierChips 는 그대로 있다).
+        // renderVerifiedTierChips();
       } else {
         clearVerifiedSubFilterChips();
         clearVerifiedTierChips();
@@ -1442,6 +1528,54 @@ async function _renderInner() {
     els.viewTitle.textContent = "📖 사용 설명서";
     els.viewSubtitle.textContent = "처음 쓰시는 분을 위한 단계별 가이드 · 각 화면이 어떻게 이어지는지.";
     renderUserGuidePage();
+    return;
+  }
+  if (state.view === "tool-inbox") {
+    els.viewTitle.textContent = "📥 받은 메일함";
+    els.viewSubtitle.textContent = "이카운트 메일함에서 수집한 수신 메일. 대화 단위로 접어서 표시.";
+    renderInboxPage({ needsReplyOnly: false });
+    return;
+  }
+  if (state.view === "tool-inbox-needsreply") {
+    els.viewTitle.textContent = "⚠️ 회신 필요";
+    els.viewSubtitle.textContent = "상대가 질문·요청을 보냈고 아직 답하지 않은 메일.";
+    renderInboxPage({ needsReplyOnly: true });
+    return;
+  }
+  if (state.view === "tool-deadlines") {
+    els.viewTitle.textContent = "⏰ 기한 관리";
+    els.viewSubtitle.textContent = "회신 기한이 잡힌 메일 · 지난 것부터 순서대로 (최근 2개월).";
+    renderDeadlinesPage();
+    return;
+  }
+  if (state.view === "tool-briefing") {
+    els.viewTitle.textContent = "📋 오늘의 브리핑";
+    els.viewSubtitle.textContent = "회신 필요 · 기한 임박 · 새로 답장 온 곳을 한 장으로.";
+    renderBriefingPage();
+    return;
+  }
+  if (state.view === "tool-legacy") {
+    els.viewTitle.textContent = "📚 기존 데이터";
+    els.viewSubtitle.textContent = "예전에 올린 엑셀 데이터. 보낼 만한 곳을 골라 발송 대기로 되돌릴 수 있습니다.";
+    renderLegacyPage();
+    return;
+  }
+  if (state.view === "tool-review") {
+    els.viewTitle.textContent = "⚡ 빠른 검토";
+    els.viewSubtitle.textContent = "한 회사씩 보고 승인/제외만 누르면 다음으로 넘어갑니다. 제외해도 지워지지 않습니다.";
+    renderReviewPage();
+    return;
+  }
+  if (state.view === "tool-trash") {
+    els.viewTitle.textContent = "🗑 휴지통";
+    els.viewSubtitle.textContent = "치워둔 메일. DB 에서 지우지 않으므로 언제든 되돌릴 수 있습니다.";
+    renderTrashPage();
+    return;
+  }
+  if (state.view === "tool-mail-settings") {
+    els.viewTitle.textContent = "🔌 메일 수신 설정";
+    els.viewSubtitle.textContent = "이카운트 IMAP 연결 · 수집 폴더 · 광고 필터.";
+    renderMailSettingsPage();
     return;
   }
 
@@ -1606,40 +1740,15 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   // 검증대기 / 검증완료 stage 는 히어로 CTA 카드 추가 렌더
   let heroCard = '';
   if (stageInfo.stage === 'verifying') {
-    const { aiPending } = computeVerificationCounts('verifying');
-    // 크롤링은 검증완료 단계로 이동한 후에 하는 것 — 검증대기에는 AI 검증 카드 하나만
-    heroCard = `
-      <div class="verify-hero" style="margin-top:12px">
-        <div class="verify-hero-card" style="
-          padding:20px;border-radius:16px;
-          background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%);
-          border:1px solid #c7d2fe;position:relative;overflow:hidden;
-          display:flex;align-items:center;gap:20px;
-        ">
-          <div style="font-size:40px" class="pulse-icon">🧠</div>
-          <div style="flex:1">
-            <div style="font-size:12px;color:#4338ca;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">AI 1차 검증</div>
-            <div style="font-size:24px;font-weight:800;color:#1e1b4b;line-height:1.1;margin-top:2px">
-              ${aiPending.toLocaleString()}<span style="font-size:14px;font-weight:600;color:#6366f1;margin-left:4px">건 대기</span>
-            </div>
-            <p style="font-size:12px;color:#4c1d95;margin:6px 0 0;line-height:1.5">
-              Claude Haiku 4.5 · beauty-buyer → 검증완료 자동 이동 · not-buyer → 보관함
-            </p>
-          </div>
-          <button id="runAiVerifyOnVerifyingBtn" class="button primary" type="button" style="
-            font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
-            background:#4338ca;color:white;border:none;border-radius:10px;cursor:pointer;
-            box-shadow:0 2px 8px rgba(67,56,202,0.3);
-            ${aiPending === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-          " ${aiPending === 0 ? 'disabled' : ''}>
-            🧠 AI 검증 실행 (${aiPending}건, ~$${(aiPending * 0.0005).toFixed(2)})
-          </button>
-        </div>
-        <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center">
-          🇰🇷 한국 기업 자동 제외 · AI 통과 시 검증완료로 이동 → 거기서 메일 크롤링
-        </div>
-      </div>
-    `;
+    // [🧠 AI 검증 실행] 버튼은 뺐다.
+    //
+    // 누를 때마다 대기 건수만큼 Claude API 가 호출되어 요금이 나가는 버튼이라,
+    // 수백 건이 쌓인 화면에서 무심코 누르면 비용이 한 번에 터진다.
+    // 기업 분석이 필요하면 개발자 쪽에서 일괄로 돌려 결과만 DB 에 넣는다.
+    //
+    // 되살리려면: 아래 heroCard 를 지우고 git 이력의 카드 마크업을 복원하면 된다.
+    // 핸들러(runAiVerifyOnVerifyingBtn)와 API(/api/leads/verify-ai)는 그대로 있다.
+    heroCard = '';
   } else if (stageInfo.stage === '__failed') {
     // 검증 실패 페이지 — archived + not-buyer 리드
     const failedCount = baseLeads.filter(l =>
@@ -1740,136 +1849,54 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
       </div>
     `;
   } else if (stageInfo.stage === 'verified') {
-    const { crawlPending, crawlTriedNoResult } = computeVerificationCounts('verified');
-    // 첫 발송 대상 카운트 · 승인 완료 + 이메일 있음
-    const readySendCount = baseLeads.filter(l =>
-      !l.deleted && (l.stage || 'imported') === 'verified' && l.readyForOutreach &&
-      l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email),
-    ).length;
-    const emailReadyCount = baseLeads.filter(l =>
+    // 발송 대기 = "승인하면 바로 나가는" 자리. 카드 하나로 끝낸다.
+    //
+    // 예전에는 여기에 (1) 메일 크롤링 카드 (2) A/B 등급 원클릭 발송 카드가 같이 떴다.
+    // 등급을 나눈 건 "많으니 좋은 것부터 보내자"는 뜻이었는데, 어차피 전부 눈으로
+    // 확인하고 보내므로 "B등급은 봐야 하나 말아야 하나" 하는 고민만 늘었다.
+    // 크롤링은 쓰지 않기로 해서 같이 뺐다.
+    // (getClientLeadTier / sendAllTierABtn 핸들러는 그대로 살아 있어 되살리기 쉽다.)
+    const emailOk = (l) =>
       !l.deleted && (l.stage || 'imported') === 'verified' &&
-      l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email),
-    ).length;
+      l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email);
+    const emailReadyCount = baseLeads.filter(emailOk).length;
+    const readySendCount = baseLeads.filter((l) => emailOk(l) && l.readyForOutreach).length;
 
-    // 등급별 카운트 (원클릭 발송용) — 이메일 유효 리드에서 티어 판정
-    const verifiedWithEmail = baseLeads.filter(l =>
-      !l.deleted && (l.stage || 'imported') === 'verified' &&
-      l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email),
-    );
-    const tierACount = verifiedWithEmail.filter(l => getClientLeadTier(l) === 'A').length;
-    const tierBCount = verifiedWithEmail.filter(l => getClientLeadTier(l) === 'B').length;
-
-    // 등급별 원클릭 발송 카드 (verified 페이지 상단 · 항상 노출)
-    const tierBulkCard = (tierACount > 0 || tierBCount > 0) ? `
-      <div style="margin-top:10px;padding:14px 18px;background:linear-gradient(135deg,#fef9c3 0%,#fef3c7 100%);border:1px solid #fcd34d;border-radius:12px">
-        <div style="font-size:12px;font-weight:800;color:#854d0e;margin-bottom:8px">⚡ 원클릭 등급별 발송함으로 이동</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <button id="sendAllTierABtn" type="button" ${tierACount === 0 ? 'disabled' : ''} style="
-            padding:12px 14px;background:${tierACount === 0 ? '#f1f5f9' : 'linear-gradient(135deg,#fbbf24 0%,#f59e0b 100%)'};
-            color:${tierACount === 0 ? '#94a3b8' : 'white'};border:none;border-radius:10px;font-weight:800;font-size:13px;
-            cursor:${tierACount === 0 ? 'not-allowed' : 'pointer'};box-shadow:${tierACount === 0 ? 'none' : '0 2px 8px rgba(245,158,11,0.35)'}
-          ">
-            🥇 A등급 발송함으로 이동 (${tierACount.toLocaleString()})
+    heroCard = `
+      <div class="verify-hero" style="margin-top:12px">
+        <div class="verify-hero-card" style="
+          padding:20px;border-radius:16px;
+          background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+          border:1px solid #93c5fd;display:flex;align-items:center;gap:20px;
+        ">
+          <div style="font-size:40px">📧</div>
+          <div style="flex:1">
+            <div style="font-size:12px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">발송 가능</div>
+            <div style="font-size:24px;font-weight:800;color:#1e3a8a;line-height:1.1;margin-top:2px">
+              ${emailReadyCount.toLocaleString()}<span style="font-size:14px;font-weight:600;color:#3b82f6;margin-left:4px">건</span>
+            </div>
+            <p style="font-size:12px;color:#1e3a8a;margin:6px 0 0;line-height:1.5">
+              승인 완료 <b>${readySendCount.toLocaleString()}건</b> · 검토 남음 <b>${(emailReadyCount - readySendCount).toLocaleString()}건</b>
+            </p>
+          </div>
+          <button id="startReviewBtn" type="button" style="
+            font-size:14px;font-weight:700;padding:12px 18px;white-space:nowrap;
+            background:#fff;color:#1d4ed8;border:1px solid #2563eb;border-radius:10px;cursor:pointer;
+            ${emailReadyCount - readySendCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+          " ${emailReadyCount - readySendCount === 0 ? 'disabled' : ''}>
+            ⚡ 빠른 검토
           </button>
-          <button id="sendAllTierBBtn" type="button" ${tierBCount === 0 ? 'disabled' : ''} style="
-            padding:12px 14px;background:${tierBCount === 0 ? '#f1f5f9' : 'linear-gradient(135deg,#60a5fa 0%,#3b82f6 100%)'};
-            color:${tierBCount === 0 ? '#94a3b8' : 'white'};border:none;border-radius:10px;font-weight:800;font-size:13px;
-            cursor:${tierBCount === 0 ? 'not-allowed' : 'pointer'};box-shadow:${tierBCount === 0 ? 'none' : '0 2px 8px rgba(59,130,246,0.35)'}
-          ">
-            🥈 B등급 발송함으로 이동 (${tierBCount.toLocaleString()})
+          <button id="openFirstSendBtn" type="button" style="
+            font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
+            background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
+            box-shadow:0 2px 8px rgba(37,99,235,0.3);
+            ${readySendCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+          " ${readySendCount === 0 ? 'disabled' : ''}>
+            ✉ 메일 보내기
           </button>
-        </div>
-        <div style="margin-top:8px;font-size:10px;color:#78350f;text-align:center">
-          클릭 → 컴포즈 모달 (대상 자동 선택) → 확인 → 발송 → <b>발송함으로 자동 이동</b> · 발송 대기에서 사라짐
         </div>
       </div>
-    ` : '';
-
-    // 두 케이스: (A) 아직 시도 안 된 리드가 있음 → 실행 버튼 / (B) 다 시도했음 → 완료 상태
-    if (crawlPending > 0) {
-      heroCard = `
-        <div class="verify-hero" style="margin-top:12px">
-          <div class="verify-hero-card" style="
-            padding:20px;border-radius:16px;
-            background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);
-            border:1px solid #86efac;display:flex;align-items:center;gap:20px;
-          ">
-            <div style="font-size:40px" class="pulse-icon">✅</div>
-            <div style="flex:1">
-              <div style="font-size:12px;color:#166534;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">AI 검증 통과 리드</div>
-              <div style="font-size:14px;color:#14532d;margin-top:2px">
-                메일 없는 <b>${crawlPending.toLocaleString()}건</b> 크롤링 대기 · 크롤 후 발송 승인 → 컨택 시작
-              </div>
-            </div>
-            <button id="runCrawlOnVerifiedBtn" class="button primary" type="button" style="
-              font-size:14px;font-weight:700;padding:12px 20px;
-              background:#15803d;color:white;border:none;border-radius:10px;cursor:pointer;
-              box-shadow:0 2px 8px rgba(21,128,61,0.3);
-            ">
-              🔍 메일 크롤링 실행 (${crawlPending}건)
-            </button>
-          </div>
-          <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary);text-align:center">
-            🇰🇷 한국 기업 자동 제외 · 발견된 메일은 최우선 후보(partnerships/business) 자동 Email 승격
-          </div>
-          ${emailReadyCount > 0 ? `
-            <div style="margin-top:10px;padding:14px 18px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:12px;display:flex;align-items:center;gap:14px">
-              <div style="font-size:28px">📧</div>
-              <div style="flex:1">
-                <div style="font-size:12px;color:#1e40af;font-weight:700">지금 첫 메일 발송 가능</div>
-                <div style="font-size:12px;color:#1e3a8a;margin-top:2px">
-                  이메일 있는 리드 <b>${emailReadyCount.toLocaleString()}건</b> · 승인 완료 <b>${readySendCount.toLocaleString()}건</b>
-                </div>
-              </div>
-              <button id="openFirstSendBtn" type="button" style="
-                font-size:13px;font-weight:700;padding:10px 18px;
-                background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;
-                box-shadow:0 2px 6px rgba(37,99,235,0.3);
-                ${readySendCount === 0 && emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-              " ${readySendCount === 0 && emailReadyCount === 0 ? 'disabled' : ''}>
-                ✉ 지금 첫 발송
-              </button>
-            </div>
-          ` : ''}
-          ${tierBulkCard}
-        </div>
-      `;
-    } else {
-      // 완료 상태 — 시도한 결과가 없거나 남은 대상 없음
-      const doneMsg = crawlTriedNoResult > 0
-        ? `크롤링 완료 · <b>${crawlTriedNoResult.toLocaleString()}건</b> 은 사이트에 이메일 미공개 (보관 처리 권장)`
-        : `모든 대상 크롤링 완료 — 메일링 승인으로 이동해주세요`;
-      heroCard = `
-        <div class="verify-hero" style="margin-top:12px">
-          <div class="verify-hero-card" style="
-            padding:20px;border-radius:16px;
-            background:linear-gradient(135deg,#e0f2fe 0%,#bae6fd 100%);
-            border:1px solid #7dd3fc;display:flex;align-items:center;gap:20px;
-          ">
-            <div style="font-size:40px">✅</div>
-            <div style="flex:1">
-              <div style="font-size:12px;color:#075985;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">크롤링 완료</div>
-              <div style="font-size:14px;color:#0c4a6e;margin-top:2px">${doneMsg}</div>
-            </div>
-            <button id="openFirstSendBtn" type="button" style="
-              font-size:14px;font-weight:700;padding:12px 20px;
-              background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
-              box-shadow:0 2px 8px rgba(37,99,235,0.3);
-              ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-            " ${emailReadyCount === 0 ? 'disabled' : ''}>
-              ✉ 지금 첫 발송 (${emailReadyCount.toLocaleString()})
-            </button>
-            <button id="goApproveBtn" class="button" type="button" style="
-              font-size:13px;font-weight:600;padding:12px 16px;
-              background:white;color:#0284c7;border:1px solid #7dd3fc;border-radius:10px;cursor:pointer;
-            ">
-              ➡ 승인 대기 보기
-            </button>
-          </div>
-          ${tierBulkCard}
-        </div>
-      `;
-    }
+    `;
   }
 
   container.innerHTML = `
@@ -1895,6 +1922,13 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   document.getElementById('goApproveBtn')?.addEventListener('click', () => {
     state.verifiedSubFilter = 'pending';
     resetPagination();
+    render();
+  });
+  // 빠른 검토 진입 — 들어갈 때마다 대기열을 새로 받는다.
+  // 이전에 보던 큐가 남아 있으면 이미 판단한 회사가 다시 뜬다.
+  document.getElementById('startReviewBtn')?.addEventListener('click', () => {
+    _review = { queue: [], idx: 0, remaining: 0, approved: 0, done: 0, busy: false };
+    state.view = 'tool-review';
     render();
   });
   // 발송 대기 · 첫 발송 진입점 (verified stage · 승인된 리드 or 이메일 있는 리드 대상)
@@ -2406,6 +2440,7 @@ function renderServerPagedTable(pageData, stageInfo) {
         <span>총 <b style="color:var(--text-primary)">${pageData.total.toLocaleString()}</b>건 중 <b style="color:var(--text-primary)">${start}~${end}</b>번 표시</span>
       </span>
     </div>
+    ${renderPaginationBar(pageData.page, pageData.totalPages, pageData.total, { compact: true })}
     <div class="table-wrap">
       <table>
         <thead>
@@ -3372,8 +3407,15 @@ function renderFolderBreadcrumb(batchId, count) {
 }
 
 // ── 페이지네이션 바 (게시판 스타일 1 · 2 · 3 · ... · N) ────────
-function renderPaginationBar(current, totalPages, totalItems) {
+/**
+ * 페이지 이동 바.
+ *
+ * 표 아래에만 두면 50줄을 스크롤해야 나와서 "다음 장으로 가는 버튼이 없다" 고 느낀다.
+ * 그래서 표 위에도 같은 바를 둔다(compact: 페이지 입력칸 없이 화살표만 — id 중복 방지).
+ */
+function renderPaginationBar(current, totalPages, totalItems, opts) {
   if (totalPages <= 1) return '';
+  const compact = opts && opts.compact === true;
 
   // 페이지 번호 리스트 계산 — 현재 페이지 주변 + 처음/끝 + 생략(...)
   //  예: [1, ..., 4, 5, 6, ..., 45]
@@ -3401,20 +3443,27 @@ function renderPaginationBar(current, totalPages, totalItems) {
     prev = p;
   }
 
+  // 표 위에 붙는 바는 페이지 입력칸을 빼서 id 중복을 피한다
+  const jumpHtml = compact
+    ? `<span style="margin-left:10px;font-size:12px;color:var(--text-tertiary)">${current} / ${totalPages} 페이지</span>`
+    : `<span style="margin-left:12px;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-tertiary)">
+         <span>페이지</span>
+         <input id="pageJumpInput" type="number" min="1" max="${totalPages}" value="${current}"
+           style="width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;
+                  text-align:center;background:var(--surface-1);color:var(--text-primary)"
+           title="페이지 번호 입력 후 Enter">
+         <span>/ ${totalPages}</span>
+       </span>`;
+
   return `
-    <div style="margin-top:16px;padding:12px;display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap">
+    <div style="${compact ? 'margin:0 0 10px' : 'margin-top:16px'};padding:${compact ? '8px' : '12px'};
+                display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap">
       ${pageBtn(1, '⏮', false, current === 1)}
       ${pageBtn(current - 1, '◀', false, current === 1)}
       ${itemsHtml}
       ${pageBtn(current + 1, '▶', false, current === totalPages)}
       ${pageBtn(totalPages, '⏭', false, current === totalPages)}
-      <span style="margin-left:12px;display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-tertiary)">
-        <span>페이지</span>
-        <input id="pageJumpInput" type="number" min="1" max="${totalPages}" value="${current}"
-          style="width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;text-align:center"
-          title="페이지 번호 입력 후 Enter">
-        <span>/ ${totalPages}</span>
-      </span>
+      ${jumpHtml}
     </div>
   `;
 }
@@ -3461,6 +3510,7 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
         </select>
       </span>
     </div>
+    ${renderPaginationBar(page, totalPages, leads.length, { compact: true })}
     <div class="table-wrap">
       <table>
         <thead>
@@ -3596,7 +3646,7 @@ function renderMissingEmails(leads) {
             <tr data-id="${escapeHtml(lead.id)}">
               <td><strong>${escapeHtml(lead.Company)}</strong><div class="meta-line">${escapeHtml(truncate(lead.Type, 70))}</div></td>
               <td>${escapeHtml(lead.Country)}</td>
-              <td>${lead.WebsiteContact ? `<a href="${escapeAttr(urlFor(lead.WebsiteContact))}" target="_blank" rel="noreferrer">Open Site</a>` : ""}</td>
+              <td>${websiteLinkHtml(lead.WebsiteContact, { short: true })}</td>
               <td>${escapeHtml(truncate([lead.BuyerContact, lead.RoleMemo, lead.Phone].filter(Boolean).join(" · "), 110))}</td>
               <td>
                 <div class="inline-save">
@@ -3817,28 +3867,30 @@ function initImportHistoryModal() {}
 
 // stage 색상 매핑 (label 은 사용자 친화 문장)
 const STAGE_STYLE = {
-  imported:    { bg: '#f1f5f9', fg: '#475569', label: '📥 가져오기' },
-  verifying:   { bg: '#fef9c3', fg: '#854d0e', label: '🔍 검증 대기' },
-  verified:    { bg: '#dcfce7', fg: '#166534', label: '✅ 발송 대기' },
-  contacted:   { bg: '#dbeafe', fg: '#1e40af', label: '📨 메일 발송함' },
-  replied:     { bg: '#e0e7ff', fg: '#3730a3', label: '💬 답장 받음' },
-  negotiating: { bg: '#fed7aa', fg: '#9a3412', label: '🤝 대화 진행 중' },
-  partner:     { bg: '#f3e8ff', fg: '#6b21a8', label: '⭐ 파트너십 확정' },
-  archived:    { bg: '#f3f4f6', fg: '#6b7280', label: '📦 보관함' },
-  failed:      { bg: '#fee2e2', fg: '#991b1b', label: '🚫 검증 실패' },
+  imported:      { bg: '#f1f5f9', fg: '#475569', label: '📥 가져오기' },
+  'ai-searched': { bg: '#ede9fe', fg: '#5b21b6', label: '🤖 AI 서칭' },
+  verifying:     { bg: '#fef9c3', fg: '#854d0e', label: '🔍 검증 대기' },
+  verified:      { bg: '#dcfce7', fg: '#166534', label: '✅ 발송 대기' },
+  contacted:     { bg: '#dbeafe', fg: '#1e40af', label: '📨 메일 발송함' },
+  replied:       { bg: '#e0e7ff', fg: '#3730a3', label: '💬 답장 받음' },
+  negotiating:   { bg: '#fed7aa', fg: '#9a3412', label: '🤝 대화 진행 중' },
+  partner:       { bg: '#f3e8ff', fg: '#6b21a8', label: '⭐ 파트너십 확정' },
+  archived:      { bg: '#f3f4f6', fg: '#6b7280', label: '📦 보관함' },
+  failed:        { bg: '#fee2e2', fg: '#991b1b', label: '🚫 검증 실패' },
 };
-const STAGE_ORDER = ['imported','verifying','verified','contacted','replied','negotiating','partner','archived','failed'];
+const STAGE_ORDER = ['imported','ai-searched','verifying','verified','contacted','replied','negotiating','partner','archived','failed'];
 
 // 각 stage 에서 실무적으로 자주 이동하는 다음 단계들 (원클릭 버튼)
 const STAGE_QUICK_MOVES = {
-  imported:    ['verifying', 'archived'],
-  verifying:   ['verified', 'archived'],
-  verified:    ['contacted', 'partner', 'archived'],
-  contacted:   ['replied', 'archived'],
-  replied:     ['negotiating', 'partner', 'archived'],
-  negotiating: ['partner', 'archived'],
-  partner:     ['negotiating', 'archived'],
-  archived:    ['verified', 'verifying', 'imported'],
+  imported:      ['verifying', 'archived'],
+  'ai-searched': ['verifying', 'verified', 'archived'],  // AI 발굴 후보 → 검증대기 승격 / 즉시 발송대기 / 제외
+  verifying:     ['verified', 'archived'],
+  verified:      ['contacted', 'partner', 'archived'],
+  contacted:     ['replied', 'archived'],
+  replied:       ['negotiating', 'partner', 'archived'],
+  negotiating:   ['partner', 'archived'],
+  partner:       ['negotiating', 'archived'],
+  archived:      ['verified', 'verifying', 'imported'],
 };
 
 // 리드 발송 횟수 배지 (emailHistory 중 status='sent' 만 카운트)
@@ -3870,12 +3922,15 @@ function stageCellHtml(lead) {
     const t = STAGE_STYLE[target];
     // 짧은 라벨 (이모지 + 첫 단어)
     const shortLabel = t.label.replace(/^([^\s]+)\s(.+)$/, '$1 $2');
+    // ⚠️ 인라인 onclick 으로 stopPropagation 을 하면 안 된다.
+    //    클릭 핸들러가 document 에 위임 등록돼 있어서, 여기서 전파를 끊으면
+    //    핸들러가 아예 호출되지 않는다 (버튼이 먹통이 된다).
+    //    행 클릭 차단은 위임 핸들러 안에서 stopPropagation 으로 처리한다.
     return `<button
       type="button"
       class="stage-quick-move"
       data-quick-lead="${escapeAttr(lead.id)}"
       data-quick-target="${target}"
-      onclick="event.stopPropagation()"
       title="${t.label}로 이동"
       style="padding:2px 6px;font-size:10px;border:1px solid ${t.fg}30;border-radius:99px;background:${t.bg};color:${t.fg};font-weight:600;cursor:pointer;white-space:nowrap;line-height:1.4"
     >→ ${shortLabel}</button>`;
@@ -3893,6 +3948,1972 @@ function stageCellHtml(lead) {
       ${sendCountBadgeHtml(lead)}
     </div>
   `;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  메일함 — 외부 B2B 메일 관리 도구를 대체하는 화면들
+//  파이프라인이 '회사' 중심이라면 여기는 '메일' 중심이다.
+//  리드에 매칭되지 않은 메일까지 전부 여기서 본다.
+// ══════════════════════════════════════════════════════════════
+
+// accountId: 어느 메일함을 볼지. 'all' 이면 등록된 계정 전부.
+// 등록된 발송 계정(MailAccount)이 곧 수신 계정이다 — 이카운트는 자격증명이 같다.
+var _inboxState = { page: 1, classification: '', q: '', linked: '', accountId: 'all', group: '' };
+var _mailAccountsCache = null;
+var _mailGroupsCache = null;
+
+// 거래처(폴더) 목록 — 대표가 메일함에서 나눠둔 폴더가 그대로 온다
+async function loadMailGroups(force) {
+  if (!force && _mailGroupsCache) return _mailGroupsCache;
+  try {
+    const acc = _inboxState.accountId || 'all';
+    const r = await safeJsonFetch(`/api/mail/groups?accountId=${encodeURIComponent(acc)}`);
+    if (r && r.success) { _mailGroupsCache = r; return r; }
+  } catch (e) { console.warn('mail-groups', e); }
+  return null;
+}
+
+// ⚠️ 이름을 loadMailAccounts 로 두면 안 된다.
+//    아래쪽(계정 관리 화면)에 같은 이름의 함수가 또 있어서 이게 통째로 덮인다.
+//    둘은 부르는 API 도(/api/mail/accounts vs /api/mail-accounts) 반환 모양도
+//    (객체 {accounts,legacyCount} vs 배열) 달라서, 덮이면 메일함이 배열을 받고
+//    accInfo.accounts 가 undefined 가 된다 — "등록된 계정 없음" 이 뜨던 원인.
+async function loadInboxAccounts(force) {
+  if (!force && _mailAccountsCache) return _mailAccountsCache;
+  try {
+    const r = await safeJsonFetch('/api/mail/accounts');
+    if (r && r.success) {
+      _mailAccountsCache = r;
+      return r;
+    }
+  } catch (e) { console.warn('mail-accounts', e); }
+  return null;
+}
+
+const MAIL_CLASS = {
+  b2b:        { label: '💼 B2B 거래', bg: '#dcfce7', fg: '#166534' },
+  inquiry:    { label: '❓ 문의·견적', bg: '#dbeafe', fg: '#1e40af' },
+  partner:    { label: '🤝 제휴',     bg: '#e0e7ff', fg: '#3730a3' },
+  newsletter: { label: '📰 뉴스레터', bg: '#fef3c7', fg: '#92400e' },
+  ad:         { label: '📢 광고',     bg: '#fee2e2', fg: '#991b1b' },
+  system:     { label: '⚙ 자동발송',  bg: '#f1f5f9', fg: '#64748b' },
+  unknown:    { label: '· 미분류',    bg: '#f8fafc', fg: '#475569' },
+};
+
+async function renderInboxPage(opts) {
+  const needsReplyOnly = opts && opts.needsReplyOnly === true;
+  els.content.innerHTML = `<div class="inline-loader">메일함 불러오는 중…</div>`;
+
+  const params = new URLSearchParams({
+    page: String(_inboxState.page),
+    limit: '50',
+  });
+  if (needsReplyOnly) params.set('needsReply', '1');
+  if (_inboxState.classification) params.set('classification', _inboxState.classification);
+  if (_inboxState.q) params.set('q', _inboxState.q);
+  if (_inboxState.linked) params.set('linked', _inboxState.linked);
+  if (_inboxState.accountId) params.set('accountId', _inboxState.accountId);
+  if (_inboxState.group) params.set('group', _inboxState.group);
+
+  const [accInfo, groupInfo] = await Promise.all([loadInboxAccounts(), loadMailGroups()]);
+
+  let data;
+  try {
+    data = await safeJsonFetch(`/api/mail/inbox?${params.toString()}`);
+  } catch (e) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+    return;
+  }
+  if (!data || !data.success) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>조회 실패</h3><p>${escapeHtml(data?.error || '알 수 없는 오류')}</p></div>`;
+    return;
+  }
+
+  const items = data.items || [];
+  const total = data.total || 0;
+  const totalPages = Math.max(1, Math.ceil(total / 50));
+
+  const dt = (v) => {
+    if (!v) return '';
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    return sameDay
+      ? d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' });
+  };
+
+  // 수집이 한 번도 안 돌았으면 빈 목록 대신 다음 행동을 알려준다
+  if (!total && !_inboxState.q && !_inboxState.classification) {
+    els.content.innerHTML = `
+      <div class="empty-detail">
+        <h3>${needsReplyOnly ? '회신이 필요한 메일이 없습니다' : '수집된 메일이 없습니다'}</h3>
+        <p>${needsReplyOnly
+          ? '상대가 질문이나 요청을 보내면 여기에 모입니다.'
+          : '이카운트 메일함에서 아직 메일을 가져오지 않았습니다.'}</p>
+        ${needsReplyOnly ? '' : `
+          <div style="margin-top:16px;display:flex;gap:8px;justify-content:center">
+            <button class="button" id="inboxIngestBtn" type="button">📥 지금 메일 가져오기</button>
+            <button class="button secondary" data-goto-view="tool-mail-settings" type="button">🔌 수신 설정</button>
+          </div>`}
+      </div>`;
+    bindInboxActions();
+    return;
+  }
+
+  const filterChip = (label, key, val) => {
+    const active = _inboxState[key] === val;
+    return `<button type="button" class="inbox-filter" data-filter-key="${key}" data-filter-val="${escapeAttr(val)}"
+      style="padding:5px 12px;font-size:12px;border-radius:99px;cursor:pointer;font-weight:600;
+             border:1px solid ${active ? 'var(--brand)' : 'var(--border-default)'};
+             background:${active ? 'var(--brand-soft)' : 'var(--bg-surface)'};
+             color:${active ? 'var(--brand-text)' : 'var(--text-secondary)'}">${label}</button>`;
+  };
+
+  const rows = items.map((m) => {
+    const cls = MAIL_CLASS[m.classification] || MAIL_CLASS.unknown;
+    const from = m.from || {};
+    const threadBadge = (m.threadCount || 1) > 1
+      ? `<span style="background:var(--bg-surface-alt);color:var(--text-tertiary);border-radius:99px;
+                     padding:1px 7px;font-size:10px;font-weight:700;margin-left:6px">${m.threadCount}통</span>`
+      : '';
+    const needsReply = m.analysis && m.analysis.needsReply;
+    const deadline = m.threadDeadline || (m.analysis && m.analysis.deadline);
+    // 리드에 연결된 메일은 그 회사의 대화로 바로 갈 수 있게 한다
+    const leadLink = m.leadId
+      ? `<button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(m.leadId)}"
+           style="padding:2px 8px;font-size:10px;border:1px solid #16a34a;border-radius:99px;
+                  background:#16a34a;color:#fff;font-weight:700;cursor:pointer;white-space:nowrap">
+           💬 리드 대화</button>`
+      : `<span style="font-size:10px;color:var(--text-quaternary)">리드 미연결</span>`;
+
+    return `
+      <tr class="inbox-row" data-mail-id="${escapeAttr(String(m._id))}" style="cursor:pointer">
+        <td style="white-space:nowrap;color:var(--text-tertiary);font-size:12px">${dt(m.date)}</td>
+        <td>
+          <div style="font-weight:600;color:var(--text-primary);font-size:13px">
+            ${escapeHtml(from.name || from.address || '(발신자 없음)')}
+          </div>
+          <div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(from.address || '')}</div>
+        </td>
+        <td>
+          <div style="color:var(--text-primary);font-size:13px">
+            ${m.group ? `<span style="background:var(--bg-surface-alt);color:var(--text-secondary);
+                          border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700;margin-right:5px"
+                          title="거래처 · ${escapeAttr(m.groupBy || '')}">📁 ${escapeHtml(m.group)}</span>` : ''}
+            ${escapeHtml(String(m.subject || '(제목 없음)').slice(0, 70))}${threadBadge}
+          </div>
+          ${m.analysis?.summary ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(String(m.analysis.summary).slice(0, 90))}</div>` : ''}
+        </td>
+        <td style="white-space:nowrap">
+          <span style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${cls.label}</span>
+        </td>
+        <td style="white-space:nowrap">
+          ${m.status === 'replied'
+            ? `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700"
+                 title="${m.repliedOutside ? '이카운트 웹메일에서 답한 것을 보낸메일함에서 확인했습니다' : '앱에서 회신했습니다'}">
+                 ✅ 회신함${m.repliedOutside ? ' (웹메일)' : ''}</span>`
+            : needsReply
+              ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">⚠ 회신 필요</span>`
+              : '<span style="color:var(--text-quaternary);font-size:11px">—</span>'}
+          ${deadline ? `<div style="font-size:10px;color:#b45309;margin-top:3px">기한 ${dt(deadline)}</div>` : ''}
+        </td>
+        <td style="white-space:nowrap">${leadLink}</td>
+      </tr>`;
+  }).join('');
+
+  // ── 계정 선택 탭 ──
+  // 등록된 계정이 하나뿐이면 굳이 보여주지 않는다 (선택지가 없는 선택기는 잡음이다)
+  const accounts = accInfo?.accounts || [];
+
+  // 처음 열 때는 기본 계정을 잡아준다. 'all' 로 두면 "지금 누구 메일함을
+  // 보고 있는지"가 흐려지는데, 대표 계정에 메일이 몰려 있어 더 헷갈린다.
+  // 사용자가 탭을 눌러 고른 뒤에는(accountPicked) 건드리지 않는다.
+  if (!_inboxState.accountPicked && _inboxState.accountId === 'all' && accounts.length) {
+    const def = accounts.find((a) => a.isDefault) || accounts[0];
+    if (def) _inboxState.accountId = def.accountId;
+  }
+  const accountTabs = accounts.length > 1 ? `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--text-tertiary);font-weight:700;margin-right:2px">메일함</span>
+      ${[{ accountId: 'all', label: '전체', address: '', mailCount: accounts.reduce((a, x) => a + (x.mailCount || 0), 0) }]
+        .concat(accounts)
+        .map((a) => {
+          const active = _inboxState.accountId === a.accountId;
+          return `<button type="button" class="inbox-account" data-account-id="${escapeAttr(a.accountId)}"
+            title="${escapeAttr(a.address || '등록된 계정 전체')}"
+            style="padding:5px 12px;font-size:12px;border-radius:8px;cursor:pointer;font-weight:600;
+                   border:1px solid ${active ? 'var(--brand)' : 'var(--border-default)'};
+                   background:${active ? 'var(--brand-soft)' : 'var(--bg-surface)'};
+                   color:${active ? 'var(--brand-text)' : 'var(--text-secondary)'}">
+            ${escapeHtml(a.label)}${a.isDefault ? ' ✓' : ''}
+            <span style="opacity:.65;font-weight:400">${a.mailCount || 0}</span>
+          </button>`;
+        }).join('')}
+      ${accInfo?.legacyCount
+        ? `<span style="font-size:11px;color:var(--text-quaternary)"
+             title="계정 구분 없이 수집된 옛 메일입니다. 다시 수집하면 계정이 붙습니다.">
+             · 계정 미분류 ${accInfo.legacyCount}통</span>`
+        : ''}
+    </div>` : '';
+
+  // ── 지금 어느 메일함을 보고 있는가 ──
+  // 계정 탭은 등록 계정이 2개 이상일 때만 뜨기 때문에, 탭이 없으면 화면 어디에도
+  // "지금 보고 있는 주소"가 적혀 있지 않았다. 남의 메일함을 자기 것으로 착각한 채
+  // 회신 필요 건수를 읽는 일이 생길 수 있어, 주소를 항상 맨 위에 박아둔다.
+  const curAcc = accounts.find((a) => a.accountId === _inboxState.accountId);
+  const viewingLabel = curAcc
+    ? (curAcc.address || curAcc.label)
+    : (accounts.map((a) => a.address).filter(Boolean).join('  ·  ') || '등록된 계정 없음');
+  const viewingBanner = `
+    <div style="display:flex;align-items:center;gap:11px;margin-bottom:10px;padding:10px 14px;
+                background:var(--brand-soft,#eef2ff);border:1px solid var(--brand,#c7d2fe);border-radius:10px">
+      <span style="font-size:18px">📬</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:10.5px;font-weight:800;letter-spacing:.5px;
+                    color:var(--brand-text,#4338ca);text-transform:uppercase">현재 확인 중인 메일함</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text-primary);line-height:1.35;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${escapeHtml(viewingLabel)}${curAcc ? '' : (accounts.length > 1 ? '  (전체)' : '')}
+        </div>
+      </div>
+      ${accounts.length > 1
+        ? `<span style="font-size:11px;color:var(--text-tertiary);white-space:nowrap">아래 탭에서 전환 ↓</span>`
+        : ''}
+    </div>`;
+
+  // ── 거래처 폴더 목록 (좌측) ──
+  // 대표가 메일함에서 나눠둔 폴더가 그대로 온다. 새 메일은 수집 시점에
+  // 발신자 이력·제목으로 같은 폴더에 자동 분류된다 (AI 없이 무료).
+  const groups = groupInfo?.groups || [];
+  const ungrouped = groupInfo?.ungrouped || 0;
+  const folderItem = (label, value, count, fresh, icon) => {
+    const active = _inboxState.group === value;
+    return `<button type="button" class="inbox-group" data-group="${escapeAttr(value)}"
+      style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:7px 10px;
+             font-size:12.5px;border:none;border-radius:7px;cursor:pointer;margin-bottom:2px;
+             background:${active ? 'var(--brand-soft)' : 'transparent'};
+             color:${active ? 'var(--brand-text)' : 'var(--text-secondary)'};
+             font-weight:${active ? '700' : '500'}">
+      <span style="width:16px;flex-shrink:0">${icon}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(label)}</span>
+      ${fresh ? `<span style="background:#fee2e2;color:#991b1b;border-radius:99px;padding:0 6px;
+                   font-size:10px;font-weight:800">${fresh}</span>` : ''}
+      <span style="color:var(--text-quaternary);font-size:11px">${count}</span>
+    </button>`;
+  };
+
+  const folderPanel = `
+    <aside style="width:210px;flex-shrink:0;background:var(--bg-surface);border:1px solid var(--border-subtle);
+                  border-radius:12px;padding:10px;align-self:flex-start;max-height:72vh;overflow:auto">
+      <div style="font-size:10px;font-weight:800;color:var(--text-tertiary);padding:2px 10px 8px;
+                  text-transform:uppercase;letter-spacing:.5px">거래처 폴더</div>
+      ${folderItem('전체', '', total, 0, '📬')}
+      ${groups.map((g) => folderItem(g.group, g.group, g.total, g.fresh, '📁')).join('')}
+      ${ungrouped ? folderItem('미분류', '__none__', ungrouped, 0, '❔') : ''}
+      <div style="border-top:1px solid var(--border-subtle);margin-top:8px;padding-top:8px">
+        <button type="button" id="inboxRegroupBtn"
+          style="width:100%;padding:6px;font-size:11px;border:1px solid var(--border-default);
+                 border-radius:7px;background:var(--bg-surface);color:var(--text-secondary);cursor:pointer"
+          title="폴더로 분류된 메일에서 '이 발신자는 이 거래처'를 배워 미분류 메일에 적용합니다. AI를 쓰지 않아 비용이 없습니다.">
+          🔄 거래처 재분류 (무료)
+        </button>
+        <div style="font-size:10px;color:var(--text-quaternary);margin-top:6px;line-height:1.4">
+          새 메일은 수집할 때 발신자·제목으로 자동 분류됩니다.
+        </div>
+      </div>
+    </aside>`;
+
+  els.content.innerHTML = `
+    ${viewingBanner}
+    ${accountTabs}
+    <div style="display:flex;gap:14px;align-items:flex-start">
+    ${folderPanel}
+    <div style="flex:1;min-width:0">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <input id="inboxSearch" type="search" placeholder="제목·발신자 검색" value="${escapeAttr(_inboxState.q)}"
+        style="padding:7px 12px;font-size:13px;border:1px solid var(--border-default);border-radius:8px;
+               background:var(--bg-surface);color:var(--text-primary);min-width:220px">
+      ${filterChip('전체', 'classification', '')}
+      ${filterChip('💼 B2B·문의', 'classification', 'b2b,inquiry,partner')}
+      ${filterChip('· 미분류', 'classification', 'unknown')}
+      ${filterChip('📢 광고·자동', 'classification', 'ad,system,newsletter')}
+      <span style="width:1px;height:20px;background:var(--border-default)"></span>
+      ${filterChip('리드 연결됨', 'linked', '1')}
+      ${filterChip('미연결', 'linked', '0')}
+      <button class="button secondary" id="inboxIngestBtn" type="button" style="margin-left:auto">📥 메일 가져오기</button>
+      <!-- [🧠 AI 분석] 은 뺐다 — 한 번에 N통을 유료 분석하는 버튼이라 비용이 예측되지 않는다.
+           분석 결과(한글 번역·요약·기한)를 *보는* 기능은 그대로다. 분석 자체는 개발자 쪽에서
+           일괄로 돌려 DB 에 넣는다. 되살리려면 아래 주석을 풀면 된다 (핸들러는 살아 있다).
+      <button class="button secondary" id="inboxAnalyzeBtn" type="button" title="한글 번역 + 요약 + 기한 추출 (유료)">🧠 AI 분석</button>
+      -->
+    </div>
+
+    <div style="margin-bottom:10px;font-size:12px;color:var(--text-tertiary);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span>총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>개 대화
+      ${needsReplyOnly ? ' · 회신 필요만' : ''}
+      ${_inboxState.group ? ` · 📁 ${escapeHtml(_inboxState.group === '__none__' ? '미분류' : _inboxState.group)}` : ''}</span>
+      <span id="inboxAiStatus" style="color:var(--text-quaternary)"></span>
+    </div>
+
+    ${renderPaginationBar(data.page, totalPages, total, { compact: true })}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>받은 시각</th><th>발신자</th><th>제목</th><th>분류</th><th>상태</th><th>리드</th>
+          </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-tertiary);padding:32px">조건에 맞는 메일이 없습니다.</td></tr>'}</tbody>
+      </table>
+    </div>
+    ${renderPaginationBar(data.page, totalPages, total)}
+    </div>
+    </div>
+  `;
+
+  bindInboxActions();
+  els.content.querySelectorAll('.page-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const t = parseInt(btn.dataset.page, 10);
+      if (isNaN(t) || t === data.page) return;
+      _inboxState.page = Math.min(Math.max(1, t), totalPages);
+      render();
+    });
+  });
+}
+
+function bindInboxActions() {
+  // 계정 전환 — 목록·배지가 모두 그 계정 기준으로 바뀐다
+  els.content.querySelectorAll('.inbox-account').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _inboxState.accountId = btn.dataset.accountId;
+      _inboxState.accountPicked = true;   // 사용자가 직접 골랐으면 기본계정으로 되돌리지 않는다
+      _inboxState.page = 1;
+      _inboxState.group = '';       // 계정이 바뀌면 폴더 선택도 초기화
+      _mailGroupsCache = null;      // 폴더 목록은 계정별로 다르다
+      loadMailCounts(true);
+      render();
+    });
+  });
+
+  // 거래처 폴더 선택
+  els.content.querySelectorAll('.inbox-group').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _inboxState.group = btn.dataset.group;
+      _inboxState.page = 1;
+      render();
+    });
+  });
+
+  // 거래처 재분류 — 학습 기반 · AI 미사용이라 비용이 없다
+  els.content.querySelector('#inboxRegroupBtn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = '분류 중…';
+    try {
+      const r = await safeJsonFetch('/api/mail/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: _inboxState.accountId || 'all' }),
+      });
+      alert(
+        `미분류 ${r.scanned}통 검사 → ${r.classified}통 분류\n\n`
+        + `· 발신자 이력으로 ${r.bySender}통\n`
+        + `· 제목의 거래처명으로 ${r.byName}통\n\n`
+        + `학습된 발신자 ${r.learnedSenders}명 · 거래처 ${r.knownGroups}곳`,
+      );
+      _mailGroupsCache = null;
+      render();
+    } catch (err) {
+      alert(`재분류 실패: ${err.message || err}`);
+      btn.disabled = false;
+      btn.textContent = '🔄 거래처 재분류 (무료)';
+    }
+  });
+
+  els.content.querySelectorAll('.inbox-filter').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.filterKey;
+      const v = btn.dataset.filterVal;
+      // 같은 값을 다시 누르면 해제
+      _inboxState[k] = _inboxState[k] === v ? '' : v;
+      _inboxState.page = 1;
+      render();
+    });
+  });
+  const search = els.content.querySelector('#inboxSearch');
+  if (search) {
+    search.addEventListener('change', (e) => {
+      _inboxState.q = e.target.value.trim();
+      _inboxState.page = 1;
+      render();
+    });
+  }
+  els.content.querySelector('#inboxIngestBtn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = '가져오는 중…';
+    try {
+      const r = await safeJsonFetch('/api/mail/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // 지금 보고 있는 메일함을 수집한다 ('전체' 면 등록된 계정 모두)
+        body: JSON.stringify({ accountId: _inboxState.accountId || 'all' }),
+      });
+      const s = r.summary || {};
+      const msg = `조회 ${s.fetched || 0} · 신규 ${s.inserted || 0} · 리드 매칭 ${s.matched || 0}`
+        + (s.movedToReplied ? ` · 답장옴 이동 ${s.movedToReplied}` : '');
+      // 실패 건수는 반드시 노출한다 — 신규 건수만 보면 전량 실패해도 정상처럼 읽힌다
+      alert(r.errors?.length ? `${msg}\n\n⚠ 오류 ${r.errors.length}건:\n${r.errors.join('\n')}` : msg);
+      invalidateServerPage?.();
+      _inboxState.page = 1;
+      render();
+    } catch (err) {
+      alert(`수집 실패: ${err.message || err}`);
+      btn.disabled = false;
+      btn.textContent = '📥 메일 가져오기';
+    }
+  });
+  els.content.querySelectorAll('[data-goto-view]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.view = btn.dataset.gotoView;
+      render();
+    });
+  });
+
+  // ── AI 분석 대기 통수·예상 비용 표시 (조회는 과금 없음) ──
+  const statusEl = els.content.querySelector('#inboxAiStatus');
+  const analyzeBtn = els.content.querySelector('#inboxAnalyzeBtn');
+  if (statusEl && analyzeBtn) {
+    safeJsonFetch('/api/mail/analyze').then((r) => {
+      if (!r || !r.success) return;
+      if (!r.hasApiKey) {
+        statusEl.textContent = '· AI 미설정 (ANTHROPIC_API_KEY 없음)';
+        analyzeBtn.disabled = true;
+        return;
+      }
+      if (!r.pendingTotal) {
+        statusEl.textContent = '· AI 분석 대기 없음';
+        analyzeBtn.disabled = true;
+        return;
+      }
+      // 실행 전에 금액을 먼저 보여준다 — 눌러보고 나서 비용을 알게 되면 안 된다
+      statusEl.textContent =
+        `· AI 분석 대기 ${r.pendingTotal}통 (이번 ${r.batchSize}통 · 예상 ₩${r.estimate.krw} · ${r.estimate.modelLabel})`;
+      analyzeBtn.dataset.batch = String(r.batchSize);
+      analyzeBtn.dataset.krw = String(r.estimate.krw);
+    }).catch(() => { /* AI 미설정이어도 메일함은 동작해야 한다 */ });
+
+    analyzeBtn.addEventListener('click', async () => {
+      const n = analyzeBtn.dataset.batch || '?';
+      const won = analyzeBtn.dataset.krw || '?';
+      if (!confirm(`${n}통을 AI 분석합니다.\n한글 번역 + 요약 + 기한 추출\n\n예상 비용: ₩${won}\n\n진행할까요?`)) return;
+      analyzeBtn.disabled = true;
+      analyzeBtn.textContent = '분석 중…';
+      try {
+        const r = await safeJsonFetch('/api/mail/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        const fails = (r.results || []).filter((x) => x.error);
+        alert(
+          `분석 ${r.analyzed}통 · 실패 ${r.failed}통 · 남은 ${r.remaining}통\n실제 비용 ₩${r.totalKrw}`
+          + (fails.length ? `\n\n⚠ 실패 사유:\n${fails.slice(0, 3).map((x) => x.error).join('\n')}` : ''),
+        );
+        render();
+      } catch (e) {
+        alert(`분석 실패: ${e.message || e}`);
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = '🧠 AI 분석';
+      }
+    });
+  }
+}
+
+// ── 기한 관리 ─────────────────────────────────────────────────
+// 회신 기한은 로컬 분석(무료)에서도 추출되므로 AI 크레딧 없이 동작한다.
+async function renderDeadlinesPage() {
+  els.content.innerHTML = `<div class="inline-loader">기한 불러오는 중…</div>`;
+  let data;
+  try {
+    data = await safeJsonFetch('/api/mail/deadlines');
+  } catch (e) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+    return;
+  }
+  if (!data || !data.success) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>조회 실패</h3><p>${escapeHtml(data?.error || '')}</p></div>`;
+    return;
+  }
+
+  const g = data.groups || {};
+  const dday = (v) => {
+    const d = new Date(v);
+    const days = Math.ceil((d.setHours(12, 0, 0, 0) - new Date().setHours(12, 0, 0, 0)) / 86400000);
+    if (days < 0) return { text: `${Math.abs(days)}일 지남`, color: '#b91c1c' };
+    if (days === 0) return { text: '오늘', color: '#b91c1c' };
+    if (days <= 3) return { text: `D-${days}`, color: '#c2410c' };
+    return { text: `D-${days}`, color: '#475569' };
+  };
+
+  const section = (title, items, tone) => {
+    if (!items.length) return '';
+    return `
+      <div style="margin-bottom:22px">
+        <h3 style="font-size:14px;margin-bottom:8px;color:${tone}">${title} <span style="color:var(--text-tertiary);font-weight:400">${items.length}건</span></h3>
+        <div class="table-wrap"><table><tbody>
+          ${items.map((m) => {
+            const d = dday(m.deadline);
+            return `<tr>
+              <td style="width:92px;white-space:nowrap;font-weight:800;color:${d.color}">${d.text}</td>
+              <td style="width:110px;white-space:nowrap;color:var(--text-tertiary);font-size:12px">
+                ${new Date(m.deadline).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}
+              </td>
+              <td>
+                <div style="font-size:13px;color:var(--text-primary)">${escapeHtml(String(m.subject || '').slice(0, 70))}</div>
+                <div style="font-size:11px;color:var(--text-tertiary)">
+                  ${escapeHtml(m.from?.address || '')}
+                  ${m.deadlineText ? ` · "${escapeHtml(m.deadlineText)}"` : ''}
+                </div>
+              </td>
+              <td style="width:150px">${m.leadId
+                ? `<button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(m.leadId)}"
+                     style="padding:3px 9px;font-size:11px;border:1px solid #16a34a;border-radius:99px;
+                            background:#16a34a;color:#fff;font-weight:700;cursor:pointer">💬 ${escapeHtml(String(m.company || '대화').slice(0, 14))}</button>`
+                : '<span style="font-size:11px;color:var(--text-quaternary)">리드 미연결</span>'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody></table></div>
+      </div>`;
+  };
+
+  const totalN = (g.overdue?.length || 0) + (g.soon?.length || 0) + (g.later?.length || 0);
+  els.content.innerHTML = totalN
+    ? `
+      <div style="margin-bottom:16px;font-size:12px;color:var(--text-tertiary)">
+        회신 기한이 잡힌 메일 ${totalN}건 · 기한은 본문에서 자동 추출됩니다.
+      </div>
+      ${section('🔴 기한 지남', g.overdue || [], '#b91c1c')}
+      ${section('🟠 7일 이내', g.soon || [], '#c2410c')}
+      ${section('⚪ 이후', g.later || [], 'var(--text-secondary)')}`
+    : `<div class="empty-detail"><h3>기한이 잡힌 메일이 없습니다</h3>
+         <p>상대가 "by Friday", "3영업일 내" 같은 표현을 쓰면 자동으로 여기에 모입니다.</p></div>`;
+}
+
+// ── AI 번역 (화면 어디서나) ───────────────────────────────────
+//
+// 화면 곳곳에 영문이 그대로 남아 있다 — 메일 제목·본문, 리드 근거 문장 등.
+// 전부 미리 번역해 두면 안 볼 것까지 돈을 내게 되므로 **누른 것만** 번역한다.
+//
+// 쓰는 법: 번역이 필요한 영문 옆에 translateBtnHtml(원문) 을 넣으면 끝이다.
+// 클릭 처리는 아래 위임 핸들러가 맡으므로 화면마다 바인딩할 필요가 없다.
+
+// 같은 문장을 두 번 누르면 돈이 두 번 나간다 → 세션 동안 기억해 둔다
+var _trCache = new Map();
+var _trSeq = 0;
+
+/** 이 문자열이 번역할 만한 외국어인가 (한글이 이미 많으면 버튼을 띄우지 않는다) */
+function needsTranslation(text) {
+  const s = String(text || '').trim();
+  if (s.length < 12) return false;
+  const ko = (s.match(/[가-힣]/g) || []).length;
+  const latin = (s.match(/[A-Za-z]/g) || []).length;
+  return latin > 20 && ko / Math.max(1, ko + latin) < 0.25;
+}
+
+/**
+ * 원문 옆에 붙일 [🌐 AI 번역] 버튼.
+ * @param text  번역할 원문
+ * @param opts  {inline:true} 면 작은 글씨 인라인 버튼
+ */
+function translateBtnHtml(text, opts) {
+  const s = String(text || '');
+  if (!needsTranslation(s)) return '';
+  const id = 'tr' + (++_trSeq);
+  // 원문을 DOM 에 실어두면 클릭 시 다시 찾을 필요가 없다
+  window.__trText = window.__trText || {};
+  window.__trText[id] = s;
+  const small = opts && opts.inline;
+  return `<button type="button" class="ai-translate-btn" data-tr-id="${id}"
+    style="margin-left:6px;padding:${small ? '1px 7px' : '3px 9px'};font-size:${small ? '10.5' : '11'}px;
+           font-weight:700;border:1px solid #c7d2fe;border-radius:99px;background:#eef2ff;
+           color:#4338ca;cursor:pointer;white-space:nowrap;vertical-align:middle"
+    title="이 부분만 AI 로 한국어 번역합니다 (누를 때만 비용 발생)">🌐 AI 번역</button>
+  <div class="ai-translate-out" data-tr-out="${id}" style="display:none;margin-top:6px;padding:9px 11px;
+       background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;font-size:12.5px;
+       line-height:1.65;color:#312e81;white-space:pre-wrap"></div>`;
+}
+
+// 위임 핸들러 — 어느 화면에서 눌러도 동작한다
+document.addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('.ai-translate-btn');
+  if (!btn) return;
+  ev.preventDefault();
+  ev.stopPropagation();          // 메일 행 클릭 등 상위 핸들러가 같이 뜨지 않게
+
+  const id = btn.dataset.trId;
+  const out = document.querySelector(`[data-tr-out="${id}"]`);
+  const text = (window.__trText || {})[id] || '';
+  if (!out || !text) return;
+
+  // 이미 번역해 둔 것이면 다시 부르지 않고 보이기/숨기기만
+  if (out.dataset.done === '1') {
+    const showing = out.style.display !== 'none';
+    out.style.display = showing ? 'none' : '';
+    btn.textContent = showing ? '🌐 AI 번역' : '🇰🇷 번역 숨기기';
+    return;
+  }
+  const cached = _trCache.get(text);
+  if (cached) {
+    out.textContent = cached;
+    out.dataset.done = '1';
+    out.style.display = '';
+    btn.textContent = '🇰🇷 번역 숨기기';
+    return;
+  }
+
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = '번역 중…';
+  try {
+    const r = await safeJsonFetch('/api/ai/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    _trCache.set(text, r.translated);
+    out.textContent = r.translated;
+    out.dataset.done = '1';
+    out.style.display = '';
+    btn.disabled = false;
+    btn.textContent = '🇰🇷 번역 숨기기';
+  } catch (e) {
+    out.style.display = '';
+    out.textContent = `번역 실패: ${e.message || e}`;
+    out.dataset.done = '';
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+});
+
+// ── 기존 데이터 ───────────────────────────────────────────────
+//
+// 클라이언트가 원래 가지고 있던 CSV 업로드분(5천여 건). 대부분 중복 정리로
+// 보관함에 들어가 있지만 지운 것이 아니라, "이건 살려서 보내자" 싶은 걸
+// 골라 발송대기로 되돌릴 수 있게 한다.
+var _legacy = { batch: '', page: 1, q: '', country: '', sel: new Set() };
+
+async function renderLegacyPage() {
+  els.content.innerHTML = `<div class="inline-loader">불러오는 중…</div>`;
+  const p = new URLSearchParams();
+  if (_legacy.batch) {
+    p.set('batch', _legacy.batch);
+    p.set('page', String(_legacy.page));
+    p.set('limit', '50');
+    if (_legacy.q) p.set('q', _legacy.q);
+    if (_legacy.country) p.set('country', _legacy.country);
+  }
+  let d;
+  try {
+    d = await safeJsonFetch(`/api/leads/legacy?${p}`);
+  } catch (e) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+    return;
+  }
+
+  // ── 배치 목록 ──
+  if (d.mode === 'batches') {
+    const dateOf = (b) => {
+      const m = String(b || '').match(/(\d{4})(\d{2})(\d{2})/);
+      return m ? `${m[1]}-${m[2]}-${m[3]}` : '날짜 미상';
+    };
+    els.content.innerHTML = `
+      <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6">
+        예전에 올린 엑셀 데이터입니다. 중복 정리로 대부분 보관함에 있지만 <b>지워진 것은 아닙니다.</b>
+        보낼 만한 곳을 골라 [발송 대기]로 되돌릴 수 있습니다.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        ${d.batches.map((b) => `
+          <div class="legacy-batch" data-batch="${escapeAttr(b._id || '')}"
+               style="border:1px solid var(--border-default);border-radius:12px;padding:15px 18px;
+                      background:var(--bg-surface);cursor:pointer;display:flex;align-items:center;gap:16px">
+            <span style="font-size:26px">📄</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:800;color:var(--text-primary)">${escapeHtml(dateOf(b._id))} 업로드</div>
+              <div style="font-size:11.5px;color:var(--text-tertiary);font-family:monospace">${escapeHtml(b._id || '(배치 없음)')}</div>
+            </div>
+            <div style="text-align:right;font-size:12px;color:var(--text-secondary);white-space:nowrap">
+              <div>이메일 있는 곳 <b style="color:var(--text-primary)">${(b.withEmail || 0).toLocaleString()}</b></div>
+              <div style="font-size:11px;color:var(--text-tertiary)">전체 ${(b.total || 0).toLocaleString()} · 보관 ${(b.archived || 0).toLocaleString()}</div>
+            </div>
+            <span style="color:#2563eb;font-weight:700;font-size:13px">열기 →</span>
+          </div>`).join('')}
+      </div>`;
+    els.content.querySelectorAll('.legacy-batch').forEach((el) => {
+      el.addEventListener('click', () => {
+        _legacy.batch = el.dataset.batch;
+        _legacy.page = 1; _legacy.q = ''; _legacy.country = ''; _legacy.sel.clear();
+        renderLegacyPage();
+      });
+    });
+    return;
+  }
+
+  // ── 배치 안의 리드 목록 ──
+  const totalPages = Math.max(1, Math.ceil(d.total / d.limit));
+  const rows = d.items.map((l) => {
+    const on = _legacy.sel.has(l.leadId);
+    const why = l.dedupReason || l.bulkMoveReason || '';
+    return `<tr>
+      <td style="width:34px"><input type="checkbox" class="lg-check" data-lead="${escapeAttr(l.leadId)}" ${on ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer"></td>
+      <td>
+        <div style="font-size:13px;font-weight:700;color:var(--text-primary)">${escapeHtml(l.Company || '')}</div>
+        <div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(l.Email || '')}</div>
+        ${why ? `<div style="font-size:10.5px;color:var(--text-quaternary)">보관 사유 · ${escapeHtml(String(why).slice(0, 70))}</div>` : ''}
+      </td>
+      <td style="white-space:nowrap;font-size:12px;color:var(--text-secondary)">${escapeHtml(l.Country || '')}</td>
+      <td style="font-size:12px;color:var(--text-secondary)">${escapeHtml(String(l.Type || '').slice(0, 26))}</td>
+      <td>${websiteLinkHtml(l.WebsiteContact, { short: true })}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-tertiary)">${escapeHtml(l.stage || '')}</td>
+    </tr>`;
+  }).join('');
+
+  els.content.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <button class="button secondary" id="lgBack" type="button">← 배치 목록</button>
+      <input id="lgSearch" type="search" placeholder="회사·이메일 검색" value="${escapeAttr(_legacy.q)}"
+        style="padding:7px 12px;font-size:13px;border:1px solid var(--border-default);border-radius:8px;
+               background:var(--bg-surface);color:var(--text-primary);min-width:190px">
+      <select id="lgCountry" style="padding:7px 10px;font-size:13px;border:1px solid var(--border-default);
+              border-radius:8px;background:var(--bg-surface);color:var(--text-primary)">
+        <option value="">전체 국가</option>
+        ${(d.countries || []).map((c) => `<option value="${escapeAttr(c._id || '')}" ${_legacy.country === c._id ? 'selected' : ''}>${escapeHtml(c._id || '(없음)')} (${c.n})</option>`).join('')}
+      </select>
+      <span style="font-size:12px;color:var(--text-tertiary)">총 ${d.total.toLocaleString()}건</span>
+      <button class="button" id="lgMove" type="button" style="margin-left:auto" disabled>
+        선택한 <span id="lgCount">0</span>건 → 발송 대기로
+      </button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th></th><th>회사</th><th>국가</th><th>업종</th><th>웹사이트</th><th>상태</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div id="lgPager"></div>`;
+
+  const syncBtn = () => {
+    const n = _legacy.sel.size;
+    els.content.querySelector('#lgCount').textContent = String(n);
+    els.content.querySelector('#lgMove').disabled = n === 0;
+  };
+  els.content.querySelectorAll('.lg-check').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) _legacy.sel.add(cb.dataset.lead); else _legacy.sel.delete(cb.dataset.lead);
+      syncBtn();
+    });
+  });
+  syncBtn();
+
+  els.content.querySelector('#lgBack').addEventListener('click', () => {
+    _legacy.batch = ''; _legacy.sel.clear(); renderLegacyPage();
+  });
+  let t;
+  els.content.querySelector('#lgSearch').addEventListener('input', (e) => {
+    clearTimeout(t);
+    t = setTimeout(() => { _legacy.q = e.target.value; _legacy.page = 1; renderLegacyPage(); }, 400);
+  });
+  els.content.querySelector('#lgCountry').addEventListener('change', (e) => {
+    _legacy.country = e.target.value; _legacy.page = 1; renderLegacyPage();
+  });
+
+  els.content.querySelector('#lgMove').addEventListener('click', async (e) => {
+    const ids = [..._legacy.sel];
+    if (!confirm(`${ids.length}건을 발송 대기로 옮깁니다.\n\n옮긴 건은 바로 발송 대상이 됩니다.\n진행할까요?`)) return;
+    e.currentTarget.disabled = true;
+    e.currentTarget.textContent = '이동 중…';
+    try {
+      const r = await safeJsonFetch('/api/leads/legacy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: ids }),
+      });
+      alert(`${r.moved}건을 발송 대기로 옮겼습니다.${r.skipped ? `\n(이메일 없는 ${r.skipped}건은 제외)` : ''}\n\n발송 대기 총 ${r.verified}건`);
+      _legacy.sel.clear();
+      invalidateServerPage();
+      loadStageCounts(true);
+      renderLegacyPage();
+    } catch (err) {
+      alert(`이동 실패: ${err.message || err}`);
+      renderLegacyPage();
+    }
+  });
+
+  const pager = els.content.querySelector('#lgPager');
+  if (pager && totalPages > 1) {
+    pager.innerHTML = renderPaginationBar(d.page, totalPages, d.total, { compact: true });
+    pager.querySelectorAll('[data-page]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const t2 = parseInt(b.dataset.page);
+        if (!Number.isNaN(t2)) { _legacy.page = Math.min(Math.max(1, t2), totalPages); renderLegacyPage(); }
+      });
+    });
+  }
+}
+
+// ── 빠른 검토 ─────────────────────────────────────────────────
+//
+// 410건을 표에서 한 줄씩 열고 닫으며 판단하면 지친다.
+// 한 회사를 한 화면에 크게 띄우고, 승인/제외를 누르면 바로 다음으로 넘어간다.
+// 키보드(← 제외 / → 승인 / Enter 웹사이트)로도 되어 마우스를 놓지 않아도 된다.
+//
+// 판단 기준이 흔들리지 않게 서버가 국가순으로 내려준다 —
+// 스웨덴 20곳을 연달아 보는 편이 매번 다른 나라로 튀는 것보다 덜 지친다.
+var _review = { queue: [], idx: 0, remaining: 0, approved: 0, done: 0, busy: false, category: 'all', byCategory: [] };
+
+// 분류 이름 — 화면은 한글, 값은 DB 그대로 (Lead.Category)
+var REVIEW_CATEGORY = {
+  'Distributor':        '유통사',
+  'Brand/Manufacturer': '브랜드·제조사',
+  'Retail Chain':       '리테일 체인',
+  'Online Store':       '온라인몰',
+  'Retailer':           '매장·편집숍',
+  'Clinic':             '클리닉',
+  'Other':              '기타',
+};
+
+async function renderReviewPage() {
+  if (!_review.queue.length || _review.idx >= _review.queue.length) {
+    els.content.innerHTML = `<div class="inline-loader">불러오는 중…</div>`;
+    try {
+      const d = await safeJsonFetch(`/api/leads/review?limit=30&category=${encodeURIComponent(_review.category)}`);
+      _review.queue = d.items || [];
+      _review.idx = 0;
+      _review.remaining = d.remaining || 0;
+      _review.approved = d.approved || 0;
+      _review.byCategory = d.byCategory || [];
+    } catch (e) {
+      els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+      return;
+    }
+  }
+
+  // 분류 탭 — 남은 건수를 같이 보여준다
+  const totalPending = _review.byCategory.reduce((a, c) => a + c.n, 0);
+  const catTab = (val, label, n) => {
+    const on = _review.category === val;
+    return `<button type="button" class="rv-cat" data-cat="${escapeAttr(val)}"
+      style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:99px;cursor:pointer;
+             border:1px solid ${on ? '#2563eb' : 'var(--border-default)'};
+             background:${on ? '#2563eb' : 'var(--bg-surface)'};
+             color:${on ? '#fff' : 'var(--text-secondary)'}">
+      ${escapeHtml(label)} <span style="opacity:.7;font-weight:500">${n}</span></button>`;
+  };
+  const catBar = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <span style="font-size:11px;color:var(--text-tertiary);font-weight:700;margin-right:2px">분류</span>
+      ${catTab('all', '전체', totalPending)}
+      ${_review.byCategory.map((c) => catTab(c._id || 'Other', REVIEW_CATEGORY[c._id] || c._id || '기타', c.n)).join('')}
+    </div>`;
+
+  const lead = _review.queue[_review.idx];
+  if (!lead) {
+    els.content.innerHTML = `
+      ${catBar}
+      <div class="empty-detail" style="padding:44px 24px">
+        <div style="font-size:52px;margin-bottom:10px">🎉</div>
+        <h3>${_review.category === 'all' ? '검토할 회사가 없습니다' : `[${escapeHtml(REVIEW_CATEGORY[_review.category] || _review.category)}] 검토 완료`}</h3>
+        <p>승인된 <b>${_review.approved.toLocaleString()}건</b>은 [✅ 발송 대기]에서 메일을 보낼 수 있습니다.</p>
+        <p style="margin-top:6px">이번에 <b>${_review.done}건</b>을 판단하셨습니다. 위에서 다른 분류를 고르면 이어서 볼 수 있습니다.</p>
+      </div>`;
+    bindReviewCategoryTabs();
+    return;
+  }
+
+  const totalKnown = _review.remaining + _review.done;
+  const pct = totalKnown ? Math.round((_review.done / totalKnown) * 100) : 0;
+  const site = lead.WebsiteContact || '';
+  const row = (label, value) => value
+    ? `<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border-default)">
+         <span style="width:76px;flex:none;font-size:12px;color:var(--text-tertiary);font-weight:700">${label}</span>
+         <span style="font-size:13.5px;color:var(--text-primary);word-break:break-word">${value}</span>
+       </div>` : '';
+
+  els.content.innerHTML = `
+    <div style="max-width:720px;margin:0 auto">
+      ${catBar}
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:800;color:var(--text-primary)">
+          ${_review.done.toLocaleString()} / ${totalKnown.toLocaleString()}
+        </span>
+        <div style="flex:1;height:7px;background:var(--bg-surface-alt);border-radius:99px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:#2563eb;transition:width .2s"></div>
+        </div>
+        <span style="font-size:12px;color:var(--text-tertiary)">승인 ${_review.approved.toLocaleString()}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-quaternary);margin-bottom:14px">
+        ← 제외 · → 승인 · Enter 웹사이트 열기 &nbsp;|&nbsp; 제외해도 지워지지 않고 보관함으로 갑니다
+      </div>
+
+      <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:16px;
+                  padding:24px 26px;box-shadow:0 2px 10px rgba(0,0,0,0.05)">
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:4px">
+          <h2 style="margin:0;font-size:23px;font-weight:800;color:var(--text-primary);line-height:1.25;flex:1">
+            ${escapeHtml(lead.Company || '(회사명 없음)')}
+          </h2>
+          <span style="flex:none;padding:4px 11px;background:var(--bg-surface-alt);border-radius:99px;
+                       font-size:12px;font-weight:700;color:var(--text-secondary)">${escapeHtml(lead.Country || '—')}</span>
+          ${lead.Category ? `<span style="flex:none;padding:4px 11px;background:#eef2ff;border-radius:99px;
+                       font-size:12px;font-weight:700;color:#4338ca">${escapeHtml(REVIEW_CATEGORY[lead.Category] || lead.Category)}</span>` : ''}
+        </div>
+        ${site ? `<a href="${escapeAttr(urlFor(site))}" target="_blank" rel="noreferrer"
+             style="font-size:13px;color:#2563eb;text-decoration:none;word-break:break-all">${escapeHtml(site)} ↗</a>` : ''}
+
+        <div style="margin-top:16px">
+          ${row('이메일', escapeHtml(lead.Email || ''))}
+          ${row('업종', escapeHtml(lead.Type || ''))}
+          ${row('전화', escapeHtml(lead.Phone || ''))}
+          ${row('취급', escapeHtml(String(lead.BrandsChannels || '').slice(0, 300)))}
+        </div>
+
+        ${lead.Evidence ? `
+          <div style="margin-top:16px;padding:13px 15px;background:var(--bg-surface-alt);border-radius:10px">
+            <div style="font-size:10.5px;font-weight:800;color:var(--text-tertiary);
+                        text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">왜 이 회사인가</div>
+            <div style="font-size:13px;line-height:1.65;color:var(--text-secondary);white-space:pre-wrap">${escapeHtml(String(lead.Evidence).slice(0, 700))}</div>
+            ${translateBtnHtml(String(lead.Evidence).slice(0, 700), { inline: true })}
+            ${lead.Sources ? `<div style="margin-top:8px;font-size:11.5px;color:var(--text-quaternary);word-break:break-all">
+              출처 · ${escapeHtml(String(lead.Sources).slice(0, 300))}</div>` : ''}
+          </div>` : ''}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px">
+          <button type="button" id="rvReject" style="padding:14px;border-radius:11px;border:1px solid #fca5a5;
+            background:#fef2f2;color:#b91c1c;font-size:14px;font-weight:800;cursor:pointer">❌ 제외 <span style="opacity:.6;font-weight:500">←</span></button>
+          <button type="button" id="rvApprove" style="padding:14px;border-radius:11px;border:none;
+            background:#2563eb;color:#fff;font-size:14px;font-weight:800;cursor:pointer;
+            box-shadow:0 2px 8px rgba(37,99,235,.3)">✅ 승인 <span style="opacity:.7;font-weight:500">→</span></button>
+        </div>
+        <button type="button" id="rvSkip" style="width:100%;margin-top:8px;padding:9px;border:none;background:none;
+          color:var(--text-tertiary);font-size:12px;cursor:pointer">나중에 판단 — 건너뛰기</button>
+      </div>
+    </div>`;
+
+  els.content.querySelector('#rvApprove').addEventListener('click', () => reviewDecide('approve'));
+  els.content.querySelector('#rvReject').addEventListener('click', () => reviewDecide('reject'));
+  els.content.querySelector('#rvSkip').addEventListener('click', () => { _review.idx++; renderReviewPage(); });
+  bindReviewCategoryTabs();
+}
+
+// 분류를 바꾸면 대기열을 새로 받는다. 남은 큐를 그대로 쓰면 다른 분류가 섞여 나온다.
+function bindReviewCategoryTabs() {
+  els.content.querySelectorAll('.rv-cat').forEach((b) => {
+    b.addEventListener('click', () => {
+      _review.category = b.dataset.cat;
+      _review.queue = [];
+      _review.idx = 0;
+      renderReviewPage();
+    });
+  });
+}
+
+async function reviewDecide(decision) {
+  if (_review.busy) return;               // 연타로 두 건이 한 번에 넘어가지 않게
+  const lead = _review.queue[_review.idx];
+  if (!lead) return;
+  _review.busy = true;
+  try {
+    const r = await safeJsonFetch('/api/leads/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadId: lead.leadId, decision }),
+    });
+    _review.done++;
+    _review.remaining = r.remaining;
+    if (decision === 'approve') _review.approved++;
+    _review.idx++;
+    // 로컬 캐시도 맞춰둔다 — 다른 화면으로 갔을 때 숫자가 어긋나지 않게
+    const local = baseLeads.find((l) => l.leadId === lead.leadId);
+    if (local) {
+      if (decision === 'approve') local.readyForOutreach = true;
+      else { local.stage = 'archived'; local.readyForOutreach = false; }
+    }
+    invalidateServerPage();
+    loadStageCounts(true);
+  } catch (e) {
+    alert(`처리 실패: ${e.message || e}`);
+  } finally {
+    _review.busy = false;
+  }
+  renderReviewPage();
+}
+
+// 키보드 — 검토 화면에서만 듣는다
+document.addEventListener('keydown', (ev) => {
+  if (state.view !== 'tool-review') return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+  if (document.querySelector('.modal-backdrop[style*="flex"], #mailDetailRoot')) return;
+  if (ev.key === 'ArrowRight') { ev.preventDefault(); reviewDecide('approve'); }
+  else if (ev.key === 'ArrowLeft') { ev.preventDefault(); reviewDecide('reject'); }
+  else if (ev.key === 'Enter') {
+    const a = els.content.querySelector('a[target="_blank"]');
+    if (a) { ev.preventDefault(); window.open(a.href, '_blank', 'noopener'); }
+  }
+});
+
+// ── 휴지통 ────────────────────────────────────────────────────
+// DB 에서 지우지 않고 trashedAt 만 세팅하므로 언제든 되돌릴 수 있다.
+// 광고 오분류가 자료 소실이 되면 안 되기 때문이다.
+var _trashSelected = new Set();
+
+async function renderTrashPage() {
+  els.content.innerHTML = `<div class="inline-loader">휴지통 불러오는 중…</div>`;
+  let data;
+  try {
+    data = await safeJsonFetch('/api/mail/inbox?trashed=1&flat=1&limit=100');
+  } catch (e) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+    return;
+  }
+  if (!data?.success) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>조회 실패</h3><p>${escapeHtml(data?.error || '')}</p></div>`;
+    return;
+  }
+
+  const items = data.items || [];
+  const dt = (v) => v ? new Date(v).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+
+  if (!items.length) {
+    els.content.innerHTML = `<div class="empty-detail">
+      <h3>휴지통이 비어 있습니다</h3>
+      <p>메일 상세에서 [🗑 휴지통] 을 누르면 여기로 옵니다. 실제로 삭제되지는 않습니다.</p></div>`;
+    _trashSelected.clear();
+    return;
+  }
+
+  const rows = items.map((m) => {
+    const cls = MAIL_CLASS[m.classification] || MAIL_CLASS.unknown;
+    const checked = _trashSelected.has(String(m._id)) ? 'checked' : '';
+    // inbox-row 를 함께 붙여야 행 클릭 → 상세 모달이 열린다 (document 위임 핸들러)
+    return `<tr class="trash-row inbox-row" data-mail-id="${escapeAttr(String(m._id))}" style="cursor:pointer">
+      <td style="width:36px"><input type="checkbox" class="trash-check" data-mail-id="${escapeAttr(String(m._id))}" ${checked} style="width:16px;height:16px;cursor:pointer"></td>
+      <td style="white-space:nowrap;color:var(--text-tertiary);font-size:12px">${dt(m.date)}</td>
+      <td>
+        <div style="font-size:12.5px;color:var(--text-primary)">
+          ${m.group ? `<span style="background:var(--bg-surface-alt);color:var(--text-secondary);border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700;margin-right:5px">📁 ${escapeHtml(m.group)}</span>` : ''}
+          ${escapeHtml(String(m.subject || '(제목 없음)').slice(0, 66))}
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(m.from?.address || '')}</div>
+      </td>
+      <td style="white-space:nowrap"><span style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${cls.label}</span></td>
+      <td style="white-space:nowrap;color:var(--text-quaternary);font-size:11px">${dt(m.trashedAt)} 치움</td>
+    </tr>`;
+  }).join('');
+
+  els.content.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <button class="button secondary" id="trashSelectAll" type="button">이 페이지 전체 선택</button>
+      <button class="button" id="trashRestore" type="button" disabled>↩ 선택 복구 (<span id="trashCount">0</span>)</button>
+      <span style="font-size:12px;color:var(--text-tertiary);margin-left:auto">
+        총 ${data.total}통 · <b>DB 에서 지우지 않습니다</b> — 언제든 복구 가능
+      </span>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th></th><th>받은 날</th><th>제목</th><th>분류</th><th>치운 날</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+
+  const syncBtn = () => {
+    const n = _trashSelected.size;
+    els.content.querySelector('#trashCount').textContent = String(n);
+    els.content.querySelector('#trashRestore').disabled = n === 0;
+  };
+
+  els.content.querySelectorAll('.trash-check').forEach((cb) => {
+    cb.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const id = cb.dataset.mailId;
+      if (cb.checked) _trashSelected.add(id); else _trashSelected.delete(id);
+      syncBtn();
+    });
+  });
+
+  els.content.querySelector('#trashSelectAll')?.addEventListener('click', () => {
+    const all = items.every((m) => _trashSelected.has(String(m._id)));
+    items.forEach((m) => { if (all) _trashSelected.delete(String(m._id)); else _trashSelected.add(String(m._id)); });
+    render();
+  });
+
+  els.content.querySelector('#trashRestore')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const ids = [..._trashSelected];
+    if (!ids.length) return;
+    btn.disabled = true;
+    btn.textContent = '복구 중…';
+    try {
+      const r = await safeJsonFetch('/api/mail/trash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mailIds: ids, restore: true }),
+      });
+      alert(`${r.moved}통을 받은 메일함으로 되돌렸습니다.`);
+      _trashSelected.clear();
+      loadMailCounts(true);
+      render();
+    } catch (err) {
+      alert(`복구 실패: ${err.message || err}`);
+      btn.disabled = false;
+    }
+  });
+
+  syncBtn();
+}
+
+// ── 메일 상세 모달 ────────────────────────────────────────────
+function closeMailDetailModal() {
+  document.getElementById('mailDetailRoot')?.remove();
+}
+
+async function openMailDetailModal(mailId) {
+  closeMailDetailModal();
+  const root = document.createElement('div');
+  root.id = 'mailDetailRoot';
+  root.style.cssText = `position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;
+    display:flex;align-items:center;justify-content:center;padding:24px`;
+  root.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:860px;width:100%;
+    max-height:88vh;padding:40px;text-align:center;color:#64748b;font-size:14px">메일 불러오는 중…</div>`;
+  document.body.appendChild(root);
+
+  let data;
+  try {
+    data = await safeJsonFetch(`/api/mail/${encodeURIComponent(mailId)}`);
+  } catch (e) {
+    root.firstElementChild.innerHTML = `<div style="color:#991b1b">${escapeHtml(String(e.message || e))}</div>`;
+    return;
+  }
+  if (!data?.success) {
+    root.firstElementChild.innerHTML = `<div style="color:#991b1b">${escapeHtml(data?.error || '조회 실패')}</div>`;
+    return;
+  }
+
+  const m = data.mail;
+  const lead = data.lead;
+  const a = m.analysis || {};
+  const cls = MAIL_CLASS[m.classification] || MAIL_CLASS.unknown;
+  const dt = (v) => v ? new Date(v).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+
+  const aiBlock = a.method === 'ai' ? `
+    <div style="margin:12px 0;padding:12px 14px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px">
+      <div style="font-size:10px;font-weight:800;color:#4338ca;margin-bottom:6px">🧠 AI 분석</div>
+      ${a.topic ? `<div style="font-size:13px;font-weight:700;color:#1e1b4b">${escapeHtml(a.topic)}</div>` : ''}
+      ${a.summary ? `<div style="font-size:12.5px;color:#312e81;line-height:1.6;margin-top:4px">${escapeHtml(a.summary)}</div>` : ''}
+      ${(a.keyPoints || []).length ? `<ul style="margin:8px 0 0;padding-left:18px;font-size:12px;color:#3730a3;line-height:1.7">
+        ${a.keyPoints.map((k) => `<li>${escapeHtml(k)}</li>`).join('')}</ul>` : ''}
+      ${a.suggestedAction ? `<div style="margin-top:8px;padding:7px 10px;background:#fff;border-radius:6px;
+        font-size:12px;color:#1e1b4b;border-left:3px solid #6366f1"><b>다음 할 일</b> · ${escapeHtml(a.suggestedAction)}</div>` : ''}
+      ${a.deadlineText ? `<div style="margin-top:6px;font-size:11.5px;color:#b45309">⏰ "${escapeHtml(a.deadlineText)}"</div>` : ''}
+    </div>` : `
+    <div style="margin:12px 0;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
+                font-size:11.5px;color:#64748b">
+      AI 분석 전입니다 — 목록의 <b>🧠 AI 분석</b> 을 누르면 한글 번역·요약·기한이 붙습니다.
+    </div>`;
+
+  const transBlock = m.translation?.body ? `
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;font-size:12px;color:#4338ca;font-weight:600">🇰🇷 한글 번역 전문</summary>
+      <div style="margin-top:8px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
+                  font-size:12.5px;color:#334155;line-height:1.7;white-space:pre-wrap;max-height:320px;overflow:auto">${escapeHtml(m.translation.body)}</div>
+    </details>` : '';
+
+  const quoteBlock = m.hasQuoted ? `
+    <details style="margin-top:10px">
+      <summary style="cursor:pointer;font-size:11.5px;color:#64748b">▼ 인용된 이전 대화 보기</summary>
+      <pre style="margin-top:8px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;
+                  font-size:11px;color:#64748b;white-space:pre-wrap;word-break:break-word;
+                  max-height:280px;overflow:auto">${escapeHtml(m.bodyFull)}</pre>
+    </details>` : '';
+
+  const replied = m.status === 'replied';
+
+  root.innerHTML = `
+    <div style="background:#fff;border-radius:14px;max-width:1140px;width:100%;max-height:90vh;
+                display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
+            <span style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${cls.label}</span>
+            ${m.group ? `<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">📁 ${escapeHtml(m.group)}</span>` : ''}
+            ${replied
+              ? `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">✅ 회신함${m.repliedOutside ? ' (웹메일)' : ''}</span>`
+              : a.needsReply ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">⚠ 회신 필요</span>` : ''}
+          </div>
+          <div style="font-size:16px;font-weight:700;color:#0f172a;word-break:break-word">${escapeHtml(m.subject || '(제목 없음)')}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:4px">
+            ${escapeHtml(m.from?.name || '')} &lt;${escapeHtml(m.from?.address || '')}&gt; · ${dt(m.date)}
+          </div>
+          ${lead ? `<div style="font-size:11.5px;color:#166534;margin-top:4px">
+            연결된 리드 · <b>${escapeHtml(lead.Company)}</b> (${escapeHtml(lead.Country || '')})
+            <button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(lead.leadId)}"
+              style="margin-left:6px;padding:1px 8px;font-size:10px;border:1px solid #16a34a;border-radius:99px;
+                     background:#16a34a;color:#fff;font-weight:700;cursor:pointer">💬 대화 전체</button>
+          </div>` : ''}
+        </div>
+        <button type="button" id="mailDetailClose"
+          style="background:none;border:none;font-size:22px;color:#94a3b8;cursor:pointer;line-height:1;padding:0 4px">×</button>
+      </div>
+
+      <div style="padding:16px 20px;overflow:auto;flex:1;background:#fcfcfd">
+        ${aiBlock}
+        <div style="font-size:13.5px;color:#1e293b;line-height:1.75;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.body || '(본문 없음)')}</div>
+        <!-- 이미 AI 분석으로 번역본이 있으면(transBlock) 굳이 또 부르지 않는다 -->
+        ${m.translation?.body ? '' : translateBtnHtml(m.body || '')}
+        ${quoteBlock}
+        ${transBlock}
+        ${(m.attachments || []).length ? `<div style="margin-top:12px;font-size:12px;color:#475569">
+          📎 ${m.attachments.map((x) => escapeHtml(x.filename)).join(' · ')}</div>` : ''}
+      </div>
+
+      ${replyBoxHtml({ _id: m.id, subject: m.subject, from: m.from })}
+
+      <div style="border-top:1px solid #e2e8f0;padding:12px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${!replied ? `<button type="button" id="mdMarkReplied" data-mail-id="${escapeAttr(m.id)}"
+          style="padding:7px 14px;font-size:12.5px;font-weight:700;border:none;border-radius:8px;
+                 background:#16a34a;color:#fff;cursor:pointer">✅ 회신 완료로 표시</button>` : ''}
+        ${lead ? `<button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(lead.leadId)}"
+          style="padding:7px 14px;font-size:12.5px;font-weight:700;border:1px solid #2563eb;border-radius:8px;
+                 background:#eff6ff;color:#1e40af;cursor:pointer">↩ 여기서 답장</button>` : ''}
+        <button type="button" id="mdTrash" data-mail-id="${escapeAttr(m.id)}"
+          style="padding:7px 14px;font-size:12.5px;border:1px solid ${m.trashedAt ? '#16a34a' : '#cbd5e1'};border-radius:8px;
+                 background:#fff;color:${m.trashedAt ? '#166534' : '#64748b'};cursor:pointer">${m.trashedAt ? '↩ 받은함으로 되돌리기' : '🗑 휴지통'}</button>
+        <span id="mdMsg" style="font-size:12px;margin-left:auto"></span>
+      </div>
+    </div>`;
+
+  root.querySelector('#mailDetailClose')?.addEventListener('click', closeMailDetailModal);
+  root.addEventListener('click', (ev) => { if (ev.target === root) closeMailDetailModal(); });
+
+  const patch = async (body, okMsg) => {
+    const msg = root.querySelector('#mdMsg');
+    try {
+      await safeJsonFetch(`/api/mail/${encodeURIComponent(m.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      msg.innerHTML = `<span style="color:#166534">${okMsg}</span>`;
+      loadMailCounts(true);
+      setTimeout(() => { closeMailDetailModal(); render(); }, 600);
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(String(e.message || e))}</span>`;
+    }
+  };
+
+  root.querySelector('#mdMarkReplied')?.addEventListener('click', () =>
+    patch({ status: 'replied', needsReply: false }, '✅ 회신 완료로 표시했습니다'));
+
+  // 답장 상자는 공용 구현(replyBoxHtml/bindConversationReply)을 그대로 쓴다.
+  bindConversationReply(null, 'mailDetailRoot');
+
+  root.querySelector('#mdTrash')?.addEventListener('click', async () => {
+    const msg = root.querySelector('#mdMsg');
+    try {
+      await safeJsonFetch('/api/mail/trash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mailIds: [m.id], restore: Boolean(m.trashedAt) }),
+      });
+      msg.innerHTML = m.trashedAt
+        ? '<span style="color:#166534">↩ 받은 메일함으로 되돌렸습니다</span>'
+        : '<span style="color:#166534">🗑 휴지통으로 옮겼습니다 (삭제되지 않음)</span>';
+      loadMailCounts(true);
+      setTimeout(() => { closeMailDetailModal(); render(); }, 600);
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(String(e.message || e))}</span>`;
+    }
+  });
+}
+
+// ── 오늘의 브리핑 ─────────────────────────────────────────────
+async function renderBriefingPage() {
+  els.content.innerHTML = `<div class="inline-loader">브리핑 만드는 중…</div>`;
+  let data;
+  try {
+    data = await safeJsonFetch('/api/mail/briefing?days=1');
+  } catch (e) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+    return;
+  }
+  if (!data || !data.success) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>조회 실패</h3><p>${escapeHtml(data?.error || '')}</p></div>`;
+    return;
+  }
+  const b = data.briefing;
+  const t = b.totals || {};
+  const d = (v) => v ? new Date(v).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+  const uColor = (u) => u === 'high' ? '#b91c1c' : u === 'mid' ? '#c2410c' : '#64748b';
+  const uLabel = (u) => u === 'high' ? '🔴 긴급' : u === 'mid' ? '🟠 보통' : '⚪ 낮음';
+
+  const card = (n, label, bg, fg) => `
+    <div style="flex:1;min-width:130px;background:${bg};padding:14px;border-radius:10px">
+      <div style="font-size:24px;font-weight:800;color:${fg}">${n}</div>
+      <div style="font-size:11px;color:${fg}">${label}</div>
+    </div>`;
+
+  const item = (m) => `
+    <div style="padding:12px 0;border-bottom:1px solid var(--border-subtle)">
+      <div style="font-size:11px;font-weight:700;color:${uColor(m.urgency)}">
+        ${uLabel(m.urgency)}
+        ${m.deadline ? ` · 기한 ${d(m.deadline)}` : ''}
+        ${m.company || m.group ? ` · ${escapeHtml(m.company || m.group)}` : ''}
+        ${!m.analyzedByAi ? ' · <span style="color:var(--text-quaternary)">AI 미분석</span>' : ''}
+      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-top:3px">
+        ${escapeHtml(m.topic || m.subject)}
+      </div>
+      ${m.summary ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5">${escapeHtml(m.summary)}</div>` : ''}
+      ${m.suggestedAction ? `<div style="font-size:12px;color:var(--brand-text);margin-top:4px">→ ${escapeHtml(m.suggestedAction)}</div>` : ''}
+      <div style="font-size:11px;color:var(--text-quaternary);margin-top:3px">
+        ${escapeHtml(m.fromName || m.from)}
+        ${m.leadId ? ` · <button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(m.leadId)}"
+            style="padding:1px 7px;font-size:10px;border:1px solid #16a34a;border-radius:99px;
+                   background:#16a34a;color:#fff;font-weight:700;cursor:pointer">💬 대화</button>` : ''}
+      </div>
+    </div>`;
+
+  const section = (title, items) => items.length ? `
+    <h3 style="font-size:14px;margin:22px 0 4px">${title}
+      <span style="color:var(--text-tertiary);font-weight:400">${items.length}건</span></h3>
+    ${items.map(item).join('')}` : '';
+
+  els.content.innerHTML = `
+    <div style="max-width:760px">
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px">
+        직전 24시간 (${d(b.since)} ~ ${d(b.until)}) · 새 메일 ${b.newMails}건
+        · 합계는 <b>${escapeHtml(b.periodLabel || '최근 2개월')}</b> 기준
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+        ${card(t.needsReply || 0, '회신 필요', '#fef3c7', '#92400e')}
+        ${card(t.overdue || 0, '기한 지남', '#fee2e2', '#991b1b')}
+        ${card((b.newReplies || []).length, '새 답장', '#dcfce7', '#166534')}
+        ${card(t.unanalyzed || 0, 'AI 미분석', '#f1f5f9', '#475569')}
+      </div>
+
+      ${(b.newReplies || []).length ? `
+        <h3 style="font-size:14px;margin:22px 0 4px">💬 새로 답장이 온 곳</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${b.newReplies.map((r) => `<button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(r.leadId)}"
+            style="padding:5px 12px;font-size:12px;border:1px solid #16a34a;border-radius:99px;
+                   background:#16a34a;color:#fff;font-weight:700;cursor:pointer">
+            💬 ${escapeHtml(r.company || r.leadId)}</button>`).join('')}
+        </div>` : ''}
+
+      ${section('⚠️ 회신이 필요한 메일', b.needsReply || [])}
+      ${section('⏰ 기한이 다가온 건', b.deadlinesSoon || [])}
+
+      ${!(b.needsReply || []).length && !(b.deadlinesSoon || []).length && !(b.newReplies || []).length
+        ? '<div class="empty-detail" style="margin-top:20px"><h3>오늘은 새 소식이 없습니다</h3><p>회신이 필요한 메일이나 기한 임박 건이 생기면 여기에 모입니다.</p></div>'
+        : ''}
+
+      <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--border-subtle);
+                  display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="button secondary" id="briefingSendBtn" type="button">📧 이 브리핑을 메일로 받기</button>
+        <span id="briefingMsg" style="font-size:12px;color:var(--text-tertiary)"></span>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-quaternary);line-height:1.5">
+        매일 아침 자동 발송하려면 <b>메일 수신 설정</b>에서 받을 주소를 지정하세요.
+        새 소식이 없는 날은 보내지 않습니다.
+      </div>
+    </div>`;
+
+  els.content.querySelector('#briefingSendBtn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const msg = els.content.querySelector('#briefingMsg');
+    btn.disabled = true;
+    btn.textContent = '보내는 중…';
+    try {
+      const r = await safeJsonFetch('/api/mail/briefing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 1, force: true }),
+      });
+      msg.innerHTML = r.success
+        ? (r.skipped
+            ? `<span style="color:var(--text-tertiary)">${escapeHtml(r.reason)}</span>`
+            : `<span style="color:#166534">✅ ${escapeHtml(r.to)} 로 보냈습니다</span>`)
+        : `<span style="color:#b91c1c">${escapeHtml(r.error)}</span>`;
+    } catch (err) {
+      msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(String(err.message || err))}</span>`;
+    }
+    btn.disabled = false;
+    btn.textContent = '📧 이 브리핑을 메일로 받기';
+  });
+}
+
+// ── 메일 수신 설정 ────────────────────────────────────────────
+async function renderMailSettingsPage() {
+  els.content.innerHTML = `<div class="inline-loader">설정 불러오는 중…</div>`;
+  let data;
+  try {
+    data = await safeJsonFetch('/api/mail/settings');
+  } catch (e) {
+    els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+    return;
+  }
+  const s = data.settings || {};
+  const folders = s.imapFolders || [];
+
+  els.content.innerHTML = `
+    <div style="max-width:720px;display:flex;flex-direction:column;gap:16px">
+      <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:20px">
+        <h3 style="font-size:14px;margin-bottom:4px">이카운트 웹메일 연결</h3>
+        <p style="font-size:12px;color:var(--text-tertiary);margin-bottom:14px">
+          이카운트 웹메일 → 개인기능설정 → 외부연동설정에서 "메일 클라이언트 사용"이 켜져 있어야 합니다.
+        </p>
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;font-size:13px">
+          <span style="color:var(--text-secondary)">수신 서버</span>
+          <input class="form-input" id="msHost" value="${escapeAttr(s.imapHost || 'wmbox4.ecount.com')}" style="padding:7px 10px">
+          <span style="color:var(--text-secondary)">계정</span>
+          <input class="form-input" id="msUser" value="${escapeAttr(s.imapUser || '')}" placeholder="david@yogico.kr" style="padding:7px 10px">
+          <span style="color:var(--text-secondary)">비밀번호</span>
+          <input class="form-input" id="msPass" type="password" placeholder="${s.imapPassSet ? '저장됨 — 바꿀 때만 입력' : '입력하세요'}" style="padding:7px 10px">
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px">
+          <button class="button" id="msSaveBtn" type="button">저장</button>
+          <button class="button secondary" id="msTestBtn" type="button">🔌 연결 테스트</button>
+        </div>
+        <div id="msResult" style="margin-top:12px;font-size:12px"></div>
+      </div>
+
+      <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:20px">
+        <h3 style="font-size:14px;margin-bottom:4px">수집 폴더</h3>
+        <p style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px">
+          비워두면 INBOX 만 수집합니다. 거래처별 폴더를 나눠 두셨다면 여기에 추가하세요 —
+          <b>추가하지 않으면 그 폴더로 들어온 메일을 놓칩니다.</b>
+        </p>
+        <div id="msFolders" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+          ${folders.length
+            ? folders.map((f) => `<span style="background:var(--bg-surface-alt);padding:4px 10px;border-radius:99px;font-size:12px">${escapeHtml(f)}</span>`).join('')
+            : '<span style="font-size:12px;color:var(--text-quaternary)">INBOX 만 수집 중</span>'}
+        </div>
+        <div style="font-size:12px;color:var(--text-tertiary)">
+          마지막 수집: ${s.lastIngestAt ? new Date(s.lastIngestAt).toLocaleString('ko-KR') : '없음'}
+          ${s.lastIngestError ? `<div style="color:#b91c1c;margin-top:4px">⚠ ${escapeHtml(s.lastIngestError)}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+
+  els.content.querySelector('#msSaveBtn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const payload = {
+      imapHost: els.content.querySelector('#msHost').value.trim(),
+      imapUser: els.content.querySelector('#msUser').value.trim(),
+    };
+    // 빈 비밀번호는 "변경 없음" — 기존 값을 지우지 않는다
+    const pass = els.content.querySelector('#msPass').value;
+    if (pass) payload.imapPass = pass;
+    try {
+      await safeJsonFetch('/api/mail/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      els.content.querySelector('#msResult').innerHTML = '<span style="color:#166534">✅ 저장했습니다.</span>';
+    } catch (err) {
+      els.content.querySelector('#msResult').innerHTML = `<span style="color:#b91c1c">저장 실패: ${escapeHtml(String(err.message || err))}</span>`;
+    }
+    btn.disabled = false;
+  });
+
+  els.content.querySelector('#msTestBtn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const out = els.content.querySelector('#msResult');
+    btn.disabled = true;
+    out.innerHTML = '<span class="inline-loader">연결 확인 중…</span>';
+    try {
+      const r = await safeJsonFetch('/api/mail/test-connection', { method: 'POST' });
+      if (r.success) {
+        out.innerHTML = `<span style="color:#166534">✅ 연결 성공 — 폴더 ${r.folderCount}개</span>
+          <div style="margin-top:6px;color:var(--text-tertiary)">${(r.folders || []).map(escapeHtml).join(' · ')}</div>
+          ${r.mailbox ? `<div style="margin-top:4px;color:var(--text-tertiary)">INBOX ${r.mailbox.exists}통</div>` : ''}`;
+      } else {
+        out.innerHTML = `<span style="color:#b91c1c">❌ ${escapeHtml(r.error || '실패')}</span>`;
+      }
+    } catch (err) {
+      out.innerHTML = `<span style="color:#b91c1c">❌ ${escapeHtml(String(err.message || err))}</span>`;
+    }
+    btn.disabled = false;
+  });
+}
+
+// ── 메일 대화 모달 ────────────────────────────────────────────
+// 보낸 메일(Lead.emailHistory)과 받은 답장(InboundMail)을 한 타임라인으로 보여준다.
+// 답장이 오간 뒤부터는 "어느 회사냐" 보다 "무슨 얘기가 오갔냐" 가 중요하므로,
+// 회사 목록이 아니라 메일 대화 형식으로 읽게 한다.
+function closeConversationModal() {
+  document.getElementById('conversationModalRoot')?.remove();
+}
+
+async function openConversationModal(leadId) {
+  closeConversationModal();
+  const root = document.createElement('div');
+  root.id = 'conversationModalRoot';
+  root.style.cssText = `
+    position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;
+    display:flex;align-items:center;justify-content:center;padding:24px;
+  `;
+  root.innerHTML = `
+    <div style="background:#ffffff;border-radius:14px;max-width:1140px;width:100%;max-height:90vh;
+                display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.3);overflow:hidden">
+      <div style="padding:40px;text-align:center;color:#64748b;font-size:14px">대화를 불러오는 중…</div>
+    </div>`;
+  document.body.appendChild(root);
+
+  let data;
+  try {
+    data = await safeJsonFetch(`/api/mail/thread?leadId=${encodeURIComponent(leadId)}`);
+  } catch (e) {
+    root.querySelector('div').innerHTML = `
+      <div style="padding:32px;color:#991b1b">대화를 불러오지 못했습니다: ${escapeHtml(String(e.message || e))}</div>`;
+    return;
+  }
+  if (!data || !data.success) {
+    root.querySelector('div').innerHTML = `
+      <div style="padding:32px;color:#991b1b">${escapeHtml(data?.error || '조회 실패')}</div>`;
+    return;
+  }
+
+  const L = data.lead || {};
+  const S = data.stats || {};
+  const tl = data.timeline || [];
+
+  const stageStyle = STAGE_STYLE[L.stage] || STAGE_STYLE.imported;
+  const dt = (v) => {
+    if (!v) return '';
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+
+  // 회신 대상 = 가장 최근에 받은 메일 (여기에 In-Reply-To 를 건다)
+  const inbounds = tl.filter((t) => t.direction === 'in');
+  const lastInbound = inbounds.length ? inbounds[inbounds.length - 1] : null;
+
+  // 우리가 답할 차례인지 — 마지막이 상대 메일이면 대응이 필요하다
+  const alertBar = S.awaitingOurReply
+    ? `<div style="background:#fef3c7;border:1px solid #fcd34d;color:#92400e;padding:8px 12px;
+                  border-radius:8px;font-size:12px;font-weight:600;margin-bottom:12px">
+         ⚠ 상대 답장이 마지막입니다 — 우리가 회신할 차례
+         ${S.nearestDeadline ? ` · 회신 기한 ${dt(S.nearestDeadline)}` : ''}
+       </div>`
+    : '';
+
+  const bubbles = tl.map((t, i) => {
+    const out = t.direction === 'out';
+    const bg = out ? '#eff6ff' : '#f0fdf4';
+    const bd = out ? '#bfdbfe' : '#bbf7d0';
+    const fg = out ? '#1e40af' : '#166534';
+    const who = out ? '📤 우리가 보냄' : '📥 상대 답장';
+    const meta = [];
+    if (!out) {
+      if (t.matchedBy) meta.push(`매칭: ${t.matchedBy}`);
+      if (t.lang) meta.push(`언어: ${t.lang}`);
+      if (t.classification && t.classification !== 'unknown') meta.push(t.classification);
+      if (t.needsReply) meta.push('답변 필요');
+    } else if (t.to) {
+      meta.push(`to ${t.to}`);
+    }
+
+    const quoteId = `conv-quote-${i}`;
+    const quoteBlock = (!out && t.hasQuoted && t.bodyFull)
+      ? `<button type="button" class="conv-quote-toggle" data-quote-target="${quoteId}"
+                style="margin-top:8px;background:none;border:none;color:#64748b;font-size:11px;
+                       cursor:pointer;padding:0;text-decoration:underline">▼ 인용된 이전 대화 보기</button>
+         <pre id="${quoteId}" hidden style="margin:8px 0 0;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;
+                    border-radius:6px;font-size:11px;color:#64748b;white-space:pre-wrap;
+                    word-break:break-word;max-height:220px;overflow:auto">${escapeHtml(t.bodyFull)}</pre>`
+      : '';
+
+    // ── AI 분석 결과 (유료 분석을 돌린 메일만) ──
+    // 영문 답장이면 한글 번역을 접어서 함께 둔다 — 대표가 원문/번역을 오가며 읽는다.
+    const transId = `conv-trans-${i}`;
+    const aiBlock = (!out && t.analyzedBy === 'ai')
+      ? `<div style="margin-top:10px;padding:10px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px">
+           <div style="font-size:10px;font-weight:800;color:#4338ca;margin-bottom:6px">🧠 AI 분석</div>
+           ${t.topic ? `<div style="font-size:12px;font-weight:700;color:#1e1b4b;margin-bottom:4px">${escapeHtml(t.topic)}</div>` : ''}
+           ${t.summary ? `<div style="font-size:12px;color:#312e81;line-height:1.55">${escapeHtml(t.summary)}</div>` : ''}
+           ${(t.keyPoints && t.keyPoints.length)
+             ? `<ul style="margin:8px 0 0;padding-left:16px;font-size:11.5px;color:#3730a3;line-height:1.6">
+                  ${t.keyPoints.map(k => `<li>${escapeHtml(k)}</li>`).join('')}
+                </ul>` : ''}
+           ${t.suggestedAction
+             ? `<div style="margin-top:8px;padding:6px 9px;background:#ffffff;border-radius:6px;
+                            font-size:11.5px;color:#1e1b4b;border-left:3px solid #6366f1">
+                  <b>다음 할 일</b> · ${escapeHtml(t.suggestedAction)}
+                </div>` : ''}
+           ${t.deadlineText
+             ? `<div style="margin-top:6px;font-size:11px;color:#b45309">⏰ 기한 표현: "${escapeHtml(t.deadlineText)}"</div>` : ''}
+           ${t.translation
+             ? `<button type="button" class="conv-quote-toggle" data-quote-target="${transId}"
+                        style="margin-top:8px;background:none;border:none;color:#4338ca;font-size:11px;
+                               cursor:pointer;padding:0;text-decoration:underline">▼ 한글 번역 전문 보기</button>
+                <div id="${transId}" hidden style="margin-top:8px;padding:10px;background:#ffffff;
+                            border:1px solid #c7d2fe;border-radius:6px;font-size:12px;color:#1e1b4b;
+                            line-height:1.6;white-space:pre-wrap;max-height:280px;overflow:auto">${escapeHtml(t.translation)}</div>`
+             : ''}
+         </div>`
+      : '';
+
+    const attachBlock = (t.attachments && t.attachments.length)
+      ? `<div style="margin-top:8px;font-size:11px;color:#475569">
+           📎 ${t.attachments.map(a => escapeHtml(a.filename)).join(' · ')}
+         </div>`
+      : '';
+
+    return `
+      <div style="margin-bottom:14px;${out ? 'margin-right:40px' : 'margin-left:40px'}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-size:11px;font-weight:700;color:${fg}">${who}</span>
+          <span style="font-size:11px;color:#94a3b8">${dt(t.at)}</span>
+        </div>
+        <div style="background:${bg};border:1px solid ${bd};border-radius:10px;padding:12px 14px">
+          <div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:6px">
+            ${escapeHtml(t.subject || '(제목 없음)')}
+          </div>
+          <div style="font-size:13px;color:#334155;line-height:1.6;white-space:pre-wrap;word-break:break-word">${escapeHtml(t.body || '(본문 없음)')}</div>
+          <!-- 상대가 보낸 영문 답장에만. 우리가 보낸 것과 이미 번역이 있는 건 제외 -->
+          ${!out && !t.translation ? translateBtnHtml(t.body || '', { inline: true }) : ''}
+          ${attachBlock}
+          ${quoteBlock}
+          ${aiBlock}
+          ${meta.length ? `<div style="margin-top:8px;font-size:10px;color:#94a3b8">${meta.map(escapeHtml).join(' · ')}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  root.innerHTML = `
+    <div style="background:#ffffff;border-radius:14px;max-width:1140px;width:100%;max-height:90vh;
+                display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,0.3);overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;
+                  justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <strong style="font-size:16px;color:#0f172a">${escapeHtml(L.Company || '')}</strong>
+            <span style="background:${stageStyle.bg};color:${stageStyle.fg};padding:2px 8px;
+                         border-radius:99px;font-size:11px;font-weight:700">${stageStyle.label}</span>
+          </div>
+          <div style="font-size:12px;color:#64748b;margin-top:3px">
+            ${escapeHtml(L.Country || '')}
+            ${L.Email ? ` · ${escapeHtml(L.Email)}` : ''}
+            ${L.WebsiteContact ? ` · ${websiteLinkHtml(L.WebsiteContact, { short: true })}` : ''}
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:4px">
+            📤 보낸 ${S.sentCount || 0}통 · 📥 받은 ${S.receivedCount || 0}통
+          </div>
+        </div>
+        <button type="button" id="conversationModalClose"
+          style="background:none;border:none;font-size:22px;color:#94a3b8;cursor:pointer;line-height:1;padding:0 4px">×</button>
+      </div>
+      <div style="padding:16px 20px;overflow:auto;flex:1;background:#fcfcfd">
+        ${alertBar}
+        ${tl.length ? bubbles : '<div style="text-align:center;color:#94a3b8;padding:40px;font-size:13px">아직 주고받은 메일이 없습니다.</div>'}
+      </div>
+      ${replyBoxHtml(lastInbound)}
+    </div>`;
+
+  bindConversationReply(leadId);
+}
+
+/**
+ * 회신 작성 영역 — 마지막으로 받은 메일에 스레드로 답한다.
+ *
+ * 받은 메일이 없으면 답할 대상이 없으므로 표시하지 않는다
+ * (새 메일 발송은 발송함 화면의 몫).
+ */
+function replyBoxHtml(lastInbound) {
+  if (!lastInbound || !lastInbound._id) return '';
+  const subj = String(lastInbound.subject || '');
+  const replySubject = /^re\s*:/i.test(subj) ? subj : `Re: ${subj}`;
+  const tb = "padding:4px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:11.5px;color:#0f172a";
+  return `
+    <div style="border-top:1px solid #e2e8f0;background:#ffffff;padding:14px 20px 16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
+        <span style="font-size:11px;font-weight:800;color:#1e40af">↩ 회신</span>
+        <span style="font-size:11px;color:#64748b">
+          ${escapeHtml(lastInbound.from?.address || '')} · ${escapeHtml(replySubject.slice(0, 60))}
+        </span>
+      </div>
+
+      <!-- 초안 생성이 무엇인지 한 줄로. 처음 보는 사람은 이 버튼이
+           '내 대신 메일을 보내버리는 것'으로 오해하기 쉬워서 명시한다. -->
+      <div style="padding:8px 11px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;
+                  font-size:11.5px;color:#3730a3;line-height:1.6;margin-bottom:8px">
+        <b>🧠 초안 생성</b> — 아래 칸에 한국어로 요지만 적으면, AI가 <b>받은 메일 내용을 읽고</b>
+        상대 언어에 맞는 답장 초안을 써 줍니다. 한글 대역본이 오른쪽에 같이 나와 내용을 확인할 수 있습니다.
+        <b>자동으로 발송되지 않습니다</b> — 고친 뒤 [보내기]를 눌러야 나갑니다.
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:9px">
+        <input type="text" id="convDraftIntent"
+          placeholder="한국어로 요지만 (예: MOQ 500개 확인, FOB 단가 회신, 샘플 다음주 발송)"
+          style="flex:1;padding:8px 11px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:8px;
+                 background:#ffffff;color:#0f172a">
+        <button type="button" id="convDraftBtn" data-inbound-id="${escapeAttr(lastInbound._id)}"
+          style="padding:8px 13px;font-size:12px;font-weight:700;border:1px solid #6366f1;border-radius:8px;
+                 background:#eef2ff;color:#4338ca;cursor:pointer;white-space:nowrap">🧠 초안 생성</button>
+      </div>
+
+      <!-- 좌우 2단: 왼쪽에 쓰고 오른쪽에서 한글로 확인.
+           위아래로 쌓으면 초안을 고칠 때마다 스크롤을 오르내려야 한다. -->
+      <div class="reply-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+        <div>
+          <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center;background:#f1f5f9;
+                      border:1px solid #cbd5e1;border-bottom:none;border-radius:8px 8px 0 0;padding:5px 6px">
+            <select id="convFontSize" title="글자 크기" style="${tb};padding:4px">
+              <option value="">크기</option>
+              <option value="12">12px</option><option value="13">13px</option>
+              <option value="14">14px</option><option value="16">16px</option>
+              <option value="18">18px</option><option value="20">20px</option>
+            </select>
+            <button type="button" data-rcmd="bold" style="${tb};font-weight:800" title="굵게"><b>B</b></button>
+            <button type="button" data-rcmd="italic" style="${tb};font-style:italic" title="기울임"><i>I</i></button>
+            <button type="button" data-rcmd="underline" style="${tb};text-decoration:underline" title="밑줄"><u>U</u></button>
+            <label title="글자 색" style="display:inline-flex;align-items:center;gap:3px;${tb}">
+              <span style="font-weight:800">A</span>
+              <input type="color" id="convFontColor" value="#111827"
+                     style="width:20px;height:16px;padding:0;border:none;background:none;cursor:pointer">
+            </label>
+            <button type="button" data-rcmd="insertUnorderedList" style="${tb}" title="글머리 목록">• 목록</button>
+            <button type="button" id="convInsertLink" style="${tb};color:#1d4ed8;font-weight:700" title="링크 걸기">🔗</button>
+            <button type="button" data-rcmd="removeFormat" style="${tb}" title="서식 지우기">서식해제</button>
+          </div>
+          <div id="convReplyBody" contenteditable="true"
+            data-placeholder="답장 내용을 입력하세요. 서명은 자동으로 붙습니다."
+            style="width:100%;min-height:210px;max-height:44vh;overflow-y:auto;padding:11px 13px;
+                   font-size:13.5px;line-height:1.7;border:1px solid #cbd5e1;border-radius:0 0 8px 8px;
+                   background:#ffffff;color:#0f172a;outline:none"></div>
+        </div>
+
+        <div id="convDraftKo" style="padding:11px 13px;background:#f8fafc;border:1px solid #e2e8f0;
+             border-radius:8px;font-size:12.5px;color:#334155;line-height:1.65;min-height:236px;
+             max-height:calc(44vh + 30px);overflow-y:auto">
+          <div style="font-size:10.5px;font-weight:800;color:#64748b;margin-bottom:6px">
+            KR 한글 대역본 <span style="font-weight:400">· 검토용 · 발송되지 않음</span>
+          </div>
+          <div style="color:#94a3b8">초안을 생성하면 왼쪽 영문 내용이 여기에 한국어로 표시됩니다.</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <button type="button" id="convReplySend" data-inbound-id="${escapeAttr(lastInbound._id)}"
+          style="padding:9px 20px;font-size:13.5px;font-weight:800;border:none;border-radius:8px;
+                 background:#2563eb;color:#fff;cursor:pointer">보내기</button>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#475569;cursor:pointer">
+          <input type="checkbox" id="convReplySig" checked style="width:14px;height:14px;cursor:pointer">
+          서명 붙이기
+        </label>
+        <!-- 체크박스 이름만 봐서는 무엇이 붙는지 알 수 없다.
+             마우스를 올리면 실제로 붙는 내용을 그대로 보여준다. -->
+        <span class="sig-help" style="position:relative;display:inline-flex;align-items:center;
+              width:16px;height:16px;justify-content:center;border-radius:50%;background:#e2e8f0;
+              color:#475569;font-size:10.5px;font-weight:800;cursor:help;margin-left:-3px">?
+          <span class="sig-pop" style="position:absolute;bottom:130%;left:-8px;width:270px;padding:10px 12px;
+                background:#0f172a;color:#e2e8f0;border-radius:8px;font-size:11.5px;line-height:1.6;
+                font-weight:400;text-align:left;z-index:20;box-shadow:0 6px 18px rgba(0,0,0,.25)">
+            <b style="color:#fff">서명 붙이기</b><br>
+            켜 두면 답장 맨 아래에 <b>보내는 사람 정보</b>(이름·직함·회사·주소·연락처)가
+            자동으로 붙습니다. 본문에 직접 쓸 필요가 없습니다.
+            <span style="display:block;margin-top:7px;padding-top:7px;border-top:1px solid #334155;color:#94a3b8">
+              내용은 <b style="color:#cbd5e1">설정 · 도구 → 📬 메일 계정</b>에서 계정별로 바꿉니다.
+            </span>
+          </span>
+        </span>
+        <span id="convReplyMsg" style="font-size:12px;margin-left:auto"></span>
+      </div>
+      <div style="margin-top:6px;font-size:10.5px;color:#94a3b8">
+        In-Reply-To 헤더가 자동으로 붙어 상대 메일함에서 같은 대화로 묶입니다.
+      </div>
+    </div>`;
+}
+
+// rootId: 이 답장 상자가 들어 있는 모달의 id.
+// 대화 모달과 받은메일 상세 모달 둘 다 같은 상자를 쓴다 (구현이 두 벌이면 한쪽만 고쳐진다).
+function bindConversationReply(leadId, rootId) {
+  const root = document.getElementById(rootId || 'conversationModalRoot');
+  if (!root) return;
+  const btn = root.querySelector('#convReplySend');
+  if (!btn) return;
+
+  // ── 회신 상자 서식 툴바 ──
+  // styleWithCSS: <font> 태그 대신 인라인 style 로 넣는다.
+  // 메일 클라이언트는 <style>/class 를 지우므로 인라인이어야 서식이 살아남는다.
+  try { document.execCommand('styleWithCSS', false, true); } catch {}
+  const rbody = root.querySelector('#convReplyBody');
+  const keep = (el) => el?.addEventListener('mousedown', (e) => e.preventDefault());
+
+  root.querySelectorAll('[data-rcmd]').forEach((b) => {
+    keep(b);
+    b.addEventListener('click', () => { document.execCommand(b.dataset.rcmd, false, null); rbody?.focus(); });
+  });
+
+  // 선택 영역을 style 로 감싼다 — fontSize 는 execCommand 가 1~7 단계만 지원해
+  // px 로 지정하려면 직접 감싸야 한다.
+  const wrapSel = (prop, val) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) { alert('먼저 바꿀 글자를 선택하세요.'); return; }
+    const range = sel.getRangeAt(0);
+    if (!rbody || !rbody.contains(range.commonAncestorContainer)) { alert('답장 본문 안에서 선택해 주세요.'); return; }
+    const span = document.createElement('span');
+    span.style[prop] = val;
+    try { span.appendChild(range.extractContents()); range.insertNode(span); } catch {}
+  };
+
+  const fs = root.querySelector('#convFontSize');
+  keep(fs);
+  fs?.addEventListener('change', (e) => {
+    if (e.target.value) wrapSel('fontSize', e.target.value + 'px');
+    e.target.selectedIndex = 0;
+  });
+
+  root.querySelector('#convFontColor')?.addEventListener('input', (e) => {
+    document.execCommand('foreColor', false, e.target.value);
+  });
+
+  const lk = root.querySelector('#convInsertLink');
+  keep(lk);
+  lk?.addEventListener('click', () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) { alert('링크를 걸 글자를 먼저 선택하세요.'); return; }
+    const url = prompt('연결할 주소', 'https://');
+    if (!url || url === 'https://') return;
+    const href = /^(https?:|mailto:)/i.test(url) ? url : 'https://' + url;
+    document.execCommand('createLink', false, href);
+    rbody?.querySelectorAll('a[href]').forEach((a) => {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+    });
+  });
+
+  // ── AI 초안 생성 ──
+  // 한국어로 적은 의도를 상대 언어 본문으로 바꿔 회신 상자에 채운다.
+  // 발송은 하지 않는다 — 사람이 읽고 고친 뒤 [보내기] 를 눌러야 나간다.
+  const draftBtn = root.querySelector('#convDraftBtn');
+  draftBtn?.addEventListener('click', async () => {
+    const intentEl = root.querySelector('#convDraftIntent');
+    const msg = root.querySelector('#convReplyMsg');
+    const intent = (intentEl?.value || '').trim();
+    if (!intent) {
+      msg.innerHTML = '<span style="color:#b91c1c">전달할 내용을 먼저 적어주세요</span>';
+      intentEl?.focus();
+      return;
+    }
+    draftBtn.disabled = true;
+    draftBtn.textContent = '생성 중…';
+    msg.innerHTML = '';
+    try {
+      const r = await safeJsonFetch('/api/mail/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inboundMailId: draftBtn.dataset.inboundId, intent }),
+      });
+      if (r.success) {
+        // 회신 상자가 contenteditable 이라 .value 가 아니라 .innerHTML 로 넣는다.
+        // 초안은 평문이므로 줄바꿈을 <br> 로 바꿔야 문단이 유지된다.
+        const ta = root.querySelector('#convReplyBody');
+        if (ta) ta.innerHTML = escapeHtml(r.draft.body || '').split('\n').join('<br>');
+        const koBox = root.querySelector('#convDraftKo');
+        if (koBox) {
+          koBox.innerHTML = `
+            <div style="font-size:10.5px;font-weight:800;color:#64748b;margin-bottom:6px">KR 한글 대역본 <span style="font-weight:400">· 검토용 · 발송되지 않음</span></div>
+            <div style="white-space:pre-wrap">${escapeHtml(r.draft.bodyKo || '')}</div>
+            ${r.draft.notes ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #cbd5e1;color:#b45309">
+              <b>확인 필요</b> · ${escapeHtml(r.draft.notes)}</div>` : ''}`;
+          koBox.removeAttribute('hidden');
+        }
+        msg.innerHTML = `<span style="color:#166534">✅ 초안 생성 (₩${r.krw || 0})</span>`;
+      } else {
+        msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(r.error || '실패')}</span>`;
+      }
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(String(e.message || e))}</span>`;
+    }
+    draftBtn.disabled = false;
+    draftBtn.textContent = '🧠 초안 생성';
+  });
+
+  btn.addEventListener('click', async () => {
+    const ta = root.querySelector('#convReplyBody');
+    const msg = root.querySelector('#convReplyMsg');
+    const text = (ta?.innerHTML || '').trim();
+    // 서식 태그만 남고 글자가 없는 경우(빈 <br> 등)를 걸러낸다
+    const plainLen = (ta?.innerText || '').trim().length;
+    if (!plainLen) {
+      msg.innerHTML = '<span style="color:#b91c1c">본문을 입력하세요</span>';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = '보내는 중…';
+    msg.innerHTML = '';
+    try {
+      const r = await safeJsonFetch('/api/mail/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inboundMailId: btn.dataset.inboundId,
+          body: text,
+          bodyIsHtml: true,   // 서식 편집기라 본문이 HTML 이다
+          appendSignature: root.querySelector('#convReplySig')?.checked !== false,
+        }),
+      });
+      if (r.success) {
+        msg.innerHTML = `<span style="color:#166534">✅ ${r.dryRun ? '발송 시뮬레이션 완료' : '보냈습니다'}</span>`;
+        // 타임라인을 다시 그려 방금 보낸 회신이 보이게 한다
+        setTimeout(() => openConversationModal(leadId), 700);
+        invalidateServerPage?.();
+      } else {
+        msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(r.error || '실패')}</span>`;
+        btn.disabled = false;
+        btn.textContent = '보내기';
+      }
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(String(e.message || e))}</span>`;
+      btn.disabled = false;
+      btn.textContent = '보내기';
+    }
+  });
+}
+
+/**
+ * 메일 대화 보기 버튼 — 회사명 바로 아래에 둔다.
+ *
+ * 처음에는 Stage 칸에 넣었는데, 단계 이동 버튼들과 생김새가 같아 묻혔다.
+ * 답장이 온 뒤부터는 "무슨 얘기가 오갔나" 를 보는 것이 주요 동작이므로
+ * 회사명 옆에서 바로 눈에 띄어야 한다.
+ */
+function conversationButtonHtml(lead) {
+  const stage = lead.stage || 'imported';
+  if (!['contacted', 'replied', 'negotiating', 'partner'].includes(stage)) return '';
+
+  const n = lead.inboundCount || 0;
+  const hasReply = n > 0;
+
+  // 답장이 온 건은 초록으로 채워 눈에 띄게, 아직 없는 건은 옅게
+  const bg = hasReply ? '#16a34a' : '#f1f5f9';
+  const fg = hasReply ? '#ffffff' : '#64748b';
+  const bd = hasReply ? '#16a34a' : '#cbd5e1';
+  const label = hasReply ? `답장 ${n}통 보기` : '보낸 메일 보기';
+  const needsReply = lead.needsReply === true;
+
+  return `
+    <button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(lead.leadId || lead.id)}"
+      title="주고받은 메일 내용 보기"
+      style="margin-top:5px;padding:4px 10px;font-size:11px;border:1px solid ${bd};border-radius:99px;
+             background:${bg};color:${fg};font-weight:700;cursor:pointer;white-space:nowrap;
+             display:inline-flex;align-items:center;gap:4px;
+             ${hasReply ? 'box-shadow:0 1px 3px rgba(22,163,74,0.3)' : ''}">
+      💬 ${label}${needsReply ? ' ⚠' : ''}
+    </button>`;
 }
 
 function outreachApprovalCellHtml(lead) {
@@ -3989,6 +6010,7 @@ function rowHtml(lead) {
         <div class="company-cell">
           <strong>${escapeHtml(lead.Company)}</strong>
           <span class="meta-line">${escapeHtml(truncate(lead.Type, 74))}</span>
+          ${conversationButtonHtml(lead)}
           <div>${updatedInfoBadgeHtml(lead)}${sourceBatchBadgeHtml(lead)}</div>
         </div>
       </td>
@@ -3999,7 +6021,7 @@ function rowHtml(lead) {
       <td>${verifyBadgeHtml(lead)}</td>
       <td>${escapeHtml(truncate(lead.BuyerContact || lead.Phone || "No public contact", 70))}</td>
       <td>${emailCell(lead.Email)}</td>
-      <td>${lead.WebsiteContact ? `<a href="${escapeAttr(urlFor(lead.WebsiteContact))}" target="_blank" rel="noreferrer">Open</a>` : ""}</td>
+      <td>${websiteLinkHtml(lead.WebsiteContact, { short: true })}</td>
     </tr>
   `;
 }
@@ -4779,16 +6801,56 @@ async function renderB2BEmailManager() {
       <!-- 리치 텍스트 툴바 + 본문 -->
       <div style="display:flex;flex-direction:column;flex:1;min-height:340px">
         <label style="font-size:12px;color:var(--text-secondary);font-weight:700">본문 (서식 지원)</label>
-        <div id="tplToolbar" style="display:flex;gap:2px;flex-wrap:wrap;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px 8px 0 0;padding:6px;margin-top:4px">
-          <button type="button" data-cmd="bold" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;font-weight:800;cursor:pointer;font-size:12px;color:#0f172a" title="굵게 (Ctrl+B)"><b>B</b></button>
+        <div id="tplToolbar" style="display:flex;gap:2px;flex-wrap:wrap;align-items:center;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px 8px 0 0;padding:6px;margin-top:4px">
+          <!-- 메일은 웹폰트를 못 쓴다. 수신자 PC 에 이미 깔려 있는 글꼴만 넣는다.
+               (Pretendard 같은 걸 지정해도 상대 메일함에서는 기본 글꼴로 떨어진다) -->
+          <select id="tplFontFamily" title="글꼴" style="padding:6px 6px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a">
+            <option value="">글꼴</option>
+            <option value="Arial, Helvetica, sans-serif">기본 (Arial)</option>
+            <option value="'Malgun Gothic','맑은 고딕',sans-serif">맑은 고딕</option>
+            <option value="Dotum,'돋움',sans-serif">돋움</option>
+            <option value="Gulim,'굴림',sans-serif">굴림</option>
+            <option value="Helvetica, Arial, sans-serif">Helvetica</option>
+            <option value="Georgia,'Times New Roman',serif">Georgia</option>
+            <option value="'Times New Roman', Times, serif">Times</option>
+            <option value="Verdana, Geneva, sans-serif">Verdana</option>
+            <option value="Tahoma, Geneva, sans-serif">Tahoma</option>
+            <option value="'Trebuchet MS', Helvetica, sans-serif">Trebuchet</option>
+            <option value="'Courier New', Courier, monospace">Courier</option>
+          </select>
+          <select id="tplFontSize" title="글자 크기" style="padding:6px 6px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a">
+            <option value="">크기</option>
+            <option value="12">12px</option>
+            <option value="13">13px</option>
+            <option value="14">14px</option>
+            <option value="15">15px</option>
+            <option value="16">16px</option>
+            <option value="18">18px</option>
+            <option value="20">20px</option>
+            <option value="24">24px</option>
+          </select>
+          <div style="width:1px;background:#cbd5e1;margin:0 3px"></div>
+          <button type="button" data-cmd="bold" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a;font-weight:800" title="굵게 (Ctrl+B)"><b>B</b></button>
+          <button type="button" data-cmd="italic" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a;font-style:italic" title="기울임 (Ctrl+I)"><i>I</i></button>
           <button type="button" data-cmd="underline" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a;text-decoration:underline" title="밑줄 (Ctrl+U)"><u>U</u></button>
-          <div style="width:1px;background:#cbd5e1;margin:0 2px"></div>
+          <button type="button" data-cmd="strikeThrough" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a;text-decoration:line-through" title="취소선">S</button>
+          <label title="글자 색" style="display:inline-flex;align-items:center;gap:4px;padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a">
+            <span style="font-weight:800">A</span>
+            <input type="color" id="tplFontColor" value="#111827"
+                   style="width:22px;height:18px;padding:0;border:none;background:none;cursor:pointer">
+          </label>
+          <div style="width:1px;background:#cbd5e1;margin:0 3px"></div>
           <button type="button" data-cmd="insertUnorderedList" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="글머리 목록">• 목록</button>
-          <div style="width:1px;background:#cbd5e1;margin:0 2px"></div>
+          <button type="button" data-cmd="insertOrderedList" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="번호 목록">1. 목록</button>
+          <div style="width:1px;background:#cbd5e1;margin:0 3px"></div>
           <button type="button" data-cmd="justifyLeft" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="왼쪽 정렬">좌</button>
-          <button type="button" data-cmd="justifyCenter" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="중앙 정렬">중앙</button>
-          <div style="width:1px;background:#cbd5e1;margin:0 2px"></div>
-          <button type="button" data-cmd="removeFormat" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="서식 해제">서식해제</button>
+          <button type="button" data-cmd="justifyCenter" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="가운데 정렬">중앙</button>
+          <button type="button" data-cmd="justifyRight" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="오른쪽 정렬">우</button>
+          <div style="width:1px;background:#cbd5e1;margin:0 3px"></div>
+          <button type="button" id="tplInsertLink" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a;color:#1d4ed8;font-weight:700" title="선택한 글자에 링크 걸기">🔗 링크</button>
+          <button type="button" id="tplUnlink" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="링크 해제">링크해제</button>
+          <div style="width:1px;background:#cbd5e1;margin:0 3px"></div>
+          <button type="button" data-cmd="removeFormat" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="서식 지우기">서식해제</button>
           <div style="flex:1"></div>
           <button type="button" id="insertCompanyMarker" style="padding:6px 12px;background:#eef2ff;border:1px solid #a5b4fc;border-radius:4px;cursor:pointer;font-size:12px;color:#4338ca;font-weight:700" title="회사명 자동 대체 마커 삽입">➕ [회사명]</button>
         </div>
@@ -4888,20 +6950,102 @@ async function renderB2BEmailManager() {
     renderB2BEmailManager();
   });
 
-  // 리치 에디터 툴바
+  // ── 리치 에디터 툴바 ──────────────────────────────────────
+  // styleWithCSS: 서식을 <font> 태그가 아니라 style="" 인라인으로 넣게 한다.
+  // 메일 클라이언트는 <style> 블록이나 클래스를 대부분 지우므로,
+  // 인라인 style 로 들어가야 상대 메일함에서 서식이 살아남는다.
+  try { document.execCommand('styleWithCSS', false, true); } catch {}
+
+  const syncRich = () => {
+    const rich = document.getElementById('templateBodyRich');
+    if (!rich) return;
+    state.email.editor.body = rich.innerHTML;
+    state.email.editor.bodyIsHtml = true;
+    state.email.dirty = true;
+    markSaveDirty();
+  };
+  // 툴바를 누르는 순간 본문 선택이 풀리면 서식이 엉뚱한 데 걸린다 → mousedown 차단
+  const keepFocus = (el) => el?.addEventListener('mousedown', (e) => e.preventDefault());
+
   document.querySelectorAll('#tplToolbar button[data-cmd]').forEach(btn => {
-    btn.addEventListener('mousedown', (e) => e.preventDefault()); // 포커스 유지
+    keepFocus(btn);
     btn.addEventListener('click', () => {
-      const cmd = btn.dataset.cmd;
-      document.execCommand(cmd, false, null);
-      const rich = document.getElementById('templateBodyRich');
-      if (rich) {
-        state.email.editor.body = rich.innerHTML;
-        state.email.dirty = true;
-        markSaveDirty();
-      }
+      document.execCommand(btn.dataset.cmd, false, null);
+      syncRich();
     });
   });
+
+  // 글꼴 — execCommand('fontName') 은 <font face> 를 만들어서 메일에서 잘 깨진다.
+  // 선택 영역을 style="font-family:…" 로 감싸는 편이 안전하다.
+  const wrapSelection = (styleProp, value) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      alert('먼저 본문에서 바꿀 글자를 선택하세요.');
+      return false;
+    }
+    const range = sel.getRangeAt(0);
+    const span = document.createElement('span');
+    span.style[styleProp] = value;
+    try {
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+      sel.removeAllRanges();
+      const r2 = document.createRange();
+      r2.selectNodeContents(span);
+      sel.addRange(r2);
+    } catch {
+      return false;
+    }
+    return true;
+  };
+
+  const fontSel = document.getElementById('tplFontFamily');
+  keepFocus(fontSel);
+  fontSel?.addEventListener('change', (e) => {
+    if (e.target.value && wrapSelection('fontFamily', e.target.value)) syncRich();
+    e.target.selectedIndex = 0;
+  });
+
+  const sizeSel = document.getElementById('tplFontSize');
+  keepFocus(sizeSel);
+  sizeSel?.addEventListener('change', (e) => {
+    if (e.target.value && wrapSelection('fontSize', e.target.value + 'px')) syncRich();
+    e.target.selectedIndex = 0;
+  });
+
+  const colorInput = document.getElementById('tplFontColor');
+  colorInput?.addEventListener('input', (e) => {
+    document.execCommand('foreColor', false, e.target.value);
+    syncRich();
+  });
+
+  // 링크 — createLink 로 만든 <a> 에 target/rel 을 직접 붙인다.
+  // 메일에서 열리는 링크는 새 창으로 뜨는 편이 자연스럽고,
+  // rel 이 없으면 일부 클라이언트가 경고를 띄운다.
+  const linkBtn = document.getElementById('tplInsertLink');
+  keepFocus(linkBtn);
+  linkBtn?.addEventListener('click', () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      alert('링크를 걸 글자를 먼저 선택하세요.\n(예: "자세히 보기" 를 드래그한 뒤 🔗 링크)');
+      return;
+    }
+    const url = prompt('연결할 주소를 입력하세요', 'https://');
+    if (!url || url === 'https://') return;
+    const href = /^(https?:|mailto:)/i.test(url) ? url : 'https://' + url;
+    document.execCommand('createLink', false, href);
+    const rich = document.getElementById('templateBodyRich');
+    rich?.querySelectorAll(`a[href="${CSS.escape(href)}"]`).forEach((a) => {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+      a.style.color = '#1d4ed8';
+    });
+    syncRich();
+  });
+
+  const unlinkBtn = document.getElementById('tplUnlink');
+  keepFocus(unlinkBtn);
+  unlinkBtn?.addEventListener('click', () => { document.execCommand('unlink', false, null); syncRich(); });
 
   // [회사명] 마커 삽입
   document.getElementById('insertCompanyMarker')?.addEventListener('mousedown', (e) => e.preventDefault());
@@ -6344,15 +8488,16 @@ function recommendedCardHtml(b) {
   const prioColor = b.priority === 'A-' ? '#dc2626' : b.priority === 'B' ? '#f59e0b' : '#64748b';
   // stage 기반 배지 · 이동 페이지 결정
   const stageMap = {
-    imported:    { view:'pipeline-import',      label:'📥 가져오기',   bg:'#f1f5f9', fg:'#475569' },
-    verifying:   { view:'pipeline-verifying',   label:'🔍 검증 대기',  bg:'#fef9c3', fg:'#854d0e' },
-    verified:    { view:'pipeline-verified',    label:'✅ 검증 완료',  bg:'#dcfce7', fg:'#166534' },
-    contacted:   { view:'pipeline-contacted',   label:'📨 이메일 컨택 중', bg:'#dbeafe', fg:'#1e40af' },
-    replied:     { view:'pipeline-replied',     label:'💬 응답 옴',    bg:'#e0e7ff', fg:'#3730a3' },
-    negotiating: { view:'pipeline-negotiating', label:'🤝 협상 중',    bg:'#fed7aa', fg:'#9a3412' },
-    partner:     { view:'pipeline-partner',     label:'⭐ 파트너',     bg:'#f3e8ff', fg:'#6b21a8' },
-    archived:    { view:'pipeline-verified',    label:'📦 보관',       bg:'#f3f4f6', fg:'#6b7280' },
-    failed:      { view:'pipeline-verified',    label:'🚫 검증 실패',  bg:'#fee2e2', fg:'#991b1b' },
+    imported:      { view:'pipeline-import',       label:'📥 가져오기',       bg:'#f1f5f9', fg:'#475569' },
+    'ai-searched': { view:'pipeline-ai-searched', label:'🤖 AI 서칭',        bg:'#ede9fe', fg:'#5b21b6' },
+    verifying:     { view:'pipeline-verifying',   label:'🔍 검증 대기',      bg:'#fef9c3', fg:'#854d0e' },
+    verified:      { view:'pipeline-verified',    label:'✅ 검증 완료',      bg:'#dcfce7', fg:'#166534' },
+    contacted:     { view:'pipeline-contacted',   label:'📨 이메일 컨택 중', bg:'#dbeafe', fg:'#1e40af' },
+    replied:       { view:'pipeline-replied',     label:'💬 응답 옴',        bg:'#e0e7ff', fg:'#3730a3' },
+    negotiating:   { view:'pipeline-negotiating', label:'🤝 협상 중',        bg:'#fed7aa', fg:'#9a3412' },
+    partner:       { view:'pipeline-partner',     label:'⭐ 파트너',         bg:'#f3e8ff', fg:'#6b21a8' },
+    archived:      { view:'pipeline-verified',    label:'📦 보관',           bg:'#f3f4f6', fg:'#6b7280' },
+    failed:        { view:'pipeline-verified',    label:'🚫 검증 실패',      bg:'#fee2e2', fg:'#991b1b' },
   };
   const s = b.imported && b.existingStage ? stageMap[b.existingStage] : null;
   const stageBadge = s
@@ -6507,7 +8652,7 @@ function verifyDetailsHtml(lead) {
         <span style="font-size:11px;color:#9ca3af">${verifiedAt} 검증</span>
       </div>
       ${row('이메일',   v.emailValid,    v.emailValid === false ? reasonKo(v.emailReason) : (lead.Email || '값 없음'))}
-      ${row('웹사이트', v.websiteAlive,  v.websiteAlive === false ? `연결 실패 ${v.websiteStatus ? `(HTTP ${v.websiteStatus})` : '(응답 없음)'}` : (lead.WebsiteContact || '값 없음'))}
+      ${row('웹사이트', v.websiteAlive,  v.websiteAlive === false ? `연결 실패 ${v.websiteStatus ? `(HTTP ${v.websiteStatus})` : '(응답 없음)'}` : (lead.WebsiteContact ? websiteLinkHtml(lead.WebsiteContact) : '값 없음'))}
       ${row('전화',     v.phoneMatch,    v.phoneMatch === false ? reasonKo(v.phoneReason) : (lead.Phone || '값 없음'))}
       ${row('LinkedIn', v.linkedinValid, v.linkedinValid === false ? reasonKo(v.linkedinReason) : (lead.LinkedInCompany || lead.ContactLinkedIn || '값 없음'))}
       ${row('사업관련성', bizOk, bizDetail)}
@@ -7792,6 +9937,24 @@ function urlFor(value) {
   if (/^https?:\/\//i.test(first)) return first;
   if (/^www\./i.test(first)) return `https://${first}`;
   return first;
+}
+
+// 웹사이트를 클릭 가능한 링크로 (short=true 면 도메인만 표기, full URL 은 title 로)
+function websiteLinkHtml(website, opts) {
+  const raw = (website || '').toString().trim();
+  if (!raw) return '';
+  const href = urlFor(raw);
+  if (!href) return '';
+  const short = opts && opts.short === true;
+  let label = raw;
+  if (short) {
+    try {
+      label = new URL(/^https?:\/\//i.test(href) ? href : `https://${href}`).hostname.replace(/^www\./, '');
+    } catch (_) {
+      label = raw.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+    }
+  }
+  return `<a href="${escapeAttr(href)}" target="_blank" rel="noreferrer noopener" title="${escapeAttr(raw)}" style="color:#2563eb;text-decoration:underline">${escapeHtml(label)} ↗</a>`;
 }
 
 function badgeClass(value = "") {

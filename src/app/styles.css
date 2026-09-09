@@ -1156,3 +1156,28 @@ th.sortable:hover { color: var(--text-primary); }
   .modal-grid, .modal-grid.modal-grid-3col { grid-template-columns: 1fr; }
   .modal-card { margin: 12px; max-height: 95vh; }
 }
+
+/* ── 회신 상자 (contenteditable) ─────────────────────────────
+   textarea 와 달리 contenteditable 에는 placeholder 속성이 없어
+   비어 있을 때 안내 문구를 직접 그려준다. */
+#convReplyBody:empty::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+}
+#convReplyBody:focus { border-color: #2563eb; }
+#convReplyBody a { color: #1d4ed8; }
+
+/* 좁은 화면에서는 좌우 2단이 각각 너무 좁아진다 → 위아래로 쌓는다 */
+@media (max-width: 900px) {
+  .reply-2col { grid-template-columns: 1fr !important; }
+  .reply-2col > div:last-child { min-height: 120px !important; }
+}
+
+/* 서명 붙이기 도움말 — 평소엔 숨기고 마우스를 올리면 뜬다 */
+.sig-pop { display: none; }
+.sig-help:hover .sig-pop, .sig-help:focus-within .sig-pop { display: block; }
+.sig-pop::after {           /* 말풍선 꼬리 */
+  content: ''; position: absolute; top: 100%; left: 12px;
+  border: 6px solid transparent; border-top-color: #0f172a;
+}

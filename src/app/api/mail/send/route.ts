@@ -11,6 +11,26 @@ import { checkSendGuard } from '@/lib/send-limits';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
+/* ═══════════════════════════════════════════════════════════════════
+   🚫 발송 차단 스위치 — 지금은 메일이 한 통도 나가지 않는다.
+
+   왜 env(MAIL_DRY_RUN) 로만 두지 않았나:
+   Next.js 는 .env.local 을 서버가 뜰 때 한 번 읽는다. 파일만 고치면
+   이미 떠 있는 서버에는 반영되지 않아, "껐다고 생각했는데 나가는" 상황이
+   생긴다. 코드 상수는 저장하는 순간 hot reload 로 즉시 먹는다.
+
+   ── 다시 보낼 수 있게 하려면 ──
+   1) 아래를 false 로 바꾸고
+   2) .env.local 의 MAIL_DRY_RUN 을 0 으로 되돌린 뒤
+   3) 개발 서버를 재시작한다 (env 는 재시작해야 반영된다)
+
+   ※ 되살리기 전에 반드시 정할 것: 하루 발송 상한과 발송 간격.
+      지금 발송 루프에는 둘 다 없어서 400통이 한 번에 나간다.
+      yogico.kr 로 실거래 메일(Schestowitz·Blue Marble 등)도 나가므로
+      스팸 판정을 받으면 그 메일들까지 상대 스팸함으로 간다.
+   ═══════════════════════════════════════════════════════════════════ */
+const SEND_KILL_SWITCH = true;
+
 /**
  * POST /api/mail/send
  * B2B 메일 벌크/개별 발송. 각 리드마다 템플릿 변수 치환 → SMTP 발송 → emailHistory 기록.
@@ -29,6 +49,15 @@ export const maxDuration = 60;
  *   { success, requested, sent, failed, dryRun, results: [{leadId, ok, messageId?, error?}] }
  */
 export async function POST(req: Request) {
+  // 어떤 경로로 들어와도 여기서 멈춘다 (버튼·예약·API 직접 호출 전부)
+  if (SEND_KILL_SWITCH) {
+    return NextResponse.json({
+      success: false,
+      error: '메일 발송이 차단되어 있습니다. (개발자 확인 필요 — send/route.ts 의 SEND_KILL_SWITCH)',
+      killSwitch: true,
+    }, { status: 423 });
+  }
+
   let body: any = {};
   try { body = await req.json(); } catch {}
 
@@ -178,6 +207,9 @@ export async function POST(req: Request) {
                 to,
                 sentAt: now,
                 status: 'sent',
+                // 상대 답장의 In-Reply-To 헤더가 이 값을 가리킨다.
+                // 수신 메일을 어느 리드의 답장인지 확정하는 가장 정확한 열쇠 (match-lead.ts).
+                messageId: result.messageId || '',
               },
             },
             $set: setUpdate,

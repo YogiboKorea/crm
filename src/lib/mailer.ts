@@ -88,7 +88,39 @@ export async function verifySmtp(): Promise<{ ok: boolean; error?: string; host?
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   🚫 전역 발송 차단 — 지금은 이 앱에서 메일이 한 통도 나가지 않는다.
+
+   여기(가장 아래 계층)에 둔 이유:
+   sendMail 을 부르는 곳이 6군데다 — 벌크 발송, 예약 발송(schedule-runner),
+   답장(mail/reply), 브리핑, 크론, 테스트. 위쪽 한 곳만 막으면 예약이나
+   크론으로 조용히 나갈 수 있다. 여기서 막으면 전부 걸린다.
+
+   env(MAIL_DRY_RUN)만 쓰지 않은 이유:
+   Next.js 는 .env.local 을 서버가 뜰 때 한 번만 읽는다. 파일만 고치면
+   이미 떠 있는 서버에는 반영되지 않아 "껐다고 생각했는데 나가는" 일이
+   생긴다. 코드 상수는 저장 즉시 hot reload 로 먹는다.
+
+   ── 지금 상태: false (여기서는 막지 않는다) ──
+   대량 발송은 send/route.ts 의 SEND_KILL_SWITCH 가 막고 있다.
+   여기까지 켜면 받은 메일 답장(mail/reply)까지 막혀서, 진행 중인 거래처에
+   답을 못 하게 된다. 막아야 할 것은 "먼저 보내는 콜드메일 400통"이지
+   "상대가 보낸 메일에 답하는 것"이 아니다.
+
+   ⚠️ 대량 발송을 다시 열 때(SEND_KILL_SWITCH=false) 반드시 먼저 할 것:
+      하루 발송 상한과 발송 간격 넣기. 현재 발송 루프에는 둘 다 없어
+      400통이 한 번에 나간다. yogico.kr 로 실거래 메일도 나가므로
+      스팸 판정을 받으면 그 메일들까지 상대 스팸함으로 간다.
+
+   전부 막아야 할 일이 생기면 아래를 true 로 (저장 즉시 먹는다).
+   ═══════════════════════════════════════════════════════════════════ */
+export const GLOBAL_SEND_BLOCKED = false;
+
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
+  if (GLOBAL_SEND_BLOCKED) {
+    console.log('[mailer:BLOCKED] 발송 차단됨 →', input.to, '·', input.subject);
+    return { ok: false, error: '메일 발송이 차단되어 있습니다 (mailer.ts · GLOBAL_SEND_BLOCKED)' };
+  }
   const dryRun = process.env.MAIL_DRY_RUN === '1';
   if (dryRun) {
     console.log('[mailer:DRY_RUN]', input.to, '·', input.subject, input.smtpConfig ? `(via ${input.smtpConfig.user})` : '');

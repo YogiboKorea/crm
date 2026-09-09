@@ -1,0 +1,12 @@
+import mongoose from 'mongoose';
+import fs from 'fs';
+const env = fs.readFileSync('.env.local','utf8');
+const uri = env.match(/^MONGODB_URI=(.*)$/m)[1].trim().replace(/^["']|["']$/g,'');
+await mongoose.connect(uri);
+const S = mongoose.connection.db.collection('emailschedules');
+const rows = await S.aggregate([{$group:{_id:'$status',n:{$sum:1}}}]).toArray();
+if (!rows.length) console.log('  예약 없음');
+for (const r of rows) console.log('  ', String(r._id).padEnd(12), r.n);
+const pend = await S.find({status:{$in:['pending','scheduled']}}).limit(5).toArray();
+for (const p of pend) console.log('   대기:', p.scheduledAt, '|', (p.leadIds||[]).length, '건');
+await mongoose.disconnect();

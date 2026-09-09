@@ -34,35 +34,35 @@ export default function Home() {
             </div>
           </button>
           <nav className="nav" aria-label="Pipeline">
-            {/* ══════════ 그룹 A · 리드 정보 (데이터 관리) ══════════ */}
-            <div className="nav-section-label">📊 리드 정보</div>
-            <button className="nav-item active" data-view="pipeline-import" type="button" title="가져오기 — CSV/엑셀 업로드로 리드 데이터를 신규 등록">
+            {/* ══════════ 그룹 A · 리드 파이프라인 ══════════
+                회사가 어디까지 왔는지를 위에서 아래로 한 줄기로 읽히게 배치.
+                예전에는 '발송함' 뒤를 다른 그룹으로 잘라놨는데, 같은 깔때기의
+                뒷부분이라 끊을 이유가 없었다. */}
+            <div className="nav-section-label">📊 리드 파이프라인</div>
+            {/* 가져오기(CSV 업로드)는 숨김 — 리드는 AI 서칭으로 들어오고,
+                클라이언트가 엑셀을 직접 올릴 일이 없다. 되살리려면 주석만 풀면 된다.
+            <button className="nav-item" data-view="pipeline-import" type="button" title="가져오기 — CSV/엑셀 업로드로 리드 데이터를 신규 등록">
               <span className="nav-icon">📥</span><span className="nav-label">가져오기 (Import)</span>
             </button>
-            <button className="nav-item" data-view="pipeline-verifying" type="button" title="검증 대기 — 새로 가져온 리드가 AI 1차 검증을 기다리는 상태">
+            */}
+            <button className="nav-item" data-view="pipeline-ai-searched" type="button" title="AI 서칭 — Claude 가 웹에서 자동 발굴한 후보 · 검토 후 검증대기로 승격하거나 제외">
+              <span className="nav-icon">🤖</span><span className="nav-label">AI 서칭</span>
+              <span className="nav-badge" data-nav-badge="ai-searched"></span>
+            </button>
+            <button className="nav-item" data-view="pipeline-verifying" type="button" title="검증 대기 — 가져온 리드가 AI 1차 검증을 기다리는 상태">
               <span className="nav-icon">🔍</span><span className="nav-label">검증 대기</span>
               <span className="nav-badge" data-nav-badge="verifying"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-verified" type="button" title="발송 대기 — AI 검증 통과. 승인 후 메일 발송할 대상 리드">
+            {/* 첫 화면 = 발송 대기. 클라이언트가 매일 여는 곳이 여기다. */}
+            <button className="nav-item active" data-view="pipeline-verified" type="button" title="발송 대기 — 승인 후 메일 발송할 대상 리드">
               <span className="nav-icon">✅</span><span className="nav-label">발송 대기</span>
               <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
-            <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트 — K-beauty B2B 시드 (웹 발굴) 를 내 리드로 추가">
-              <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>
-            </button>
-            <button className="nav-item" data-view="tool-import-history" type="button" title="Import History — CSV 배치 기록 조회 및 롤백">
-              <span className="nav-icon">📋</span><span className="nav-label">Import History</span>
-            </button>
-
-            <div className="nav-divider"></div>
-
-            {/* ══════════ 그룹 B · 메일 발송 (컨택 진행) ══════════ */}
-            <div className="nav-section-label">✉ 메일 발송</div>
             <button className="nav-item" data-view="pipeline-contacted" type="button" title="메일 발송함 — 이미 메일 보낸 리드 · 여기서 단체 즉시/예약 재발송">
               <span className="nav-icon">📨</span><span className="nav-label">메일 발송함</span>
               <span className="nav-badge" data-nav-badge="contacted"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드 (아직 협상 얘기 시작 전)">
+            <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드. 회사명 옆 💬 버튼으로 주고받은 메일 확인">
               <span className="nav-icon">💬</span><span className="nav-label">답장 받음</span>
               <span className="nav-badge" data-nav-badge="replied"></span>
             </button>
@@ -75,32 +75,76 @@ export default function Home() {
               <span className="nav-badge" data-nav-badge="partner"></span>
             </button>
 
-            <div className="nav-sub-divider"></div>
+            <div className="nav-divider"></div>
 
+            {/* ══════════ 그룹 B · 메일함 ══════════
+                파이프라인이 '회사' 중심이라면 여기는 '메일' 중심.
+                리드에 매칭되지 않은 메일까지 전부 여기서 본다
+                (외부 B2B 메일 관리 도구를 대체하는 자리). */}
+            <div className="nav-section-label">
+              📬 메일함
+              <span style={{ fontWeight: 400, opacity: 0.75, marginLeft: 4, textTransform: 'none' }}>
+                · 최근 2개월
+              </span>
+            </div>
+            <button className="nav-item" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
+              <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
+              <span className="nav-badge" data-nav-badge="inboxUnread"></span>
+            </button>
+            <button className="nav-item" data-view="tool-inbox-needsreply" type="button" title="회신 필요 — 상대가 질문·요청을 보냈고 아직 우리가 답하지 않은 메일 (최근 2개월)">
+              <span className="nav-icon">⚠️</span><span className="nav-label">회신 필요</span>
+              <span className="nav-badge" data-nav-badge="inboxNeedsReply"></span>
+            </button>
+            <button className="nav-item" data-view="tool-deadlines" type="button" title="기한 관리 — 회신 기한이 잡힌 메일. 기한은 본문에서 자동 추출됩니다 (최근 2개월)">
+              <span className="nav-icon">⏰</span><span className="nav-label">기한 관리</span>
+              <span className="nav-badge" data-nav-badge="inboxDeadlines"></span>
+            </button>
+            {/* 브리핑·휴지통은 숨김 — 화면 수를 줄이기 위해서다.
+                기능과 데이터는 그대로 살아 있고 (renderBriefingPage / renderTrashPage),
+                주석만 풀면 즉시 돌아온다. 휴지통에 넣은 메일도 지워지지 않는다.
+            <button className="nav-item" data-view="tool-briefing" type="button" title="오늘의 브리핑 — 회신 필요·기한 임박·새 답장을 한 장으로. 매일 아침 메일로도 받을 수 있습니다">
+              <span className="nav-icon">📋</span><span className="nav-label">오늘의 브리핑</span>
+            </button>
+            <button className="nav-item" data-view="tool-trash" type="button" title="휴지통 — 치워둔 메일. DB에서 지우지 않으므로 언제든 되돌릴 수 있습니다">
+              <span className="nav-icon">🗑</span><span className="nav-label">휴지통</span>
+              <span className="nav-badge" data-nav-badge="inboxTrash"></span>
+            </button>
+            */}
+
+            <div className="nav-divider"></div>
+
+            {/* ══════════ 그룹 C · 설정 · 도구 ══════════ */}
+            <div className="nav-section-label">⚙ 설정 · 도구</div>
+            {/* 예약 발송 관리 · 메일 수신 설정은 숨김 — 둘 다 한 번 맞춰두면
+                다시 들어갈 일이 없는 화면이다 (IMAP 연결은 이미 설정 완료).
             <button className="nav-item" data-view="tool-scheduled-mails" type="button" title="예약 발송 관리 — 대기중 예약 목록·취소·즉시발송·발송 여부 확인">
               <span className="nav-icon">📅</span><span className="nav-label">예약 발송 관리</span>
             </button>
-
-            <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 발송에 쓸 SMTP 계정과 서명 정보 등록">
-              <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
+            <button className="nav-item" data-view="tool-mail-settings" type="button" title="메일 수신 설정 — 이카운트 IMAP 연결·수집 폴더·광고 필터">
+              <span className="nav-icon">🔌</span><span className="nav-label">메일 수신 설정</span>
             </button>
+            */}
             <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 양식 — 발송할 메일 제목/본문 작성 (회사명 자동 대체)">
               <span className="nav-icon">📝</span><span className="nav-label">메일 양식</span>
             </button>
-            <a
-              className="nav-item"
-              href="https://bz-rosy.vercel.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="B2B 메일 관리 (새 창) — 답장 수집/조회 외부 도구"
-              style={{ textDecoration: 'none' }}
-            >
-              <span className="nav-icon">📮</span>
-              <span className="nav-label">B2B 메일 관리</span>
-              <span className="nav-external" aria-hidden="true">↗</span>
-            </a>
-
-            <div className="nav-divider"></div>
+            <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 발송에 쓸 SMTP 계정과 서명 정보 등록">
+              <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
+            </button>
+            <button className="nav-item" data-view="tool-legacy" type="button" title="기존 데이터 — 예전에 올린 엑셀 데이터. 중복 정리로 보관함에 있지만 지워진 것은 아니며, 보낼 만한 곳을 골라 발송 대기로 되돌릴 수 있습니다">
+              <span className="nav-icon">📚</span><span className="nav-label">기존 데이터</span>
+            </button>
+            {/* 추천 리스트는 숨김 — 고정 시드 54개짜리 구버전 기능이라,
+                웹에서 실시간으로 발굴하는 [🤖 AI 서칭] 이 대체한다.
+                되살리려면 이 주석을 풀면 된다.
+            <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트 — K-beauty B2B 시드 (웹 발굴) 를 내 리드로 추가">
+              <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>
+            </button>
+            */}
+            {/* Import History 도 숨김 — CSV 가져오기를 숨겼으니 짝이 되는 화면도 뺀다.
+            <button className="nav-item" data-view="tool-import-history" type="button" title="Import History — CSV 배치 기록 조회 및 롤백">
+              <span className="nav-icon">📋</span><span className="nav-label">Import History</span>
+            </button>
+            */}
             <button className="nav-item" data-view="tool-user-guide" type="button" title="사용 설명서 — 처음 쓰시는 분을 위한 단계별 가이드">
               <span className="nav-icon">📖</span><span className="nav-label">사용 설명서</span>
             </button>
@@ -215,53 +259,83 @@ export default function Home() {
           <div className="modal-form">
             {/* Action buttons */}
             <div className="el-actions" id="el-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '18px' }}>
-              <a id="el-website" href="#" target="_blank" rel="noreferrer" className="button ghost" style={{ display: 'none' }}>Website</a>
+              <a id="el-website" href="#" target="_blank" rel="noreferrer" className="button ghost" style={{ display: 'none' }}>🌐 웹사이트</a>
               <a id="el-linkedin" href="#" target="_blank" rel="noreferrer" className="button ghost" style={{ display: 'none' }}>LinkedIn</a>
-              <a id="el-email-btn" href="#" className="button ghost" style={{ display: 'none' }}>Email</a>
-              <a id="el-phone-btn" href="#" className="button ghost" style={{ display: 'none' }}>Call</a>
-              <button id="el-deleteBtn" className="button ghost" style={{ color: '#9f3333', borderColor: '#9f3333' }} type="button">Delete</button>
+              <a id="el-email-btn" href="#" className="button ghost" style={{ display: 'none' }}>✉ 메일 보내기</a>
+              <a id="el-phone-btn" href="#" className="button ghost" style={{ display: 'none' }}>📞 전화</a>
+              <button id="el-deleteBtn" className="button ghost" style={{ color: '#9f3333', borderColor: '#9f3333' }} type="button">삭제</button>
             </div>
 
-            <div className="modal-grid modal-grid-3col">
-              {/* CRM 관리 필드 */}
-              <label><span>Status</span>
-                <select id="el-status">
-                  {['New', 'Qualified', 'Contacted', 'Sample Sent', 'Negotiating', 'Won', 'Lost'].map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </label>
-              <label><span>Owner (담당자)</span><input id="el-owner" type="text" placeholder="담당자" /></label>
-              <label><span>Last Contact</span><input id="el-lastContact" type="date" /></label>
-              <label><span>Next Follow-up</span><input id="el-nextFollowUp" type="date" /></label>
-              <label className="modal-full"><span>Notes</span><textarea id="el-notes" placeholder="통화 내용, 샘플 발송, 가격 조건 등"></textarea></label>
-            </div>
+            {/*
+              === 이 폼이 왜 이 모양인가 ===
+              원래는 22칸이 한 화면에 전부 펼쳐져 있었다. 발송대기 411건을 실측해 보니
+              그중 10칸(바이어 이름·직함·LinkedIn·주소·접근방법·담당자·최근연락일·다음후속일 등)이
+              채워진 비율 0% 였다. 대표님 엑셀 컬럼을 그대로 화면에 옮긴 결과인데,
+              엑셀은 옆으로 넓어도 부담이 없지만 화면은 세로로 쌓이면서
+              "내가 뭘 안 채운 거지" 하는 압박이 된다.
 
-            <hr style={{ border: 'none', borderTop: '1px solid #dce3dd', margin: '16px 0' }} />
-            <p style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#68726c', margin: '0 0 12px' }}>Lead Data</p>
+              그 0% 칸들이 쓸모없는 건 아니고 **지금 단계에 안 맞는** 것이다.
+              바이어 이름·직함·최근 연락일은 대화가 시작된 뒤에 채우는 칸인데,
+              아직 메일도 안 보낸 발송대기 회사에까지 똑같이 떠 있었다.
+              그래서 지우지 않고 <details> 로 접었다 — 필요한 사람은 한 번 눌러 펼치면 된다.
 
+              라벨은 한글, id 는 영문 그대로다. id 가 곧 DB 필드명이자 엑셀 헤더라
+              (openEditModal 의 fields 배열이 'el-' + 필드명으로 찾는다) 바꾸면
+              엑셀 가져오기/내보내기가 깨진다. 화면에 보이는 말만 한글로 바꾼 것이다.
+            */}
             <div className="modal-grid">
-              <label><span>Company</span><input id="el-Company" type="text" /></label>
-              <label><span>Country</span><input id="el-Country" type="text" /></label>
-              <label><span>Priority</span><input id="el-Priority" type="text" /></label>
-              <label><span>Type</span><input id="el-Type" type="text" /></label>
-              <label><span>Buyer Name</span><input id="el-BuyerContact" type="text" /></label>
-              <label><span>Title</span><input id="el-Title" type="text" /></label>
-              <label><span>Email</span><input id="el-Email" type="text" /></label>
-              <label><span>Phone</span><input id="el-Phone" type="text" /></label>
-              <label><span>Website</span><input id="el-WebsiteContact" type="text" /></label>
-              <label><span>LinkedIn Company</span><input id="el-LinkedInCompany" type="text" /></label>
-              <label className="modal-full"><span>Brands / Channels</span><textarea id="el-BrandsChannels"></textarea></label>
-              <label className="modal-full"><span>Evidence</span><textarea id="el-Evidence"></textarea></label>
-              <label className="modal-full"><span>Approach</span><textarea id="el-Approach"></textarea></label>
-              <label className="modal-full"><span>Sources</span><textarea id="el-Sources"></textarea></label>
+              <label><span>회사명</span><input id="el-Company" type="text" /></label>
+              <label><span>국가</span><input id="el-Country" type="text" /></label>
+              <label><span>이메일</span><input id="el-Email" type="text" /></label>
+              <label><span>웹사이트</span><input id="el-WebsiteContact" type="text" /></label>
+              <label><span>업종</span><input id="el-Type" type="text" /></label>
+              <label><span>전화번호</span><input id="el-Phone" type="text" /></label>
+              <label className="modal-full"><span>메모</span><textarea id="el-notes" placeholder="통화 내용, 샘플 발송, 가격 조건 등"></textarea></label>
             </div>
 
-            {/* 자동 검증 결과 — 항목별 실패 사유까지 표시 */}
-            <div className="field-block" style={{ marginTop: '16px' }}>
-              <h4 style={{ marginBottom: '8px', fontSize: '14px' }}>🔍 자동 검증 결과</h4>
-              <div id="el-verification"></div>
-            </div>
+            <details className="el-more" style={{ marginTop: '14px' }}>
+              <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: '#4e5968', padding: '8px 0' }}>
+                영업 관리 <span style={{ fontWeight: 400, opacity: 0.7 }}>· 진행 상태 · 담당자 · 일정</span>
+              </summary>
+              <div className="modal-grid modal-grid-3col" style={{ marginTop: '10px' }}>
+                <label><span>진행 상태</span>
+                  <select id="el-status">
+                    {['New', 'Qualified', 'Contacted', 'Sample Sent', 'Negotiating', 'Won', 'Lost'].map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </label>
+                <label><span>담당자</span><input id="el-owner" type="text" placeholder="담당자" /></label>
+                <label><span>최근 연락일</span><input id="el-lastContact" type="date" /></label>
+                <label><span>다음 후속일</span><input id="el-nextFollowUp" type="date" /></label>
+              </div>
+            </details>
+
+            <details className="el-more">
+              <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: '#4e5968', padding: '8px 0' }}>
+                담당자 정보 <span style={{ fontWeight: 400, opacity: 0.7 }}>· 대화가 시작된 뒤에 채우는 칸</span>
+              </summary>
+              <div className="modal-grid" style={{ marginTop: '10px' }}>
+                <label><span>바이어 이름</span><input id="el-BuyerContact" type="text" /></label>
+                <label><span>직함</span><input id="el-Title" type="text" /></label>
+                <label><span>LinkedIn 회사페이지</span><input id="el-LinkedInCompany" type="text" /></label>
+                <label><span>우선순위</span><input id="el-Priority" type="text" /></label>
+                <label className="modal-full"><span>취급 브랜드 / 판매 채널</span><textarea id="el-BrandsChannels"></textarea></label>
+                <label className="modal-full"><span>접근 방법</span><textarea id="el-Approach" placeholder="첫 연락을 어떻게 열지"></textarea></label>
+              </div>
+            </details>
+
+            {/* 이 회사가 왜 후보로 올라왔는지 — "정보가 맞는지" 판단하는 자리 */}
+            <details className="el-more" open>
+              <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: '#4e5968', padding: '8px 0' }}>
+                🔍 이 회사를 고른 근거 <span style={{ fontWeight: 400, opacity: 0.7 }}>· 맞는지 확인하는 곳</span>
+              </summary>
+              <div className="modal-grid" style={{ marginTop: '10px' }}>
+                <label className="modal-full"><span>근거</span><textarea id="el-Evidence" placeholder="K-뷰티 취급 정황 · 사업 형태 등"></textarea></label>
+                <label className="modal-full"><span>출처</span><textarea id="el-Sources" placeholder="이 정보를 어디서 찾았는지"></textarea></label>
+              </div>
+              <div id="el-verification" style={{ marginTop: '10px' }}></div>
+            </details>
 
             <div className="modal-footer" style={{ marginTop: '20px' }}>
               <button type="button" id="editModalCloseBtn2" className="button">저장 및 닫기</button>

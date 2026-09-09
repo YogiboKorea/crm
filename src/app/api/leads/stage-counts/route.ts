@@ -28,8 +28,11 @@ export async function GET() {
       { $group: { _id: { stage: '$stage', aiVerdict: '$verification.aiVerdict' }, n: { $sum: 1 } } },
     ]);
 
+    // ⚠️ 여기 빠진 stage 는 아래 루프에서 조용히 버려져 사이드바 배지가 0 으로 뜬다.
+    //    (실제로 ai-searched 325건이 이 누락 때문에 0 으로 표시됐다)
+    //    Lead 모델 enum 에 stage 를 추가하면 여기도 반드시 함께 추가할 것.
     const stages: any = {
-      imported: 0, verifying: 0, verified: 0,
+      imported: 0, 'ai-searched': 0, verifying: 0, verified: 0,
       contacted: 0, replied: 0, negotiating: 0,
       partner: 0, archived: 0, failed: 0,
     };
@@ -93,8 +96,9 @@ export async function GET() {
         const dateLabel = m ? `${m[1]}-${m[2]}-${m[3]}` : (b === '(수동/미배치)' ? '수동 추가' : '미상');
         batchMap.set(b, {
           batchId: b, dateLabel,
-          breakdown: { total: 0, verifying: 0, verified: 0, failed: 0, archivedOther: 0,
-                       contacted: 0, replied: 0, negotiating: 0, partner: 0, imported: 0 },
+          breakdown: { total: 0, 'ai-searched': 0, verifying: 0, verified: 0, failed: 0,
+                       archivedOther: 0, contacted: 0, replied: 0, negotiating: 0,
+                       partner: 0, imported: 0 },
         });
       }
       const g = batchMap.get(b);

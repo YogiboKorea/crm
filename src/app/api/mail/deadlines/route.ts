@@ -1,0 +1,73 @@
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/mongodb';
+import { InboundMail } from '@/models/InboundMail';
+import { Lead } from '@/models/Lead';
+import { countSince, COUNT_PERIOD_LABEL } from '@/lib/mail/period';
+
+export const runtime = 'nodejs';
+
+/**
+ * GET /api/mail/deadlines — 회신 기한이 잡힌 메일을 기한순으로.
+ *
+ * 기한은 로컬 분석(무료)에서도 추출되므로 AI 크레딧 없이 동작한다.
+ * AI 분석을 돌린 메일은 deadlineText(원문 표현)까지 함께 보여준다.
+ *
+ * 이미 답한 메일은 제외한다 — 처리한 건이 계속 D-day 로 뜨면 목록이 무의미해진다.
+ */
+export async function GET() {
+  try {
+    await dbConnect();
+
+    const mails: any[] = await InboundMail.find(
+      {
+        trashedAt: null,
+        direction: 'in',
+        'analysis.deadline': { $ne: null },
+        classification: { $nin: ['ad', 'system'] },
+        status: { $nin: ['replied', 'archived', 'ignored'] },
+        // 화면 숫자와 같은 기준(최근 2개월). 과거 건은 거래처별 보기로 조회한다.
+        date: { $gte: countSince() },
+      },
+      {
+        subject: 1, from: 1, date: 1, leadId: 1, classification: 1,
+        'analysis.deadline': 1, 'analysis.deadlineText': 1,
+        'analysis.deadlineType': 1, 'analysis.urgency': 1, 'analysis.topic': 1,
+      },
+    ).sort({ 'analysis.deadline': 1 }).limit(300).lean();
+
+    // 리드 회사명 붙이기 — "어느 회사 건인지" 가 기한만큼 중요하다
+    const leadIds = [...new Set(mails.map((m) => m.leadId).filter(Boolean))];
+    const companyMap = new Map<string, string>();
+    if (leadIds.length) {
+      const leads: any[] = await Lead.find({ leadId: { $in: leadIds } }, { leadId: 1, Company: 1 }).lean();
+      leads.forEach((l) => companyMap.set(l.leadId, l.Company));
+    }
+
+    const now = new Date();
+    const in7 = new Date(now.getTime() + 7 * 86400000);
+
+    const shaped = mails.map((m) => ({
+      id: String(m._id),
+      subject: m.subject,
+      from: m.from,
+      date: m.date,
+      leadId: m.leadId || '',
+      company: m.leadId ? companyMap.get(m.leadId) || '' : '',
+      deadline: m.analysis?.deadline,
+      deadlineText: m.analysis?.deadlineText || '',
+      deadlineType: m.analysis?.deadlineType || null,
+      urgency: m.analysis?.urgency || null,
+      topic: m.analysis?.topic || '',
+    }));
+
+    const groups = {
+      overdue: shaped.filter((m) => new Date(m.deadline) < now),
+      soon: shaped.filter((m) => new Date(m.deadline) >= now && new Date(m.deadline) <= in7),
+      later: shaped.filter((m) => new Date(m.deadline) > in7),
+    };
+
+    return NextResponse.json({ success: true, total: shaped.length, groups, periodLabel: COUNT_PERIOD_LABEL });
+  } catch (e: any) {
+    return NextResponse.json({ success: false, error: e?.message || '조회 실패' }, { status: 500 });
+  }
+}

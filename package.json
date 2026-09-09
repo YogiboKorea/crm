@@ -9,7 +9,12 @@
     "start": "next start",
     "lint": "next lint",
     "seed": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/seed-leads.ts",
-    "seed:admin": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/seed-admin.ts"
+    "seed:admin": "ts-node -O \"{\\\"module\\\":\\\"commonjs\\\"}\" scripts/seed-admin.ts",
+    "mail:test": "node scripts/ingest-mail.mjs --test",
+    "mail:ingest": "node scripts/ingest-mail.mjs",
+    "mail:indexes": "node -r dotenv/config scripts/ensure-mail-indexes.mjs dotenv_config_path=.env.local",
+    "test:mail-lib": "ts-node -P tsconfig.scripts.json scripts/test-mail-lib.ts",
+    "test:match-lead": "ts-node -P tsconfig.scripts.json -r dotenv/config scripts/test-match-lead.ts dotenv_config_path=.env.local"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +22,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
     "@types/nodemailer": "^8.0.1",
+    "imapflow": "^1.7.8",
     "jose": "^6.2.3",
+    "mailparser": "^3.9.23",
     "mongoose": "^9.6.1",
     "next": "^16.2.5",
     "nodemailer": "^9.0.5",
@@ -26,6 +33,7 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -34,6 +42,7 @@
     "postcss": "^8.5.14",
     "tailwindcss": "^4.2.4",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^6.0.3"
   }
 }

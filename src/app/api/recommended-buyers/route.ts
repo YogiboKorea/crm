@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   const selected: string[] = Array.isArray(body?.companies) ? body.companies : [];
   // 지정된 stage 로 바로 이동시키기 (기본 'verifying' — 기존 파이프라인 그대로)
   const requestedStage: string = body?.stage || 'verifying';
-  const validStages = new Set(['imported','verifying','verified','contacted','replied','negotiating','partner','archived']);
+  const validStages = new Set(['imported','ai-searched','verifying','verified','contacted','replied','negotiating','partner','archived','failed']);
   const targetStage = validStages.has(requestedStage) ? requestedStage : 'verifying';
 
   const toImport = selected.length

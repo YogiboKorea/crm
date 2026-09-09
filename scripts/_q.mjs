@@ -1,0 +1,16 @@
+import mongoose from 'mongoose';
+import fs from 'fs';
+const env = fs.readFileSync('.env.local','utf8');
+const uri = env.match(/^MONGODB_URI=(.*)$/m)[1].trim().replace(/^["']|["']$/g,'');
+await mongoose.connect(uri);
+const L = mongoose.connection.db.collection('leads');
+console.log('=== stage 별 ===');
+for (const r of await L.aggregate([{$group:{_id:'$stage',n:{$sum:1}}},{$sort:{n:-1}}]).toArray()) console.log(String(r._id).padEnd(14), r.n);
+console.log('\n=== verifying 안의 AI 판정 ===');
+for (const r of await L.aggregate([{$match:{stage:'verifying'}},{$group:{_id:'$aiVerification.classification',n:{$sum:1}}},{$sort:{n:-1}}]).toArray()) console.log(String(r._id).padEnd(16), r.n);
+const q={stage:'verifying','aiVerification.classification':'beauty-buyer'};
+console.log('\nverifying + beauty-buyer :', await L.countDocuments(q));
+console.log('  그중 이메일 있음      :', await L.countDocuments({...q, Email:{$nin:['',null]}}));
+console.log('\nverified(발송대기) 총    :', await L.countDocuments({stage:'verified'}));
+console.log('  그중 이메일 있음      :', await L.countDocuments({stage:'verified', Email:{$nin:['',null]}}));
+await mongoose.disconnect();

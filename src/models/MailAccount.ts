@@ -28,6 +28,16 @@ export interface IMailAccount extends Document {
   isDefault: boolean;         // 기본 발송 계정
   isActive: boolean;
 
+  /**
+   * 이 계정에서 수집할 IMAP 폴더 목록.
+   *
+   * 이카운트는 SMTP/IMAP 자격증명이 같아서, 등록된 발송 계정이 곧 수신 계정이 된다.
+   * 대표 메일함처럼 거래처별로 폴더를 나눠 둔 경우 여기에 폴더명을 넣어야 한다 —
+   * **비워두면 INBOX 만 수집되어 거래처 폴더로 들어온 메일을 통째로 놓친다.**
+   * 폴더명은 그대로 거래처(group) 이름이 된다.
+   */
+  imapFolders?: string[];
+
   lastVerifiedAt?: string;    // 마지막 성공적으로 SMTP 연결한 시각
   lastVerifyError?: string;   // 마지막 verify 실패 사유
 
@@ -56,6 +66,7 @@ const MailAccountSchema = new Schema<IMailAccount>({
 
   isDefault: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
+  imapFolders: { type: [String], default: [] },
 
   lastVerifiedAt: { type: String, default: '' },
   lastVerifyError: { type: String, default: '' },

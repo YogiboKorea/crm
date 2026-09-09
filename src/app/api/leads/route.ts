@@ -21,6 +21,12 @@ const LIST_PROJECTION = {
   // 발송 이력 (배지 카운터 표시용 · status 만 필요하지만 mongoose 는 배열 서브셋 프로젝션이 까다로워서 전체 포함)
   emailHistory: 1,
   lastEmailSentAt: 1,
+  // 받은 답장 지표 — 목록의 💬 대화 배지와 "회신 필요" 표시에 쓴다.
+  // (본문은 InboundMail 에 있고 여기선 개수·시각만 필요하다)
+  inboundCount: 1,
+  lastInboundAt: 1,
+  needsReply: 1,
+  replyDeadline: 1,
   // 검증 배지 (verifyBucketOf 최소 필드)
   'verification.aiVerdict': 1, 'verification.aiVerifiedAt': 1,
   'verification.verifiedAt': 1, 'verification.score': 1,

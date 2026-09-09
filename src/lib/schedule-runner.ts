@@ -108,6 +108,8 @@ export async function processScheduleItem(doc: any) {
       sentAt: now.toISOString(),
       scheduledFor: doc.scheduledFor.toISOString(),
       status: 'sent',
+      // 답장 매칭 열쇠 — 상대 답장의 In-Reply-To 가 이 값을 가리킨다 (match-lead.ts)
+      messageId: result.messageId || '',
     };
     const setUpdate: any = { lastEmailSentAt: now.toISOString() };
     if (!dryRun && lead.stage !== 'contacted' && lead.stage !== 'replied' && lead.stage !== 'negotiating' && lead.stage !== 'partner') {

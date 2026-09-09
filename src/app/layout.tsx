@@ -6,12 +6,16 @@ export const metadata = {
 };
 
 // 다크모드 초기화 스크립트 — <head> 안에서 실행되어 FOUC 방지
-// localStorage.theme 우선, 없으면 시스템 prefers-color-scheme
+//
+// 기본은 **라이트 모드**다. 예전에는 시스템 설정(prefers-color-scheme)을 따라갔는데,
+// 그러면 OS 를 다크로 쓰는 사람은 처음 열자마자 검은 화면을 보게 된다.
+// 업무용 화면이라 밝은 쪽이 기본이어야 하고, 다크를 원하면 🌙 버튼으로 바꾸면
+// localStorage 에 남아 다음부터 그대로 열린다.
 const themeInitScript = `
 (function() {
   try {
     var stored = localStorage.getItem('theme');
-    var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var theme = stored || 'light';
     document.documentElement.setAttribute('data-theme', theme);
     // 사이드바 접힘 상태도 FOUC 방지 위해 미리 반영
     var collapsed = localStorage.getItem('sidebar-collapsed') === 'true';

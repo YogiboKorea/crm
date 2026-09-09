@@ -38,6 +38,7 @@ export interface ILead extends Document {
 
   // 워크플로 stage — 파이프라인 핵심 상태 (좌 → 우 순서로 진행)
   //   imported    : 엑셀 업로드만 됨 (검증 안 함)
+  //   ai-searched : AI 웹 서칭으로 발굴된 후보 (사용자 검토 대기 — 검증대기로 승격 or 제외)
   //   verifying   : 검증 진행 중
   //   verified    : 검증 통과 = 컨택 대상 대기열
   //   contacted   : 첫 B2B 메일 발송 완료 (응답 대기)
@@ -45,7 +46,8 @@ export interface ILead extends Document {
   //   negotiating : 미팅/샘플/조건 협상 중
   //   partner     : 계약 성사 = 최종 완료 (자동 메일 발송 대상에서 자동 제외)
   //   archived    : 무효/폐기
-  stage?: 'imported' | 'verifying' | 'verified' | 'contacted' | 'replied' | 'negotiating' | 'partner' | 'archived';
+  //   failed      : 검증 실패 (컨택 수단 없음 등)
+  stage?: 'imported' | 'ai-searched' | 'verifying' | 'verified' | 'contacted' | 'replied' | 'negotiating' | 'partner' | 'archived' | 'failed';
   stageChangedAt?: string;
   becamePartnerAt?: string;    // 파트너 성사 시각 (최종 완료 timestamp)
   readyForOutreach?: boolean;  // 발송 승인 게이트 — verified 후 대표가 승인해야 자동 발송 대상
@@ -64,8 +66,21 @@ export interface ILead extends Document {
     scheduledFor?: string;// 예약된 시각
     status: 'sent' | 'scheduled' | 'failed' | 'canceled';
     error?: string;
+    // 발송한 메일의 RFC Message-ID.
+    // 상대 답장의 In-Reply-To 헤더가 이 값을 가리키므로, 수신 메일을
+    // 어느 리드의 답장인지 확정하는 가장 정확한 열쇠다 (InboundMail 매칭용).
+    messageId?: string;
   }>;
   lastEmailSentAt?: string;  // 마지막 발송 시각 (파트너로 이동 시 자동 필드)
+
+  // ── 수신 답장 연결 (emailData 통합) ──────────────────────
+  // 실제 수신 메일 본문은 InboundMail 컬렉션에 있고, 여기엔 요약 지표만 둔다.
+  // 리스트 화면에서 "답장 N통" 배지를 그리려고 매번 조인하면 느려지기 때문.
+  threadKeys?: string[];      // 이 리드와 연결된 대화 스레드 키들
+  inboundCount?: number;      // 받은 답장 통수
+  lastInboundAt?: string;     // 마지막 답장 수신 시각 (ISO)
+  needsReply?: boolean;       // 마지막 답장이 회신을 요구하는 상태인지 (로컬 분석 결과)
+  replyDeadline?: string;     // 회신 기한 (본문에서 추출 · 아직 안 지난 것 중 가장 이른 것)
 
   // Verification (자동 정합성 검증 결과)
   verification?: {
@@ -106,6 +121,13 @@ const LeadSchema: Schema = new Schema({
   Company: { type: String, default: '' },
   Priority: { type: String, default: '' },
   Type: { type: String, default: '' },
+  // Type 을 정해진 몇 개로 접은 값. Type 자체는 엑셀 컬럼이라 손대지 않는다.
+  //
+  // 발굴 워크플로우가 Type 에 "Retail Chain (온라인 드럭스토어·E-commerce 리테일러)"
+  // 같은 문장을 적어 넣는 바람에 60종류가 생겼고, "유통사만 보여줘"가 불가능해졌다.
+  // 클라이언트가 "디스트리뷰터를 꼼꼼히 보고 싶다"고 해서 필터 가능한 축을 따로 둔다.
+  // 값: Distributor | Brand/Manufacturer | Retail Chain | Online Store | Retailer | Clinic | Other
+  Category: { type: String, default: '' },
   Evidence: { type: String, default: '' },
   BrandsChannels: { type: String, default: '' },
   LinkedInCompany: { type: String, default: '' },
@@ -136,7 +158,7 @@ const LeadSchema: Schema = new Schema({
   // 새 파이프라인 stage
   stage: {
     type: String,
-    enum: ['imported', 'verifying', 'verified', 'contacted', 'replied', 'negotiating', 'partner', 'archived', 'failed'],
+    enum: ['imported', 'ai-searched', 'verifying', 'verified', 'contacted', 'replied', 'negotiating', 'partner', 'archived', 'failed'],
     default: 'imported',
     index: true,
   },
@@ -159,10 +181,33 @@ const LeadSchema: Schema = new Schema({
       scheduledFor: String,
       status: { type: String, enum: ['sent', 'scheduled', 'failed', 'canceled'] },
       error: String,
+      messageId: String,   // 답장의 In-Reply-To 가 가리키는 값 (수신 매칭 키)
     }],
     default: [],
   },
   lastEmailSentAt: { type: String, default: '' },
+
+  // ── 중복 정리 흔적 ──────────────────────────────────────
+  // 스크립트가 raw driver 로 쓰던 필드지만, 이제 매칭 코드가 읽으므로 스키마에 둔다.
+  // (선언하지 않으면 mongoose 를 통한 쓰기에서 조용히 버려진다)
+  // dedupKeeperLeadId 는 특히 중요하다 — 답장이 archived 사본이 아니라
+  // 진짜 리드(keeper)에 붙게 하는 열쇠다.
+  dedupArchivedAt: { type: String, default: '' },
+  dedupOriginalStage: { type: String, default: '' },
+  dedupKeeperLeadId: { type: String, default: '' },
+  dedupReason: { type: String, default: '' },
+  // 일괄 stage 이동 흔적 (되돌리기용)
+  bulkMoveTag: { type: String, default: '' },
+  bulkMoveFrom: { type: String, default: '' },
+  bulkMoveAt: { type: String, default: '' },
+  bulkMoveReason: { type: String, default: '' },
+
+  // 수신 답장 요약 지표 (본문은 InboundMail 컬렉션)
+  threadKeys: { type: [String], default: [] },
+  inboundCount: { type: Number, default: 0 },
+  lastInboundAt: { type: String, default: '' },
+  needsReply: { type: Boolean, default: false },
+  replyDeadline: { type: String, default: '' },
 
   verification: {
     emailValid: { type: Schema.Types.Mixed, default: null },
@@ -201,7 +246,19 @@ LeadSchema.index({ stage: 1, crawledAt: 1 });
 LeadSchema.index({ stage: 1, 'verification.aiVerdict': 1 });
 LeadSchema.index({ stage: 1, Country: 1 });
 LeadSchema.index({ stage: 1, createdAt: -1 });   // 페이지네이션 정렬
-LeadSchema.index({ leadId: 1 }, { unique: true });
+// leadId 는 필드 정의에서 이미 unique: true 라 여기서 다시 선언하지 않는다
+// (중복 선언 시 mongoose 가 "Duplicate schema index" 경고를 낸다)
 LeadSchema.index({ importBatch: 1 });
+
+// ── 수신 답장 매칭 (emailData 통합) ──────────────────────
+// 답장의 In-Reply-To → 우리가 보낸 messageId 역추적 (가장 정확한 매칭 경로)
+LeadSchema.index({ 'emailHistory.messageId': 1 });
+// In-Reply-To 로 못 찾았을 때 발신 주소 fallback 매칭
+LeadSchema.index({ Email: 1 });
+// 스레드 키로 리드 역참조
+LeadSchema.index({ threadKeys: 1 });
+// "회신 필요 + 기한 임박" 대시보드 조회
+LeadSchema.index({ needsReply: 1, replyDeadline: 1 });
+LeadSchema.index({ stage: 1, lastInboundAt: -1 });
 
 export const Lead = mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);

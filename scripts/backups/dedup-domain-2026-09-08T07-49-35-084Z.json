@@ -1,0 +1,2102 @@
+[
+  {
+    "_id": "6a6a9e75b1d01eb1a57a7f4c",
+    "leadId": "lead-1785372262635-5-xx0h0",
+    "Company": "Schestowitz",
+    "Country": "Israel",
+    "oldStage": "partner",
+    "domain": "sch.co.il",
+    "keeperLeadId": "lead-1778511167741",
+    "keeperCompany": "Schestowitz Ltd."
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca11",
+    "leadId": "lead-1781224047185-226-83zj7",
+    "Company": "My K Romania",
+    "Country": "Romania",
+    "oldStage": "verified",
+    "domain": "my-k.ro",
+    "keeperLeadId": "lead-1785372262635-3-2ukie",
+    "keeperCompany": "My K Retail & Distribution"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a80f8",
+    "leadId": "lead-1785372262644-433-rrhak",
+    "Company": "My K Romania (my-k.ro)",
+    "Country": "Romania",
+    "oldStage": "verified",
+    "domain": "my-k.ro",
+    "keeperLeadId": "lead-1785372262635-3-2ukie",
+    "keeperCompany": "My K Retail & Distribution"
+  },
+  {
+    "_id": "69fc25f40878decc8b45f916",
+    "leadId": "-mex-191",
+    "Company": "Kutie Beauty ",
+    "Country": "Mexico",
+    "oldStage": "verified",
+    "domain": "kbeautyimports.com",
+    "keeperLeadId": "lead-1780300116599-27-3iqo9",
+    "keeperCompany": "무궁화수입회사"
+  },
+  {
+    "_id": "6a01cd5e971ea3c4aebb88b5",
+    "leadId": "lead-1778502993850-ip799",
+    "Company": "Commalax PH (I-Jin International Inc.)",
+    "Country": "Phillippines",
+    "oldStage": "verified",
+    "domain": "commalax.ph",
+    "keeperLeadId": "lead-1781224047184-72-3do8l",
+    "keeperCompany": "Commalax (I-Jin International Inc.)"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a7fd5",
+    "leadId": "lead-1785372262639-142-xg43g",
+    "Company": "Commalax PH (I-Jin International Inc.)",
+    "Country": "Philippines",
+    "oldStage": "verified",
+    "domain": "commalax.ph",
+    "keeperLeadId": "lead-1781224047184-72-3do8l",
+    "keeperCompany": "Commalax (I-Jin International Inc.)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c309",
+    "leadId": "lead-1780300116600-91-ou1uc",
+    "Company": "Glow Theory (glowtheory.com)",
+    "Country": "South Africa",
+    "oldStage": "verified",
+    "domain": "glowtheory.com",
+    "keeperLeadId": "lead-1778502993852-y5bgv",
+    "keeperCompany": "Glow Theory"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c310",
+    "leadId": "lead-1780300116600-102-2hanu",
+    "Company": "HeavenPrime (Anua authorized US wholesale)",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "heavenprime.com",
+    "keeperLeadId": "lead-1778502993852-0afjm",
+    "keeperCompany": "HeavenPrime"
+  },
+  {
+    "_id": "6a01cd67971ea3c4aebb88c1",
+    "leadId": "lead-1778502993852-thi5e",
+    "Company": "Kbeauty Nigeria (KBN)",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "kbeautynigeria.com",
+    "keeperLeadId": "lead-1785372262641-285-79z3s",
+    "keeperCompany": "KBeauty Nigeria"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca03",
+    "leadId": "lead-1781224047184-174-67qh5",
+    "Company": "Korean Beauty Nigeria (KBN)",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "kbeautynigeria.com",
+    "keeperLeadId": "lead-1785372262641-285-79z3s",
+    "keeperCompany": "KBeauty Nigeria"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3c5",
+    "leadId": "lead-1780300116601-537-2wnay",
+    "Company": "Kbeauty Nigeria (KBN, kbeautynigeria.com)",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "kbeautynigeria.com",
+    "keeperLeadId": "lead-1785372262641-285-79z3s",
+    "keeperCompany": "KBeauty Nigeria"
+  },
+  {
+    "_id": "6a01cd68971ea3c4aebb88c2",
+    "leadId": "lead-1778502993852-8vamv",
+    "Company": "Korean Cosmetics Worldwide (KCWW)",
+    "Country": "Oman",
+    "oldStage": "verified",
+    "domain": "koreancosmeticsww.com",
+    "keeperLeadId": "lead-1785372262641-295-o8ili",
+    "keeperCompany": "KCWW (Korean Cosmetics Worldwide)"
+  },
+  {
+    "_id": "6a01cd68971ea3c4aebb88c3",
+    "leadId": "lead-1778502993852-z2vps",
+    "Company": "Korean Skincare Supply (KSS)",
+    "Country": "Netherlands",
+    "oldStage": "verified",
+    "domain": "koreanskincaresupply.com",
+    "keeperLeadId": "lead-1785372262642-356-5u0t9",
+    "keeperCompany": "Korean Skincare Supply"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca07",
+    "leadId": "lead-1781224047184-185-lyfyp",
+    "Company": "Korean Skincare Pakistan",
+    "Country": "Pakistan",
+    "oldStage": "verified",
+    "domain": "korean-skincare.pk",
+    "keeperLeadId": "lead-1778502993852-mdw36",
+    "keeperCompany": "Korean-Skincare.pk"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a80aa",
+    "leadId": "lead-1785372262642-355-sz5ej",
+    "Company": "Korean Skincare Pakistan (korean-skincare.pk)",
+    "Country": "Pakistan",
+    "oldStage": "verified",
+    "domain": "korean-skincare.pk",
+    "keeperLeadId": "lead-1778502993852-mdw36",
+    "keeperCompany": "Korean-Skincare.pk"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c32f",
+    "leadId": "lead-1780300116600-155-gc17h",
+    "Company": "Lady Bonita (ladybonita.co.nz) — Wholesale",
+    "Country": "New Zealand",
+    "oldStage": "verified",
+    "domain": "ladybonita.co.nz",
+    "keeperLeadId": "lead-1785372262643-384-k5pq4",
+    "keeperCompany": "Lady Bonita"
+  },
+  {
+    "_id": "6a01cd6a971ea3c4aebb88c6",
+    "leadId": "lead-1778502993853-azjtm",
+    "Company": "Lady Bonita NZ (authorized distributor)",
+    "Country": "New Zealand",
+    "oldStage": "verified",
+    "domain": "ladybonita.co.nz",
+    "keeperLeadId": "lead-1785372262643-384-k5pq4",
+    "keeperCompany": "Lady Bonita"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a80e7",
+    "leadId": "lead-1785372262643-416-z6w7v",
+    "Company": "MiiN Cosmetics / MiiN Trade",
+    "Country": "Spain",
+    "oldStage": "verified",
+    "domain": "miintrade.com",
+    "keeperLeadId": "lead-1785372262643-419-0j0v7",
+    "keeperCompany": "MIIN Trade (miintrade.com)"
+  },
+  {
+    "_id": "6a01cd83971ea3c4aebb88e6",
+    "leadId": "lead-1778502993855-qnur7",
+    "Company": "MiiN Cosmetics — Maria Plaza (CMO)",
+    "Country": "Spain",
+    "oldStage": "verified",
+    "domain": "miintrade.com",
+    "keeperLeadId": "lead-1785372262643-419-0j0v7",
+    "keeperCompany": "MIIN Trade (miintrade.com)"
+  },
+  {
+    "_id": "6a01cd6c971ea3c4aebb88c8",
+    "leadId": "lead-1778502993853-svbmv",
+    "Company": "MiiN Italy (within MiiN Cosmetics network)",
+    "Country": "Italy",
+    "oldStage": "verified",
+    "domain": "miintrade.com",
+    "keeperLeadId": "lead-1785372262643-419-0j0v7",
+    "keeperCompany": "MIIN Trade (miintrade.com)"
+  },
+  {
+    "_id": "6a01cdc8971ea3c4aebb8955",
+    "leadId": "lead-1778502993859-2yrjj",
+    "Company": "MiiN Cosmetics — Olga Gómez (Marketing Operations Manager)",
+    "Country": "Spain",
+    "oldStage": "verified",
+    "domain": "miintrade.com",
+    "keeperLeadId": "lead-1785372262643-419-0j0v7",
+    "keeperCompany": "MIIN Trade (miintrade.com)"
+  },
+  {
+    "_id": "6a01cd83971ea3c4aebb88e5",
+    "leadId": "lead-1778502993855-z7dho",
+    "Company": "MiiN Cosmetics — Irena Wieczorek (B2B Business Development)",
+    "Country": "Spain",
+    "oldStage": "verified",
+    "domain": "miintrade.com",
+    "keeperLeadId": "lead-1785372262643-419-0j0v7",
+    "keeperCompany": "MIIN Trade (miintrade.com)"
+  },
+  {
+    "_id": "6a01cd6d971ea3c4aebb88c9",
+    "leadId": "lead-1778502993853-wp8v7",
+    "Company": "Myskin (MS Wholesale)",
+    "Country": "Denmark",
+    "oldStage": "verified",
+    "domain": "ms-wholesale.eu",
+    "keeperLeadId": "lead-1785372262644-429-jvk14",
+    "keeperCompany": "MS Wholesale"
+  },
+  {
+    "_id": "6a01cd6e971ea3c4aebb88ca",
+    "leadId": "lead-1778502993853-6p45l",
+    "Company": "Nrsen Trading — Faisal Alsahli (Founder)",
+    "Country": "Saudi Arabia",
+    "oldStage": "verified",
+    "domain": "nrsen.sa",
+    "keeperLeadId": "lead-1785372262644-460-a90a6",
+    "keeperCompany": "Nrsen Trading"
+  },
+  {
+    "_id": "6a01cd72971ea3c4aebb88cf",
+    "leadId": "lead-1778502993854-jokk3",
+    "Company": "Skin Cupid (UK K-beauty retailer + flagship)",
+    "Country": "UK",
+    "oldStage": "verified",
+    "domain": "skincupid.co.uk",
+    "keeperLeadId": "united-kingdom-skin-cupid-2021",
+    "keeperCompany": "Skin Cupid"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c354",
+    "leadId": "lead-1780300116600-240-ckjb9",
+    "Company": "STYLEVANA (Anua authorized retailer)",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "stylevana.com",
+    "keeperLeadId": "lead-1778502993854-dgq5s",
+    "keeperCompany": "STYLEVANA (cross-border DTC)"
+  },
+  {
+    "_id": "6a01cd7a971ea3c4aebb88db",
+    "leadId": "lead-1778502993854-uxm9o",
+    "Company": "B2B-ICOSMO — Artur Zhol (Wholesale Korean Cosmetics)",
+    "Country": "Poland",
+    "oldStage": "verified",
+    "domain": "b2b-icosmo.pl",
+    "keeperLeadId": "lead-1785372262638-76-sl894",
+    "keeperCompany": "B2B Icosmo (ICOSMO SP. Z O.O.)"
+  },
+  {
+    "_id": "6a01cdd8971ea3c4aebb897a",
+    "leadId": "lead-1778502993859-kikcm",
+    "Company": "BONIIK — Emilie Tran",
+    "Country": "Australia",
+    "oldStage": "verified",
+    "domain": "boniik.com.au",
+    "keeperLeadId": "lead-1785372262638-127-e374y",
+    "keeperCompany": "BONIIK"
+  },
+  {
+    "_id": "6a01cdd8971ea3c4aebb897b",
+    "leadId": "lead-1778502993859-kizaa",
+    "Company": "BONIIK — Hector Godoy",
+    "Country": "Australia",
+    "oldStage": "verified",
+    "domain": "boniik.com.au",
+    "keeperLeadId": "lead-1785372262638-127-e374y",
+    "keeperCompany": "BONIIK"
+  },
+  {
+    "_id": "6a01cd7b971ea3c4aebb88de",
+    "leadId": "lead-1778502993854-kmfo4",
+    "Company": "BONIIK — Annie Lee (CEO)",
+    "Country": "Australia",
+    "oldStage": "verified",
+    "domain": "boniik.com.au",
+    "keeperLeadId": "lead-1785372262638-127-e374y",
+    "keeperCompany": "BONIIK"
+  },
+  {
+    "_id": "6a01cd85971ea3c4aebb88e9",
+    "leadId": "lead-1778502993855-anujq",
+    "Company": "Pan-Asian K-beauty exporter (covering Mongolia)",
+    "Country": "Mongolia",
+    "oldStage": "verified",
+    "domain": "wholesale.q-depot.com",
+    "keeperLeadId": "lead-1785372262645-498-f2aon",
+    "keeperCompany": "Q-Depot (Japan-serving wholesale)"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a813f",
+    "leadId": "lead-1785372262645-504-hqya5",
+    "Company": "QudoBeauty",
+    "Country": "Romania",
+    "oldStage": "verified",
+    "domain": "qudobeauty.com",
+    "keeperLeadId": "lead-1785372262645-537-09jwr",
+    "keeperCompany": "SKEEN"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca18",
+    "leadId": "lead-1781224047185-267-bp8vg",
+    "Company": "Qudo Beauty",
+    "Country": "Romania",
+    "oldStage": "verified",
+    "domain": "qudobeauty.com",
+    "keeperLeadId": "lead-1785372262645-537-09jwr",
+    "keeperCompany": "SKEEN"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c344",
+    "leadId": "lead-1780300116600-203-zqvsx",
+    "Company": "Qudo Beauty (qudobeauty.com)",
+    "Country": "Romania",
+    "oldStage": "verified",
+    "domain": "qudobeauty.com",
+    "keeperLeadId": "lead-1785372262645-537-09jwr",
+    "keeperCompany": "SKEEN"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca19",
+    "leadId": "lead-1781224047185-268-lrnx1",
+    "Company": "Qudo Beauty (Qudo Korean Beauty Care SRL)",
+    "Country": "Romania",
+    "oldStage": "verified",
+    "domain": "qudobeauty.com",
+    "keeperLeadId": "lead-1785372262645-537-09jwr",
+    "keeperCompany": "SKEEN"
+  },
+  {
+    "_id": "6a01cd86971ea3c4aebb88ea",
+    "leadId": "lead-1778502993855-1aw8k",
+    "Company": "QudoBeauty Romania",
+    "Country": "Romania",
+    "oldStage": "verified",
+    "domain": "qudobeauty.com",
+    "keeperLeadId": "lead-1785372262645-537-09jwr",
+    "keeperCompany": "SKEEN"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8434",
+    "leadId": "lead-1785372262656-1261-9oifb",
+    "Company": "Korea Town (Boutiqaat Group)",
+    "Country": "Kuwait",
+    "oldStage": "verified",
+    "domain": "boutiqaat.com",
+    "keeperLeadId": "lead-1785372262656-1262-kfd3y",
+    "keeperCompany": "Korea Town (Boutiqaat)"
+  },
+  {
+    "_id": "6a01cd9f971ea3c4aebb88fe",
+    "leadId": "lead-1778502993856-hpzdq",
+    "Company": "Boutiqaat / Korea Town — Rashed Alshaiji (VP)",
+    "Country": "Kuwait",
+    "oldStage": "verified",
+    "domain": "boutiqaat.com",
+    "keeperLeadId": "lead-1785372262656-1262-kfd3y",
+    "keeperCompany": "Korea Town (Boutiqaat)"
+  },
+  {
+    "_id": "6a01cdd6971ea3c4aebb8979",
+    "leadId": "lead-1778502993859-2jdss",
+    "Company": "Boutiqaat / Korea Town — Lawrence Dsilva (Category Manager)",
+    "Country": "Kuwait",
+    "oldStage": "verified",
+    "domain": "boutiqaat.com",
+    "keeperLeadId": "lead-1785372262656-1262-kfd3y",
+    "keeperCompany": "Korea Town (Boutiqaat)"
+  },
+  {
+    "_id": "6a01cda2971ea3c4aebb8905",
+    "leadId": "lead-1778502993856-jq1z8",
+    "Company": "epeul (Korean Cosmetics Morocco)",
+    "Country": "Morocco",
+    "oldStage": "verified",
+    "domain": "epeul.com",
+    "keeperLeadId": "lead-1785372262652-1019-94x1a",
+    "keeperCompany": "epeul"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3a0",
+    "leadId": "lead-1780300116601-479-7hqva",
+    "Company": "Epeul (Korean Cosmetics by epeul)",
+    "Country": "Morocco",
+    "oldStage": "verified",
+    "domain": "epeul.com",
+    "keeperLeadId": "lead-1785372262652-1019-94x1a",
+    "keeperCompany": "epeul"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3ad",
+    "leadId": "lead-1780300116601-503-mvz77",
+    "Company": "HIKOCO (hikoco.co.nz)",
+    "Country": "New Zealand",
+    "oldStage": "verified",
+    "domain": "hikoco.co.nz",
+    "keeperLeadId": "lead-1778502993857-4cjq1",
+    "keeperCompany": "HIKOCO"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a83cc",
+    "leadId": "lead-1785372262655-1157-fjxzb",
+    "Company": "K-Beauty Kenya",
+    "Country": "Kenya",
+    "oldStage": "verified",
+    "domain": "kbeautykenya.com",
+    "keeperLeadId": "lead-1778502993857-sp91j",
+    "keeperCompany": "K Beauty Kenya"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3bc",
+    "leadId": "lead-1780300116601-527-or02t",
+    "Company": "K-Beauty Kenya (kbeautykenya.com)",
+    "Country": "Kenya",
+    "oldStage": "verified",
+    "domain": "kbeautykenya.com",
+    "keeperLeadId": "lead-1778502993857-sp91j",
+    "keeperCompany": "K Beauty Kenya"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca55",
+    "leadId": "lead-1781224047187-650-7nbb8",
+    "Company": "K Beauty Kenya (kbeautykenya.com)",
+    "Country": "Kenya",
+    "oldStage": "verified",
+    "domain": "kbeautykenya.com",
+    "keeperLeadId": "lead-1778502993857-sp91j",
+    "keeperCompany": "K Beauty Kenya"
+  },
+  {
+    "_id": "6a01cda7971ea3c4aebb890f",
+    "leadId": "lead-1778502993857-g4myy",
+    "Company": "K-Beauty Arabia",
+    "Country": "Qatar",
+    "oldStage": "verified",
+    "domain": "kbeautyarabia.com",
+    "keeperLeadId": "lead-1785372262655-1142-pwk45",
+    "keeperCompany": "K-Beauty Arabia"
+  },
+  {
+    "_id": "6a01cda8971ea3c4aebb8911",
+    "leadId": "lead-1778502993857-p0o9i",
+    "Company": "K-Beauty Brazil",
+    "Country": "Brazil",
+    "oldStage": "verified",
+    "domain": "kbeautybrazil.com",
+    "keeperLeadId": "lead-1785372262655-1150-dejgi",
+    "keeperCompany": "K-Beauty Brazil (kbeautybrazil.com)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3cc",
+    "leadId": "lead-1780300116601-546-6ybsb",
+    "Company": "Koko Sarang",
+    "Country": "Morocco",
+    "oldStage": "verified",
+    "domain": "kokosarang.com",
+    "keeperLeadId": "lead-1785372262656-1245-xw6s1",
+    "keeperCompany": "KokoSarang"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca6c",
+    "leadId": "lead-1781224047187-704-d0l6s",
+    "Company": "Koko Sarang (kokosarang.com)",
+    "Country": "Morocco",
+    "oldStage": "verified",
+    "domain": "kokosarang.com",
+    "keeperLeadId": "lead-1785372262656-1245-xw6s1",
+    "keeperCompany": "KokoSarang"
+  },
+  {
+    "_id": "6a01cda9971ea3c4aebb8915",
+    "leadId": "lead-1778502993857-b2p8a",
+    "Company": "KokoSarang (Casablanca K-beauty)",
+    "Country": "Morocco",
+    "oldStage": "verified",
+    "domain": "kokosarang.com",
+    "keeperLeadId": "lead-1785372262656-1245-xw6s1",
+    "keeperCompany": "KokoSarang"
+  },
+  {
+    "_id": "6a01cdab971ea3c4aebb8917",
+    "leadId": "lead-1778502993857-05wjg",
+    "Company": "Korean Shop BD",
+    "Country": "Bangladesh",
+    "oldStage": "verified",
+    "domain": "koreanshopbd.com",
+    "keeperLeadId": "lead-1781224047187-742-97847",
+    "keeperCompany": "Korean Shop Bangladesh"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3eb",
+    "leadId": "lead-1780300116601-597-wiezo",
+    "Company": "Miu K Beauty (miu.pe)",
+    "Country": "Peru",
+    "oldStage": "verified",
+    "domain": "miu.pe",
+    "keeperLeadId": "lead-1778502993857-al0uf",
+    "keeperCompany": "Miu K Beauty"
+  },
+  {
+    "_id": "6a01cdb8971ea3c4aebb8932",
+    "leadId": "lead-1778502993858-87uj1",
+    "Company": "Soko Glam (Charlotte & David Cho)",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "sokoglam.com",
+    "keeperLeadId": "lead-1785372262646-560-r868o",
+    "keeperCompany": "Soko Glam"
+  },
+  {
+    "_id": "6a01cdd2971ea3c4aebb896d",
+    "leadId": "lead-1778502993859-kt3n7",
+    "Company": "Then I Met You / Soko Glam — Charlotte Cho (Co-founder)",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "sokoglam.com",
+    "keeperLeadId": "lead-1785372262646-560-r868o",
+    "keeperCompany": "Soko Glam"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e99064",
+    "leadId": "mexico-silicontwo-stylekorean-mx-1802",
+    "Company": "Silicontwo (STYLEKOREAN MX)",
+    "Country": "Mexico",
+    "oldStage": "verified",
+    "domain": "stylekorean.com",
+    "keeperLeadId": "lead-1784411989738-521-2f7b5",
+    "keeperCompany": "StyleKorean US"
+  },
+  {
+    "_id": "6a7a7e1786c9bb1490e98e56",
+    "leadId": "brazil-silicon2-brazil-1923",
+    "Company": "Silicon2 Brazil (실리콘투 브라질 법인)",
+    "Country": "Brazil",
+    "oldStage": "verified",
+    "domain": "stylekorean.com",
+    "keeperLeadId": "lead-1784411989738-521-2f7b5",
+    "keeperCompany": "StyleKorean US"
+  },
+  {
+    "_id": "6a01cdba971ea3c4aebb8934",
+    "leadId": "lead-1778502993858-r2hei",
+    "Company": "StyleKorean US — Anna Cha (Sr. Sales Manager)",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "stylekorean.com",
+    "keeperLeadId": "lead-1784411989738-521-2f7b5",
+    "keeperCompany": "StyleKorean US"
+  },
+  {
+    "_id": "6a5bf75501f8c4cd3a15a03a",
+    "leadId": "lead-1784411989739-668-uhz3t",
+    "Company": "StyleKorean / SILICON2 — Jia Hua Ng",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "stylekorean.com",
+    "keeperLeadId": "lead-1784411989738-521-2f7b5",
+    "keeperCompany": "StyleKorean US"
+  },
+  {
+    "_id": "6a01cdd0971ea3c4aebb896a",
+    "leadId": "lead-1778502993859-z007g",
+    "Company": "Style Korean Indonesia — YunYoung Kim (CEO)",
+    "Country": "Indonesia",
+    "oldStage": "verified",
+    "domain": "stylekorean.com",
+    "keeperLeadId": "lead-1784411989738-521-2f7b5",
+    "keeperCompany": "StyleKorean US"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e994d2",
+    "leadId": "new-zealand-the-cosmetic-store-new-zealand-1813",
+    "Company": "The Cosmetic Store New Zealand",
+    "Country": "New Zealand",
+    "oldStage": "verified",
+    "domain": "thecosmeticstore.co.nz",
+    "keeperLeadId": "lead-1778502993858-jipeu",
+    "keeperCompany": "The Cosmetic Store NZ"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c410",
+    "leadId": "lead-1780300116601-665-tysfi",
+    "Company": "The Cosmetic Store NZ (thecosmeticstore.co.nz)",
+    "Country": "New Zealand",
+    "oldStage": "verified",
+    "domain": "thecosmeticstore.co.nz",
+    "keeperLeadId": "lead-1778502993858-jipeu",
+    "keeperCompany": "The Cosmetic Store NZ"
+  },
+  {
+    "_id": "6a01cdc2971ea3c4aebb8948",
+    "leadId": "lead-1778502993858-ubfug",
+    "Company": "DKSH Vietnam — D83 Kim Phuong Nguyen (GM Sales & Marketing)",
+    "Country": "Vietnam",
+    "oldStage": "verified",
+    "domain": "dksh.com",
+    "keeperLeadId": "vietnam-dksh-vietnam-pham-trang-procurement-senior-manager-319",
+    "keeperCompany": "DKSH Vietnam — Pham Trang (Procurement Senior Manager)"
+  },
+  {
+    "_id": "6a01cdda971ea3c4aebb8981",
+    "leadId": "lead-1778502993859-nnwsg",
+    "Company": "Olive Young USA (LA flagship + Sephora curated zones)",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "global.oliveyoung.com",
+    "keeperLeadId": "lead-1778502993859-874nn",
+    "keeperCompany": "Olive Young Global e-commerce (USA + global)"
+  },
+  {
+    "_id": "6a01cdca971ea3c4aebb895a",
+    "leadId": "lead-1778502993859-f3tsj",
+    "Company": "Pan-LatAm K-beauty distributor via Beautynetkorea / Farmstay",
+    "Country": "Ecuador",
+    "oldStage": "verified",
+    "domain": "en.fscos.com",
+    "keeperLeadId": "lead-1778502993859-5stqq",
+    "keeperCompany": "Pan-LatAm K-beauty distributor via Beautynetkorea / Farmstay"
+  },
+  {
+    "_id": "6a01cdcf971ea3c4aebb8968",
+    "leadId": "lead-1778502993859-1v4qi",
+    "Company": "SkinCare.pl — Barbara Milczarek (Export Manager)",
+    "Country": "Poland",
+    "oldStage": "verified",
+    "domain": "b2b.skincare.pl",
+    "keeperLeadId": "lead-1785372262645-550-62dgb",
+    "keeperCompany": "SkinCare.pl"
+  },
+  {
+    "_id": "6a01cdd9971ea3c4aebb897e",
+    "leadId": "lead-1778502993859-uzya1",
+    "Company": "EVEANDBOY — Hiran Tanmit (CEO)",
+    "Country": "Thailand",
+    "oldStage": "verified",
+    "domain": "eveandboy.com",
+    "keeperLeadId": "lead-1785372262652-1028-gyvk4",
+    "keeperCompany": "EVEANDBOY"
+  },
+  {
+    "_id": "6a01cddc971ea3c4aebb8985",
+    "leadId": "lead-1778502993859-pgdew",
+    "Company": "Sephora — Jazmin Yanez (Senior Merchant)",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "sephora.com",
+    "keeperLeadId": "lead-1778502993859-0drjw",
+    "keeperCompany": "Sephora — Jane Hsu Wong"
+  },
+  {
+    "_id": "6a01cddb971ea3c4aebb8983",
+    "leadId": "lead-1778502993859-8lixw",
+    "Company": "Sephora — Christine Issa (Senior Merchant)",
+    "Country": "USA",
+    "oldStage": "verified",
+    "domain": "sephora.com",
+    "keeperLeadId": "lead-1778502993859-0drjw",
+    "keeperCompany": "Sephora — Jane Hsu Wong"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a84a4",
+    "leadId": "lead-1785372262658-1373-xz2z1",
+    "Company": "LUNAbeauty.am",
+    "Country": "Armenia",
+    "oldStage": "verified",
+    "domain": "lunabeauty.am",
+    "keeperLeadId": "lead-1780300116601-583-yk65s",
+    "keeperCompany": "LUNA Beauty"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c2ec",
+    "leadId": "lead-1780300116599-20-fbigt",
+    "Company": "LUNAbeauty (lunabeauty.am)",
+    "Country": "Armenia",
+    "oldStage": "verified",
+    "domain": "lunabeauty.am",
+    "keeperLeadId": "lead-1780300116601-583-yk65s",
+    "keeperCompany": "LUNA Beauty"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3e3",
+    "leadId": "lead-1780300116601-584-ej7jc",
+    "Company": "LUNA Beauty (lunabeauty.am)",
+    "Country": "Armenia",
+    "oldStage": "verified",
+    "domain": "lunabeauty.am",
+    "keeperLeadId": "lead-1780300116601-583-yk65s",
+    "keeperCompany": "LUNA Beauty"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c2ee",
+    "leadId": "lead-1780300116599-24-ej1af",
+    "Company": "Source Beauty (sourcebeauty.com)",
+    "Country": "Egypt",
+    "oldStage": "verified",
+    "domain": "sourcebeauty.com",
+    "keeperLeadId": "lead-1785372262661-1558-9l84l",
+    "keeperCompany": "Source Beauty"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c2f2",
+    "leadId": "lead-1780300116599-36-vtg7r",
+    "Company": "Beauty & Me Myanmar Company Limited",
+    "Country": "Myanmar",
+    "oldStage": "verified",
+    "domain": "beautyandmemyanmar.com",
+    "keeperLeadId": "lead-1785372262650-894-47wvi",
+    "keeperCompany": "Beauty & Me Myanmar"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a7fb6",
+    "leadId": "lead-1785372262638-111-jgq0e",
+    "Company": "BeautyX Trade / regional K-beauty supplier",
+    "Country": "Egypt",
+    "oldStage": "verified",
+    "domain": "beautyxconsulting.com",
+    "keeperLeadId": "lead-1780300116599-46-kt4w6",
+    "keeperCompany": "BeautyX Trade / MENA regional supplier"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c2fe",
+    "leadId": "lead-1780300116599-62-44qmw",
+    "Company": "COREE Korean Cosmetics (coree.ch)",
+    "Country": "Switzerland",
+    "oldStage": "verified",
+    "domain": "coree.ch",
+    "keeperLeadId": "lead-1784411989736-126-xwcyo",
+    "keeperCompany": "COREE (coree.ch)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c31c",
+    "leadId": "lead-1780300116600-126-kbvt9",
+    "Company": "KoCos Bulgaria Ltd. (kocos.bg)",
+    "Country": "Bulgaria",
+    "oldStage": "verified",
+    "domain": "kocos.bg",
+    "keeperLeadId": "lead-1780300116600-125-stwlo",
+    "keeperCompany": "KOCOS Bulgaria"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e98fce",
+    "leadId": "bolivia-laura-rosse-korea-shopping-laura-rosse-1821",
+    "Company": "Laura Rosse (Korea Shopping Laura Rosse)",
+    "Country": "Bolivia",
+    "oldStage": "verified",
+    "domain": "korea.com.bo",
+    "keeperLeadId": "lead-1780300116600-158-875tx",
+    "keeperCompany": "Laura Rosse (Korea.com.bo)"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8121",
+    "leadId": "lead-1785372262644-474-x4gvv",
+    "Company": "ORION XO (Orion Inmotion Pvt Ltd)",
+    "Country": "Sri Lanka",
+    "oldStage": "verified",
+    "domain": "orionxoxo.lk",
+    "keeperLeadId": "lead-1781224047185-251-r2dkm",
+    "keeperCompany": "ORION XO / Orion Inmotion Holding"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c33f",
+    "leadId": "lead-1780300116600-192-vfou5",
+    "Company": "ORION XO Exclusive (Orion Inmotion Holding)",
+    "Country": "Sri Lanka",
+    "oldStage": "verified",
+    "domain": "orionxoxo.lk",
+    "keeperLeadId": "lead-1781224047185-251-r2dkm",
+    "keeperCompany": "ORION XO / Orion Inmotion Holding"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a812f",
+    "leadId": "lead-1785372262644-488-9h2qt",
+    "Company": "Pibukor (PIBUKOR S.R.L.)",
+    "Country": "Dominican Republic",
+    "oldStage": "verified",
+    "domain": "pibukor.com",
+    "keeperLeadId": "lead-1780300116600-198-lnkgp",
+    "keeperCompany": "Pibukor"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c343",
+    "leadId": "lead-1780300116600-199-7b0ur",
+    "Company": "Princess Cosmetics Qatar (formerly Dobee's Collection)",
+    "Country": "Qatar",
+    "oldStage": "verified",
+    "domain": "princesscosmeticsqa.com",
+    "keeperLeadId": "lead-1785372262659-1478-alrzc",
+    "keeperCompany": "Princess Cosmetics Qatar"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c347",
+    "leadId": "lead-1780300116600-209-3oj9a",
+    "Company": "RunRabbit (runrabbit.lk)",
+    "Country": "Sri Lanka",
+    "oldStage": "verified",
+    "domain": "runrabbit.lk",
+    "keeperLeadId": "lead-1780300116600-208-igkam",
+    "keeperCompany": "RunRabbit"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca1b",
+    "leadId": "lead-1781224047185-275-dxeqk",
+    "Company": "Run Rabbit (runrabbit.lk)",
+    "Country": "Sri Lanka",
+    "oldStage": "verified",
+    "domain": "runrabbit.lk",
+    "keeperLeadId": "lead-1780300116600-208-igkam",
+    "keeperCompany": "RunRabbit"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c34f",
+    "leadId": "lead-1780300116600-222-uxjzr",
+    "Company": "Skin Care BD (Skincarebd.com)",
+    "Country": "Bangladesh",
+    "oldStage": "verified",
+    "domain": "skincarebd.com",
+    "keeperLeadId": "lead-1785372262645-540-ddflp",
+    "keeperCompany": "Skin Care BD"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c36d",
+    "leadId": "lead-1780300116600-328-9d45d",
+    "Company": "Al Mouyasser (Fattal Group)",
+    "Country": "Iraq",
+    "oldStage": "verified",
+    "domain": "almouyasser.com",
+    "keeperLeadId": "lead-1780300116600-327-coxts",
+    "keeperCompany": "Al Mouyasser"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca31",
+    "leadId": "lead-1781224047186-421-eqc7l",
+    "Company": "Al Mouyasser (almouyasser.com)",
+    "Country": "Iraq",
+    "oldStage": "verified",
+    "domain": "almouyasser.com",
+    "keeperLeadId": "lead-1780300116600-327-coxts",
+    "keeperCompany": "Al Mouyasser"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c387",
+    "leadId": "lead-1780300116601-443-6r24m",
+    "Company": "BeautyOn82 (beautyon82.com)",
+    "Country": "Cyprus",
+    "oldStage": "verified",
+    "domain": "beautyon82.com",
+    "keeperLeadId": "lead-1784411989740-857-am2ek",
+    "keeperCompany": "BeautyOn82"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c2f3",
+    "leadId": "lead-1780300116599-39-erif4",
+    "Company": "Beauty Garden (beauty-garden.hr)",
+    "Country": "Croatia",
+    "oldStage": "verified",
+    "domain": "beauty-garden.hr",
+    "keeperLeadId": "lead-1785372262638-90-vxdkk",
+    "keeperCompany": "Beauty Garden"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c2f8",
+    "leadId": "lead-1780300116599-45-w1j4p",
+    "Company": "Beautyko Import Ltd",
+    "Country": "Finland",
+    "oldStage": "verified",
+    "domain": "beautykoimport.com",
+    "keeperLeadId": "lead-1785372262638-108-fcatb",
+    "keeperCompany": "Beautyko Import"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c313",
+    "leadId": "lead-1780300116600-110-fnz2s",
+    "Company": "Just Cosmetics Cyprus (justcosmetics.cy)",
+    "Country": "Cyprus",
+    "oldStage": "verified",
+    "domain": "justcosmetics.cy",
+    "keeperLeadId": "lead-1784411989741-1037-is19o",
+    "keeperCompany": "Just Cosmetics (justcosmetics.cy)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c324",
+    "leadId": "lead-1780300116600-136-2960g",
+    "Company": "Korean Beauty Point (koreanbeautypoint.com)",
+    "Country": "Nepal",
+    "oldStage": "verified",
+    "domain": "koreanbeautypoint.com",
+    "keeperLeadId": "lead-1785372262656-1279-s79gg",
+    "keeperCompany": "Korean Beauty Point"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a84cf",
+    "leadId": "lead-1785372262658-1416-chtrs",
+    "Company": "MyLab Africa",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "mylabafrica.com",
+    "keeperLeadId": "lead-1781224047187-796-m4etz",
+    "keeperCompany": "MyLabAfrica"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c333",
+    "leadId": "lead-1780300116600-172-e3q47",
+    "Company": "MY Lab Africa",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "mylabafrica.com",
+    "keeperLeadId": "lead-1781224047187-796-m4etz",
+    "keeperCompany": "MyLabAfrica"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c334",
+    "leadId": "lead-1780300116600-173-jrl3x",
+    "Company": "MY Lab Africa (mylabafrica.com)",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "mylabafrica.com",
+    "keeperLeadId": "lead-1781224047187-796-m4etz",
+    "keeperCompany": "MyLabAfrica"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e99011",
+    "leadId": "switzerland-niasha-sarl-niasha-ch-1833",
+    "Company": "NIASHA Sarl (niasha.ch)",
+    "Country": "Switzerland",
+    "oldStage": "verified",
+    "domain": "niasha.ch",
+    "keeperLeadId": "lead-1780300116600-183-yxxyg",
+    "keeperCompany": "NIASHA (niasha.ch)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c33d",
+    "leadId": "lead-1780300116600-190-ybjis",
+    "Company": "Orion Beauty (orionbeauty.lk)",
+    "Country": "Sri Lanka",
+    "oldStage": "verified",
+    "domain": "orionbeauty.lk",
+    "keeperLeadId": "lead-1785372262659-1453-71ljg",
+    "keeperCompany": "Orion Beauty"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca12",
+    "leadId": "lead-1781224047185-250-8yvg0",
+    "Company": "Orion XO (Orion Inmotion Holding)",
+    "Country": "Sri Lanka",
+    "oldStage": "verified",
+    "domain": "orionbeauty.lk",
+    "keeperLeadId": "lead-1785372262659-1453-71ljg",
+    "keeperCompany": "Orion Beauty"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c36e",
+    "leadId": "lead-1780300116600-329-fe1zy",
+    "Company": "AlMaqsad (beitalmaqsad.com)",
+    "Country": "Iraq",
+    "oldStage": "verified",
+    "domain": "beitalmaqsad.com",
+    "keeperLeadId": "lead-1785372262648-749-iny5j",
+    "keeperCompany": "AlMaqsad (Beit AlMaqsad)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c305",
+    "leadId": "lead-1780300116599-76-ui294",
+    "Company": "Eurocosmetics (eurocosmetics-ks.com)",
+    "Country": "Kosovo",
+    "oldStage": "verified",
+    "domain": "eurocosmetics-ks.com",
+    "keeperLeadId": "lead-1785372262640-188-tf6dz",
+    "keeperCompany": "Euro Cosmetics"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c31a",
+    "leadId": "lead-1780300116600-123-e6szc",
+    "Company": "KC Bazar (Korean Cosmetics Bazar)",
+    "Country": "Bangladesh",
+    "oldStage": "verified",
+    "domain": "kcbazar.com",
+    "keeperLeadId": "lead-1785372262641-291-hrskr",
+    "keeperCompany": "KC Bazar (Kcbazar Ltd.)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c340",
+    "leadId": "lead-1780300116600-195-oz5ov",
+    "Company": "Peach'ly (peachlyonline.com)",
+    "Country": "Georgia",
+    "oldStage": "verified",
+    "domain": "peachlyonline.com",
+    "keeperLeadId": "lead-1781224047185-255-4strl",
+    "keeperCompany": "Peach'ly"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c345",
+    "leadId": "lead-1780300116600-206-h17wp",
+    "Company": "RK Cosmetics (rkcosmetic.in)",
+    "Country": "India",
+    "oldStage": "verified",
+    "domain": "rkcosmetic.in",
+    "keeperLeadId": "lead-1785372262645-509-991pu",
+    "keeperCompany": "RK Cosmetics"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a845f",
+    "leadId": "lead-1785372262657-1304-6ah6w",
+    "Company": "Korean Glam By Ameni",
+    "Country": "North Africa",
+    "oldStage": "verified",
+    "domain": "korean-glam.tn",
+    "keeperLeadId": "lead-1781224047184-180-cdo3c",
+    "keeperCompany": "Korean Glam By Ameni"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8460",
+    "leadId": "lead-1785372262657-1305-7n85h",
+    "Company": "Korean Glam By Ameni (korean-glam.tn)",
+    "Country": "Tunisia",
+    "oldStage": "verified",
+    "domain": "korean-glam.tn",
+    "keeperLeadId": "lead-1781224047184-180-cdo3c",
+    "keeperCompany": "Korean Glam By Ameni"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c356",
+    "leadId": "lead-1780300116600-247-bttll",
+    "Company": "Tunisia Marka By Ameni (tunisiamarka.com.tn / korean-glam.tn)",
+    "Country": "Tunisia",
+    "oldStage": "verified",
+    "domain": "korean-glam.tn",
+    "keeperLeadId": "lead-1781224047184-180-cdo3c",
+    "keeperCompany": "Korean Glam By Ameni"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c301",
+    "leadId": "lead-1780300116599-69-d69ce",
+    "Company": "Cremile B2B (b2b.cremile.com)",
+    "Country": "Lithuania",
+    "oldStage": "verified",
+    "domain": "b2b.cremile.com",
+    "keeperLeadId": "lithuania-cremile-cremile-b2b-1988",
+    "keeperCompany": "Cremile (Cremile B2B)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c32c",
+    "leadId": "lead-1780300116600-152-tlv9m",
+    "Company": "KPG Beauty (kpgbeauty.com)",
+    "Country": "Nepal",
+    "oldStage": "verified",
+    "domain": "kpgbeauty.com",
+    "keeperLeadId": "lead-1785372262643-377-gwc7z",
+    "keeperCompany": "KPG Beauty"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c341",
+    "leadId": "lead-1780300116600-197-5tsf3",
+    "Company": "Pharmacoo Wholesale",
+    "Country": "Australia",
+    "oldStage": "verified",
+    "domain": "pharmacoo.com.au",
+    "keeperLeadId": "lead-1785372262644-485-lbv01",
+    "keeperCompany": "Pharmacoo Pty Ltd"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c34e",
+    "leadId": "lead-1780300116600-221-43ix8",
+    "Company": "Skin Bae (skinbae.in)",
+    "Country": "India",
+    "oldStage": "verified",
+    "domain": "skinbae.in",
+    "keeperLeadId": "lead-1785372262645-538-52odz",
+    "keeperCompany": "Skin Bae"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c377",
+    "leadId": "lead-1780300116601-419-3qug9",
+    "Company": "28GLOW (28glow.is)",
+    "Country": "Iceland",
+    "oldStage": "verified",
+    "domain": "28glow.is",
+    "keeperLeadId": "lead-1784411989739-776-kd2nh",
+    "keeperCompany": "28glow.is"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca38",
+    "leadId": "lead-1781224047186-535-e0ero",
+    "Company": "Bandari Beauty (bandaribeauty.com)",
+    "Country": "Kenya",
+    "oldStage": "verified",
+    "domain": "bandaribeauty.com",
+    "keeperLeadId": "lead-1780300116601-433-rujn9",
+    "keeperCompany": "Bandari Beauty"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c382",
+    "leadId": "lead-1780300116601-435-gzw8n",
+    "Company": "Beauty Bar (beautybar.ge)",
+    "Country": "Georgia",
+    "oldStage": "verified",
+    "domain": "beautybar.ge",
+    "keeperLeadId": "lead-1785372262650-899-mse37",
+    "keeperCompany": "Beauty Bar Georgia"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c388",
+    "leadId": "lead-1780300116601-445-lowow",
+    "Company": "Bebyhada (bebyhada.co.nz)",
+    "Country": "New Zealand",
+    "oldStage": "verified",
+    "domain": "bebyhada.co.nz",
+    "keeperLeadId": "lead-1784411989740-862-ekyw3",
+    "keeperCompany": "Bebyhada"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c389",
+    "leadId": "lead-1780300116601-446-jtstt",
+    "Company": "Better Skin Shop (betterskin.ge)",
+    "Country": "Georgia",
+    "oldStage": "verified",
+    "domain": "betterskin.ge",
+    "keeperLeadId": "lead-1785372262651-937-gqlj8",
+    "keeperCompany": "Better Skin Shop"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c398",
+    "leadId": "lead-1780300116601-468-ez2zb",
+    "Company": "CosmoStore Mongolia (mn.cosmostore.org)",
+    "Country": "Mongolia",
+    "oldStage": "verified",
+    "domain": "mn.cosmostore.org",
+    "keeperLeadId": "lead-1780300116601-467-tvohu",
+    "keeperCompany": "CosmoStore Mongolia"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3c6",
+    "leadId": "lead-1780300116601-538-ecimp",
+    "Company": "Kbeauty.ci (k-beautyci.com)",
+    "Country": "Cote d'Ivoire",
+    "oldStage": "verified",
+    "domain": "k-beautyci.com",
+    "keeperLeadId": "lead-1785372262641-270-sm5r1",
+    "keeperCompany": "K-BeautyCI"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3c7",
+    "leadId": "lead-1780300116601-539-xm6rh",
+    "Company": "KbeautySN (kbeauty-sn.com)",
+    "Country": "Senegal",
+    "oldStage": "verified",
+    "domain": "kbeauty-sn.com",
+    "keeperLeadId": "lead-1785372262656-1211-auw69",
+    "keeperCompany": "KbeautySN"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3cb",
+    "leadId": "lead-1780300116601-545-pvcjd",
+    "Company": "Klassy (klassy.com.bd)",
+    "Country": "Bangladesh",
+    "oldStage": "verified",
+    "domain": "klassy.com.bd",
+    "keeperLeadId": "lead-1785372262656-1233-1oik2",
+    "keeperCompany": "KlassyMissy BD"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3f7",
+    "leadId": "lead-1780300116601-615-5yjc8",
+    "Company": "ONLY K Greece (onlykgreece.com)",
+    "Country": "Greece",
+    "oldStage": "verified",
+    "domain": "onlykgreece.com",
+    "keeperLeadId": "lead-1785372262659-1446-68f77",
+    "keeperCompany": "ONLY K Greece"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c404",
+    "leadId": "lead-1780300116601-644-d7ase",
+    "Company": "Skincare Zone Malta",
+    "Country": "Malta",
+    "oldStage": "verified",
+    "domain": "skincarezonemalta.com",
+    "keeperLeadId": "lead-1784411989743-1443-8gk33",
+    "keeperCompany": "SkincareZone Malta"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c406",
+    "leadId": "lead-1780300116601-646-y9qv2",
+    "Company": "Skinelixir LB (skinelixirlb.com)",
+    "Country": "Lebanon",
+    "oldStage": "verified",
+    "domain": "skinelixirlb.com",
+    "keeperLeadId": "lead-1785372262660-1534-6kz2e",
+    "keeperCompany": "Skinelixir LB"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c409",
+    "leadId": "lead-1780300116601-650-972t1",
+    "Company": "Skinum (skinum.ge)",
+    "Country": "Georgia",
+    "oldStage": "verified",
+    "domain": "skinum.ge",
+    "keeperLeadId": "lead-1780300116601-649-88zh9",
+    "keeperCompany": "Skinum"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c39e",
+    "leadId": "lead-1780300116601-477-2y4e3",
+    "Company": "Dream Skin Nepal (dreamskinnepal.com)",
+    "Country": "Nepal",
+    "oldStage": "verified",
+    "domain": "dreamskinnepal.com",
+    "keeperLeadId": "lead-1785372262652-1011-lr8x8",
+    "keeperCompany": "Dream Skin Nepal"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3a3",
+    "leadId": "lead-1780300116601-486-jum4x",
+    "Company": "Faceshine (faceshine.me)",
+    "Country": "Lebanon",
+    "oldStage": "verified",
+    "domain": "faceshine.me",
+    "keeperLeadId": "lead-1785372262653-1036-k9hon",
+    "keeperCompany": "Faceshine"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3a6",
+    "leadId": "lead-1780300116601-493-a8vhk",
+    "Company": "Gangnamisle (gangnamisle.com)",
+    "Country": "Mauritius",
+    "oldStage": "verified",
+    "domain": "gangnamisle.com",
+    "keeperLeadId": "lead-1785372262653-1052-gmcl4",
+    "keeperCompany": "Gangnamisle"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3d1",
+    "leadId": "lead-1780300116601-555-rgzv1",
+    "Company": "Korean Beauty Concept (koreanbeautyconcept.com.bd)",
+    "Country": "Bangladesh",
+    "oldStage": "verified",
+    "domain": "koreanbeautyconcept.com.bd",
+    "keeperLeadId": "lead-1785372262656-1270-oa50h",
+    "keeperCompany": "Korean Beauty Concept"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3de",
+    "leadId": "lead-1780300116601-575-zajd3",
+    "Company": "Kskin Cosmeceuticals (kskin.ie)",
+    "Country": "Ireland",
+    "oldStage": "verified",
+    "domain": "kskin.ie",
+    "keeperLeadId": "lead-1784411989742-1257-pjoji",
+    "keeperCompany": "Kskin Cosmeceuticals"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c402",
+    "leadId": "lead-1780300116601-641-maoer",
+    "Company": "Simpli Cosmetics Kenya (simplicosmetics.co.ke)",
+    "Country": "Kenya",
+    "oldStage": "verified",
+    "domain": "simplicosmetics.co.ke",
+    "keeperLeadId": "lead-1781224047188-849-vjded",
+    "keeperCompany": "Simpli Cosmetics Kenya"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c40a",
+    "leadId": "lead-1780300116601-652-qupgm",
+    "Company": "Soko Beauty House (sokobeautyhouse.com)",
+    "Country": "El Salvador",
+    "oldStage": "verified",
+    "domain": "sokobeautyhouse.com",
+    "keeperLeadId": "lead-1785372262646-559-27rcp",
+    "keeperCompany": "Soko Beauty House"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c395",
+    "leadId": "lead-1780300116601-465-ova4y",
+    "Company": "Cosmobest (cosmobest.by)",
+    "Country": "Belarus",
+    "oldStage": "verified",
+    "domain": "cosmobest.by",
+    "keeperLeadId": "lead-1785372262652-988-k9h4g",
+    "keeperCompany": "CosmoBest"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3a8",
+    "leadId": "lead-1780300116601-495-batus",
+    "Company": "Glow Time (glowtime.mu)",
+    "Country": "Mauritius",
+    "oldStage": "verified",
+    "domain": "glowtime.mu",
+    "keeperLeadId": "mauritius-glow-time-1917",
+    "keeperCompany": "Glow Time"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3ac",
+    "leadId": "lead-1780300116601-501-19g45",
+    "Company": "Havona Beauty (havona.lk)",
+    "Country": "Sri Lanka",
+    "oldStage": "verified",
+    "domain": "havona.lk",
+    "keeperLeadId": "lead-1785372262653-1087-gdqid",
+    "keeperCompany": "Havona Beauty"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3e1",
+    "leadId": "lead-1780300116601-582-blfoy",
+    "Company": "LOVU Beauty Code (lovu.md)",
+    "Country": "Moldova",
+    "oldStage": "verified",
+    "domain": "lovu.md",
+    "keeperLeadId": "lead-1785372262643-400-3m1vq",
+    "keeperCompany": "LOVU Beauty Code"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3f0",
+    "leadId": "lead-1780300116601-605-svx9z",
+    "Company": "MySkinBar (myskinbar.cy)",
+    "Country": "Cyprus",
+    "oldStage": "verified",
+    "domain": "myskinbar.cy",
+    "keeperLeadId": "lead-1785372262658-1420-bvq40",
+    "keeperCompany": "MySkinBar"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3f4",
+    "leadId": "lead-1780300116601-610-6k6aw",
+    "Company": "Nice One Beauty (Nice One KSA)",
+    "Country": "Saudi Arabia",
+    "oldStage": "verified",
+    "domain": "niceonesa.com",
+    "keeperLeadId": "lead-1785372262659-1432-1j3cm",
+    "keeperCompany": "Nice One (niceonesa.com)"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c403",
+    "leadId": "lead-1780300116601-643-xl4n4",
+    "Company": "Skin K Nepal (skinknepal.com)",
+    "Country": "Nepal",
+    "oldStage": "verified",
+    "domain": "skinknepal.com",
+    "keeperLeadId": "lead-1785372262660-1521-onba3",
+    "keeperCompany": "Skin K Nepal"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a83e6",
+    "leadId": "lead-1785372262655-1183-ljihr",
+    "Company": "K-Market TZ",
+    "Country": "Tanzania",
+    "oldStage": "verified",
+    "domain": "kmarkettz.com",
+    "keeperLeadId": "tanzania-kmarket-tz-1290",
+    "keeperCompany": "KMarket TZ"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3b9",
+    "leadId": "lead-1780300116601-520-6tm9y",
+    "Company": "K Market TZ (kmarkettz.com)",
+    "Country": "Tanzania",
+    "oldStage": "verified",
+    "domain": "kmarkettz.com",
+    "keeperLeadId": "tanzania-kmarket-tz-1290",
+    "keeperCompany": "KMarket TZ"
+  },
+  {
+    "_id": "6a1d395467c19fababd8c3ca",
+    "leadId": "lead-1780300116601-544-iw87r",
+    "Company": "KKShop (kkshop.cc)",
+    "Country": "Cambodia",
+    "oldStage": "verified",
+    "domain": "kkshop.cc",
+    "keeperLeadId": "lead-1785372262656-1229-d8v2k",
+    "keeperCompany": "KKShop"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a7fde",
+    "leadId": "lead-1785372262639-151-t8sxv",
+    "Company": "Cosibella Wholesale",
+    "Country": "Europe",
+    "oldStage": "verified",
+    "domain": "cosibella-wholesale.com",
+    "keeperLeadId": "lead-1781224047184-78-njvte",
+    "keeperCompany": "Cosibella Wholesale"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56c9ec",
+    "leadId": "lead-1781224047184-85-njy9l",
+    "Company": "Dalink Vietnam (dalinkvietnam.com)",
+    "Country": "Vietnam",
+    "oldStage": "verified",
+    "domain": "dalinkvietnam.com",
+    "keeperLeadId": "lead-1785372262639-167-0lsto",
+    "keeperCompany": "Dalink Vietnam"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca0c",
+    "leadId": "lead-1781224047184-207-x5nlv",
+    "Company": "Lavuu Cosmetics (lavuucosmetics.com)",
+    "Country": "Ecuador",
+    "oldStage": "verified",
+    "domain": "lavuucosmetics.com",
+    "keeperLeadId": "lead-1785372262658-1354-57ieq",
+    "keeperCompany": "Lavuu Korean Skincare"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca22",
+    "leadId": "lead-1781224047185-326-xi3fi",
+    "Company": "Tunisia Marka By Ameni (tunisiamarka.com.tn)",
+    "Country": "Tunisia",
+    "oldStage": "verified",
+    "domain": "tunisiamarka.com.tn",
+    "keeperLeadId": "lead-1785372262646-592-5mub7",
+    "keeperCompany": "Tunisia Marka By Ameni"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca36",
+    "leadId": "lead-1781224047186-520-pl25q",
+    "Company": "Althea Philippines (ph.althea.kr)",
+    "Country": "Philippines",
+    "oldStage": "verified",
+    "domain": "ph.althea.kr",
+    "keeperLeadId": "philippines-althea-korea-1806",
+    "keeperCompany": "Althea Korea"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a82c9",
+    "leadId": "lead-1785372262650-898-4zcei",
+    "Company": "Beauty Bar (Philippines)",
+    "Country": "Philippines",
+    "oldStage": "verified",
+    "domain": "beautybar.com.ph",
+    "keeperLeadId": "lead-1781224047186-543-tnvu4",
+    "keeperCompany": "Beauty Bar Philippines"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca3e",
+    "leadId": "lead-1781224047186-544-2g1oa",
+    "Company": "Beauty Bar Philippines (beautybar.com.ph)",
+    "Country": "Philippines",
+    "oldStage": "verified",
+    "domain": "beautybar.com.ph",
+    "keeperLeadId": "lead-1781224047186-543-tnvu4",
+    "keeperCompany": "Beauty Bar Philippines"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca4f",
+    "leadId": "lead-1781224047187-628-rjd0x",
+    "Company": "Harumi (harumiglobal.com)",
+    "Country": "Colombia",
+    "oldStage": "verified",
+    "domain": "harumiglobal.com",
+    "keeperLeadId": "lead-1781224047187-629-4diq5",
+    "keeperCompany": "Harumi Belleza Coreana"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca53",
+    "leadId": "lead-1781224047187-636-10cdr",
+    "Company": "Home of Korean Beauty / HOK (homeofkoreanbeauty.com)",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "homeofkoreanbeauty.com",
+    "keeperLeadId": "lead-1785372262640-243-7at4b",
+    "keeperCompany": "Home of Korean Beauty (HOK)"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a83d6",
+    "leadId": "lead-1785372262655-1167-n7bqc",
+    "Company": "K-Beauty South Africa (kbeauty.co.za)",
+    "Country": "South Africa",
+    "oldStage": "verified",
+    "domain": "kbeauty.co.za",
+    "keeperLeadId": "lead-1781224047187-653-mfqjt",
+    "keeperCompany": "K Beauty SA (kbeauty.co.za)"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca63",
+    "leadId": "lead-1781224047187-687-n5mzp",
+    "Company": "KbeautyCafe (kbeautycafe.com.ph)",
+    "Country": "Philippines",
+    "oldStage": "verified",
+    "domain": "kbeautycafe.com.ph",
+    "keeperLeadId": "lead-1781224047187-688-6wu3y",
+    "keeperCompany": "KbeautyCafe Philippines"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8401",
+    "leadId": "lead-1785372262656-1210-vb055",
+    "Company": "KbeautyCafe Philippines (kbeautycafe.com.ph)",
+    "Country": "Philippines",
+    "oldStage": "verified",
+    "domain": "kbeautycafe.com.ph",
+    "keeperLeadId": "lead-1781224047187-688-6wu3y",
+    "keeperCompany": "KbeautyCafe Philippines"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca73",
+    "leadId": "lead-1781224047187-728-0l9m6",
+    "Company": "Korean Beauty Qatar (kbeauty.qa)",
+    "Country": "Qatar",
+    "oldStage": "verified",
+    "domain": "kbeauty.qa",
+    "keeperLeadId": "qatar-korean-beauty-kbeauty-qa-1826",
+    "keeperCompany": "Korean Beauty (kbeauty.qa)"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca90",
+    "leadId": "lead-1781224047188-828-tnjku",
+    "Company": "Pixie La Bella BD (pixielabellabangladesh.com)",
+    "Country": "Bangladesh",
+    "oldStage": "verified",
+    "domain": "pixielabellabangladesh.com",
+    "keeperLeadId": "lead-1785372262659-1470-zo2ld",
+    "keeperCompany": "Pixie La Bella Bangladesh"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca15",
+    "leadId": "lead-1781224047185-260-a3ika",
+    "Company": "Pleea Cosmetics (pleeacosmetics.com)",
+    "Country": "Colombia",
+    "oldStage": "verified",
+    "domain": "pleeacosmetics.com",
+    "keeperLeadId": "lead-1781224047188-830-9drix",
+    "keeperCompany": "Pleea Cosmetics"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56c9e4",
+    "leadId": "lead-1781224047183-31-m0ue7",
+    "Company": "4 Seasons Beauty (4seasonsbeauty.pl)",
+    "Country": "Poland",
+    "oldStage": "verified",
+    "domain": "4seasonsbeauty.pl",
+    "keeperLeadId": "lead-1785372262637-56-iq8kb",
+    "keeperCompany": "4 Seasons Beauty"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a83c8",
+    "leadId": "lead-1785372262655-1153-9jtg1",
+    "Company": "K-Beauty House (k-beautyhouse.co.za)",
+    "Country": "South Africa",
+    "oldStage": "verified",
+    "domain": "k-beautyhouse.co.za",
+    "keeperLeadId": "lead-1781224047184-139-o5avh",
+    "keeperCompany": "K-Beauty House"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a83f8",
+    "leadId": "lead-1785372262656-1201-1f8ve",
+    "Company": "Kbeauty Maroc (kbeauty-maroc.com)",
+    "Country": "Morocco",
+    "oldStage": "verified",
+    "domain": "kbeauty-maroc.com",
+    "keeperLeadId": "lead-1781224047184-140-2h61a",
+    "keeperCompany": "K-Beauty Maroc"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56c9fe",
+    "leadId": "lead-1781224047184-163-pm8my",
+    "Company": "KONA Biosciences (kona.ng)",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "shop.kona.ng",
+    "keeperLeadId": "lead-1781224047184-162-yytp2",
+    "keeperCompany": "KONA BIOSCIENCES"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8530",
+    "leadId": "lead-1785372262660-1513-jea13",
+    "Company": "Shop Korea Kenya (shopkorea.co.ke)",
+    "Country": "Kenya",
+    "oldStage": "verified",
+    "domain": "shopkorea.co.ke",
+    "keeperLeadId": "lead-1781224047185-288-y0isc",
+    "keeperCompany": "Shop Korea Kenya"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca32",
+    "leadId": "lead-1781224047186-514-e8lrk",
+    "Company": "4her (4her.lk)",
+    "Country": "Sri Lanka",
+    "oldStage": "verified",
+    "domain": "4her.lk",
+    "keeperLeadId": "lead-1785372262637-58-xstri",
+    "keeperCompany": "4her.lk"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca40",
+    "leadId": "lead-1781224047186-557-o3dqu",
+    "Company": "Beutista (beutista.com)",
+    "Country": "Kuwait",
+    "oldStage": "verified",
+    "domain": "beutista.com",
+    "keeperLeadId": "kuwait-beutista-1827",
+    "keeperCompany": "Beutista"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca49",
+    "leadId": "lead-1781224047186-607-lgzn6",
+    "Company": "Fabella Shop (fabellashop.com)",
+    "Country": "Senegal",
+    "oldStage": "verified",
+    "domain": "fabellashop.com",
+    "keeperLeadId": "lead-1785372262640-192-7chl5",
+    "keeperCompany": "Fabella (Fabella Shop)"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca5e",
+    "leadId": "lead-1781224047187-676-8ldr7",
+    "Company": "K-magic (kmagic.sk)",
+    "Country": "Slovakia",
+    "oldStage": "verified",
+    "domain": "kmagic.sk",
+    "keeperLeadId": "slovakia-k-magic-s-r-o-1832",
+    "keeperCompany": "K-magic s.r.o."
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca84",
+    "leadId": "lead-1781224047187-782-c9o2r",
+    "Company": "MilyCR (milycr.com)",
+    "Country": "Costa Rica",
+    "oldStage": "verified",
+    "domain": "milycr.com",
+    "keeperLeadId": "costa-rica-mily-cr-1914",
+    "keeperCompany": "Mily CR"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a857a",
+    "leadId": "lead-1785372262661-1587-nqwqz",
+    "Company": "TSM Pakistan (tsmpk.com)",
+    "Country": "Pakistan",
+    "oldStage": "verified",
+    "domain": "tsmpk.com",
+    "keeperLeadId": "lead-1781224047188-890-xmdhz",
+    "keeperCompany": "TSM (tsmpk.com)"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca57",
+    "leadId": "lead-1781224047187-654-6uxiq",
+    "Company": "K Beauty Stop (kbeautystop.com)",
+    "Country": "Costa Rica",
+    "oldStage": "verified",
+    "domain": "kbeautystop.com",
+    "keeperLeadId": "lead-1785372262656-1213-gpzjc",
+    "keeperCompany": "KbeautyStop CR"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8071",
+    "leadId": "lead-1785372262641-298-og7po",
+    "Company": "KIS Beauty Store (Central Retail)",
+    "Country": "Thailand",
+    "oldStage": "verified",
+    "domain": "central.co.th",
+    "keeperLeadId": "lead-1781224047187-694-35bxy",
+    "keeperCompany": "KIS Beauty Store (Central Group)"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca7d",
+    "leadId": "lead-1781224047187-758-05sg1",
+    "Company": "LabKo (labko.com.br)",
+    "Country": "Brazil",
+    "oldStage": "verified",
+    "domain": "labko.com.br",
+    "keeperLeadId": "lead-1784411989742-1266-m4y7w",
+    "keeperCompany": "LabKo"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca81",
+    "leadId": "lead-1781224047187-774-zo2i7",
+    "Company": "Maissi Beauty Shop (maissibeautyshop.com)",
+    "Country": "Panama",
+    "oldStage": "verified",
+    "domain": "maissibeautyshop.com",
+    "keeperLeadId": "lead-1785372262658-1380-qsamh",
+    "keeperCompany": "Maissi Beauty Shop"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca92",
+    "leadId": "lead-1781224047188-837-0kdhp",
+    "Company": "Sansa Cosmetics (sansacosmetics.com)",
+    "Country": "Venezuela",
+    "oldStage": "verified",
+    "domain": "sansacosmetics.com",
+    "keeperLeadId": "lead-1785372262660-1494-xnbi8",
+    "keeperCompany": "Sansa Cosmetics"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca9c",
+    "leadId": "lead-1781224047188-894-qff2v",
+    "Company": "Univers Cosmetix (universcosmetix.com)",
+    "Country": "Senegal",
+    "oldStage": "verified",
+    "domain": "universcosmetix.com",
+    "keeperLeadId": "lead-1785372262661-1595-ng1n4",
+    "keeperCompany": "Univers Cosmetix"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56c9ee",
+    "leadId": "lead-1781224047184-89-t20f5",
+    "Company": "Divinas K-Beauty (Divinas Guatemala S.A.)",
+    "Country": "Guatemala",
+    "oldStage": "verified",
+    "domain": "divinaskb.com",
+    "keeperLeadId": "lead-1785372262639-173-77w0h",
+    "keeperCompany": "Divinas K-Beauty"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca0d",
+    "leadId": "lead-1781224047184-208-39u5k",
+    "Company": "Lenzer Trade OÜ (koreancosmetics.eu)",
+    "Country": "Estonia",
+    "oldStage": "verified",
+    "domain": "koreancosmetics.eu",
+    "keeperLeadId": "lead-1785372262642-365-1u3hz",
+    "keeperCompany": "koreancosmetics.eu"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca9f",
+    "leadId": "lead-1781224047188-905-5nj7s",
+    "Company": "YoungMi Store",
+    "Country": "Guatemala",
+    "oldStage": "verified",
+    "domain": "youngmi.store",
+    "keeperLeadId": "guatemala-young-mi-1912",
+    "keeperCompany": "Young Mi"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca23",
+    "leadId": "lead-1781224047185-334-7tzab",
+    "Company": "YoungMi (youngmi.store)",
+    "Country": "Guatemala",
+    "oldStage": "verified",
+    "domain": "youngmi.store",
+    "keeperLeadId": "guatemala-young-mi-1912",
+    "keeperCompany": "Young Mi"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca43",
+    "leadId": "lead-1781224047186-570-wit42",
+    "Company": "BQueenShop (bqueenshop.com)",
+    "Country": "Senegal",
+    "oldStage": "verified",
+    "domain": "bqueenshop.com",
+    "keeperLeadId": "lead-1785372262649-874-m4oak",
+    "keeperCompany": "B Queen Shop"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca60",
+    "leadId": "lead-1781224047187-678-sz5ck",
+    "Company": "Kara Store Cosmetics (karastorecosmetics.com)",
+    "Country": "Ghana",
+    "oldStage": "verified",
+    "domain": "karastorecosmetics.com",
+    "keeperLeadId": "lead-1785372262655-1190-sgwbj",
+    "keeperCompany": "Kara Store Cosmetics"
+  },
+  {
+    "_id": "6a2b526f2df10a2f4a56ca8a",
+    "leadId": "lead-1781224047187-808-0waea",
+    "Company": "Nubian Beauty (nubianbeautyshop.com)",
+    "Country": "Senegal",
+    "oldStage": "verified",
+    "domain": "nubianbeautyshop.com",
+    "keeperLeadId": "lead-1785372262659-1439-mmwu9",
+    "keeperCompany": "Nubian Beauty (Nubian Beauty Shop)"
+  },
+  {
+    "_id": "6a5bf75501f8c4cd3a15a07d",
+    "leadId": "lead-1784411989743-1312-5drov",
+    "Company": "Minna (minna.pe)",
+    "Country": "Peru",
+    "oldStage": "verified",
+    "domain": "minna.pe",
+    "keeperLeadId": "lead-1785372262644-426-p27p5",
+    "keeperCompany": "Minna"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a7f55",
+    "leadId": "lead-1785372262635-14-xhnz0",
+    "Company": "Newseoul",
+    "Country": "Peru",
+    "oldStage": "verified",
+    "domain": "newseoul.com.pe",
+    "keeperLeadId": "lead-1784411989743-1344-lhms3",
+    "keeperCompany": "NewSeoul (newseoul.com.pe)"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e995c6",
+    "leadId": "moldova-sublime-md-sublime-beauty-store-1994",
+    "Company": "Sublime.md (Sublime Beauty Store)",
+    "Country": "Moldova",
+    "oldStage": "verified",
+    "domain": "sublime.md",
+    "keeperLeadId": "lead-1784411989743-1474-rwldz",
+    "keeperCompany": "Sublime (sublime.md)"
+  },
+  {
+    "_id": "6a5bf75501f8c4cd3a15a090",
+    "leadId": "lead-1784411989744-1503-239bd",
+    "Company": "Ultra Panama (ultrapanama.com)",
+    "Country": "Panama",
+    "oldStage": "verified",
+    "domain": "ultrapanama.com",
+    "keeperLeadId": "lead-1784411989744-1502-t4a83",
+    "keeperCompany": "Ultra Panama"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e9959b",
+    "leadId": "nigeria-perfect-trust-beauty-wellness-1927",
+    "Company": "Perfect Trust Beauty & Wellness",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "barnfort.com",
+    "keeperLeadId": "nigeria-nectar-hub-beauty-1926",
+    "keeperCompany": "Nectar Hub Beauty"
+  },
+  {
+    "_id": "6a5bf75501f8c4cd3a15a008",
+    "leadId": "lead-1784411989735-67-v9kid",
+    "Company": "Barnfort (Korean Skincare Wholesale Nigeria)",
+    "Country": "Nigeria",
+    "oldStage": "verified",
+    "domain": "barnfort.com",
+    "keeperLeadId": "nigeria-nectar-hub-beauty-1926",
+    "keeperCompany": "Nectar Hub Beauty"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a800d",
+    "leadId": "lead-1785372262640-198-vu3ui",
+    "Company": "Festinus Beauty (Lily.hr)",
+    "Country": "Croatia",
+    "oldStage": "verified",
+    "domain": "festinus.hr",
+    "keeperLeadId": "lead-1784411989736-174-gmgg3",
+    "keeperCompany": "Festinus Beauty"
+  },
+  {
+    "_id": "6a5bf75501f8c4cd3a15a04b",
+    "leadId": "lead-1784411989740-900-fdknx",
+    "Company": "Coco Shop (Vietnam)",
+    "Country": "Vietnam",
+    "oldStage": "verified",
+    "domain": "mytour.vn",
+    "keeperLeadId": "vietnam-skinhouse-vietnam-1579",
+    "keeperCompany": "Skinhouse Vietnam"
+  },
+  {
+    "_id": "6a5bf75501f8c4cd3a15a058",
+    "leadId": "lead-1784411989741-998-2u2ev",
+    "Company": "Hadi Beauty (Da Nang)",
+    "Country": "Vietnam",
+    "oldStage": "verified",
+    "domain": "mytour.vn",
+    "keeperLeadId": "vietnam-skinhouse-vietnam-1579",
+    "keeperCompany": "Skinhouse Vietnam"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e99521",
+    "leadId": "vietnam-bonita-beauty-cosmetics-1129",
+    "Company": "Bonita Beauty Cosmetics",
+    "Country": "Vietnam",
+    "oldStage": "verified",
+    "domain": "mytour.vn",
+    "keeperLeadId": "vietnam-skinhouse-vietnam-1579",
+    "keeperCompany": "Skinhouse Vietnam"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e99200",
+    "leadId": "bosnia-and-herzegovina-beautyco-beautyco-ba-1969",
+    "Company": "BeautyCo (beautyco.ba)",
+    "Country": "Bosnia and Herzegovina",
+    "oldStage": "verified",
+    "domain": "beautyco.ba",
+    "keeperLeadId": "lead-1784411989735-89-qjqvp",
+    "keeperCompany": "BeautyCO"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8068",
+    "leadId": "lead-1785372262641-289-7zgzi",
+    "Company": "KbeautyEC (kbeautyec.com)",
+    "Country": "Ecuador",
+    "oldStage": "verified",
+    "domain": "kbeautyec.com",
+    "keeperLeadId": "lead-1784411989736-259-5656t",
+    "keeperCompany": "KbeautyEC"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e99581",
+    "leadId": "spain-miin-korean-cosmetics-lilin-yang-1000",
+    "Company": "MiiN Korean Cosmetics (Lilin Yang)",
+    "Country": "Spain",
+    "oldStage": "verified",
+    "domain": "miin-cosmetics.com",
+    "keeperLeadId": "spain-miin-cosmetics-albane-bergamotto-999",
+    "keeperCompany": "MiiN Cosmetics (Albane Bergamotto)"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a7f6d",
+    "leadId": "lead-1785372262637-38-j7utb",
+    "Company": "Miin Cosmetics",
+    "Country": "Spain",
+    "oldStage": "verified",
+    "domain": "miin-cosmetics.com",
+    "keeperLeadId": "spain-miin-cosmetics-albane-bergamotto-999",
+    "keeperCompany": "MiiN Cosmetics (Albane Bergamotto)"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e98ef8",
+    "leadId": "canada-exod-exod-international-1817",
+    "Company": "EXOD (Exod International)",
+    "Country": "Canada",
+    "oldStage": "verified",
+    "domain": "exodint.com",
+    "keeperLeadId": "lead-1785372262640-191-0ts4q",
+    "keeperCompany": "EXOD International"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e9953c",
+    "leadId": "canada-exod-international-woori-kim-account-manager-327",
+    "Company": "EXOD International — Woori Kim (Account Manager)",
+    "Country": "Canada",
+    "oldStage": "verified",
+    "domain": "exodint.com",
+    "keeperLeadId": "lead-1785372262640-191-0ts4q",
+    "keeperCompany": "EXOD International"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8009",
+    "leadId": "lead-1785372262640-194-zozwu",
+    "Company": "FAST BEAUTY",
+    "Country": "Indonesia",
+    "oldStage": "verified",
+    "domain": "fastkbeauty.com",
+    "keeperLeadId": "lead-1785372262640-195-wiozf",
+    "keeperCompany": "Fast Beauty Indonesia (Fast K. Beauty)"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8456",
+    "leadId": "lead-1785372262656-1295-nf5p4",
+    "Company": "Korean Cosmetics Corner (koreancosmeticscorner.com)",
+    "Country": "Bangladesh",
+    "oldStage": "verified",
+    "domain": "koreancosmeticscorner.com",
+    "keeperLeadId": "lead-1785372262642-338-p6413",
+    "keeperCompany": "Korean Cosmetics Corner"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a80dd",
+    "leadId": "lead-1785372262643-406-292ip",
+    "Company": "LW Wholesale / Little Wonderland",
+    "Country": "Netherlands",
+    "oldStage": "verified",
+    "domain": "lw-wholesale.com",
+    "keeperLeadId": "lead-1785372262643-407-rwe3u",
+    "keeperCompany": "LW-Wholesale (lw-wholesale.com)"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e98fdd",
+    "leadId": "czech-luxury-distribution-luxurydistribution-cz-1160",
+    "Company": "Luxury Distribution (luxurydistribution.cz)",
+    "Country": "Czech",
+    "oldStage": "verified",
+    "domain": "luxurydistribution.cz",
+    "keeperLeadId": "lead-1785372262643-404-nn8o7",
+    "keeperCompany": "Luxury Distribution"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8118",
+    "leadId": "lead-1785372262644-465-srgt8",
+    "Company": "Official K-Beauty / OKB",
+    "Country": "UAE",
+    "oldStage": "verified",
+    "domain": "officialkbeauty.com",
+    "keeperLeadId": "lead-1785372262644-466-kcflm",
+    "keeperCompany": "Official KBeauty (OKB)"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a811a",
+    "leadId": "lead-1785372262644-467-lumt5",
+    "Company": "Official KBeauty / OKB (officialkbeauty.com)",
+    "Country": "UAE",
+    "oldStage": "verified",
+    "domain": "officialkbeauty.com",
+    "keeperLeadId": "lead-1785372262644-466-kcflm",
+    "keeperCompany": "Official KBeauty (OKB)"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a822d",
+    "leadId": "lead-1785372262648-742-b97p1",
+    "Company": "W Cosmetics",
+    "Country": "Australia",
+    "oldStage": "verified",
+    "domain": "wcosmetics.com.au",
+    "keeperLeadId": "australia-new-zealand-w-cosmetics-1811",
+    "keeperCompany": "W Cosmetics"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8247",
+    "leadId": "lead-1785372262649-768-fp3au",
+    "Company": "SuperKos",
+    "Country": "Germany",
+    "oldStage": "verified",
+    "domain": "superkos.co",
+    "keeperLeadId": "bangladesh-superkos-1805",
+    "keeperCompany": "SuperKos"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a830d",
+    "leadId": "lead-1785372262651-966-icl3j",
+    "Company": "Care to Beauty Serbia",
+    "Country": "Serbia",
+    "oldStage": "verified",
+    "domain": "caretobeauty.com",
+    "keeperLeadId": "fiji-care-to-beauty-fiji-1957",
+    "keeperCompany": "Care to Beauty Fiji"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a830a",
+    "leadId": "lead-1785372262651-963-x2t5a",
+    "Company": "Care to Beauty Azerbaijan",
+    "Country": "Azerbaijan",
+    "oldStage": "verified",
+    "domain": "caretobeauty.com",
+    "keeperLeadId": "fiji-care-to-beauty-fiji-1957",
+    "keeperCompany": "Care to Beauty Fiji"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e99227",
+    "leadId": "estonia-btrandworks-baltics-ou-1590",
+    "Company": "Btrandworks Baltics OU",
+    "Country": "Estonia",
+    "oldStage": "verified",
+    "domain": "junico.ee",
+    "keeperLeadId": "lead-1785372262654-1115-mrtsb",
+    "keeperCompany": "Junico OU"
+  },
+  {
+    "_id": "6a6a9e75b1d01eb1a57a8412",
+    "leadId": "lead-1785372262656-1227-tp8r7",
+    "Company": "Kiyomi (kiyomihomeperu.com)",
+    "Country": "Peru",
+    "oldStage": "verified",
+    "domain": "kiyomihomeperu.com",
+    "keeperLeadId": "lead-1785372262656-1228-ke4qv",
+    "keeperCompany": "Kiyomi Home"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e994cc",
+    "leadId": "vanuatu-sweetcare-vanuatu-1958",
+    "Company": "SweetCare Vanuatu",
+    "Country": "Vanuatu",
+    "oldStage": "verified",
+    "domain": "sweetcare.com",
+    "keeperLeadId": "malawi-sweetcare-malawi-1961",
+    "keeperCompany": "SweetCare Malawi"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e994c8",
+    "leadId": "kiribati-sweetcare-kiribati-1959",
+    "Company": "SweetCare Kiribati",
+    "Country": "Kiribati",
+    "oldStage": "verified",
+    "domain": "sweetcare.com",
+    "keeperLeadId": "malawi-sweetcare-malawi-1961",
+    "keeperCompany": "SweetCare Malawi"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e994ca",
+    "leadId": "papua-new-guinea-sweetcare-papua-new-guinea-1946",
+    "Company": "SweetCare Papua New Guinea",
+    "Country": "Papua New Guinea",
+    "oldStage": "verified",
+    "domain": "sweetcare.com",
+    "keeperLeadId": "malawi-sweetcare-malawi-1961",
+    "keeperCompany": "SweetCare Malawi"
+  },
+  {
+    "_id": "6a7a7e1886c9bb1490e994cb",
+    "leadId": "sao-tome-and-principe-sweetcare-sao-tome-e-principe-1962",
+    "Company": "SweetCare Sao Tome e Principe",
+    "Country": "Sao Tome and Principe",
+    "oldStage": "verified",
+    "domain": "sweetcare.com",
+    "keeperLeadId": "malawi-sweetcare-malawi-1961",
+    "keeperCompany": "SweetCare Malawi"
+  }
+]

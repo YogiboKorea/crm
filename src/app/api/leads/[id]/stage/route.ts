@@ -4,9 +4,11 @@ import { Lead } from '@/models/Lead';
 
 export const runtime = 'nodejs';
 
+// Lead 모델의 stage enum 과 반드시 일치시킬 것 —
+// 여기 빠진 stage 로는 이동 자체가 400 으로 막힌다 (원클릭 이동 버튼이 조용히 실패).
 const VALID_STAGES = [
-  'imported', 'verifying', 'verified', 'contacted',
-  'replied', 'negotiating', 'partner', 'archived',
+  'imported', 'ai-searched', 'verifying', 'verified', 'contacted',
+  'replied', 'negotiating', 'partner', 'archived', 'failed',
 ] as const;
 
 /**
