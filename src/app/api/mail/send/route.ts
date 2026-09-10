@@ -7,29 +7,15 @@ import { sendMail, renderTemplate } from '@/lib/mailer';
 import { buildVarsFromLead, buildSignatureBlock } from '@/lib/template-vars';
 import { decryptSecret } from '@/lib/crypto';
 import { checkSendGuard } from '@/lib/send-limits';
+import { OUTBOUND_LOCKED, OUTBOUND_LOCK_MESSAGE, canSendTo, TEST_RECIPIENTS } from '@/lib/outbound-lock';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-/* ═══════════════════════════════════════════════════════════════════
-   🚫 발송 차단 스위치 — 지금은 메일이 한 통도 나가지 않는다.
-
-   왜 env(MAIL_DRY_RUN) 로만 두지 않았나:
-   Next.js 는 .env.local 을 서버가 뜰 때 한 번 읽는다. 파일만 고치면
-   이미 떠 있는 서버에는 반영되지 않아, "껐다고 생각했는데 나가는" 상황이
-   생긴다. 코드 상수는 저장하는 순간 hot reload 로 즉시 먹는다.
-
-   ── 다시 보낼 수 있게 하려면 ──
-   1) 아래를 false 로 바꾸고
-   2) .env.local 의 MAIL_DRY_RUN 을 0 으로 되돌린 뒤
-   3) 개발 서버를 재시작한다 (env 는 재시작해야 반영된다)
-
-   ※ 되살리기 전에 반드시 정할 것: 하루 발송 상한과 발송 간격.
-      지금 발송 루프에는 둘 다 없어서 400통이 한 번에 나간다.
-      yogico.kr 로 실거래 메일(Schestowitz·Blue Marble 등)도 나가므로
-      스팸 판정을 받으면 그 메일들까지 상대 스팸함으로 간다.
-   ═══════════════════════════════════════════════════════════════════ */
-const SEND_KILL_SWITCH = true;
+/* 발송 차단은 src/lib/outbound-lock.ts 한 곳에서만 관리한다.
+   예전에는 여기에도 SEND_KILL_SWITCH 라는 별도 스위치가 있었다. 스위치가 둘로
+   갈리면 한쪽만 내려놓고 "껐다"고 생각하게 되고, 반대로 한쪽만 올려서
+   "왜 안 나가지" 를 찾느라 시간을 쓴다. 실제로 그래서 테스트가 막혔다. */
 
 /**
  * POST /api/mail/send
@@ -49,11 +35,13 @@ const SEND_KILL_SWITCH = true;
  *   { success, requested, sent, failed, dryRun, results: [{leadId, ok, messageId?, error?}] }
  */
 export async function POST(req: Request) {
-  // 어떤 경로로 들어와도 여기서 멈춘다 (버튼·예약·API 직접 호출 전부)
-  if (SEND_KILL_SWITCH) {
+  // 잠금 중에도 테스트 주소(TEST_RECIPIENTS)로는 나가야 발송~수신 흐름을
+  // 끝까지 확인할 수 있다. 그래서 요청 전체를 여기서 막지 않고, 아래 발송
+  // 루프에서 받는 주소별로 거른다. 테스트 주소가 하나도 없으면 전면 차단이다.
+  if (OUTBOUND_LOCKED && !TEST_RECIPIENTS.length) {
     return NextResponse.json({
       success: false,
-      error: '메일 발송이 차단되어 있습니다. (개발자 확인 필요 — send/route.ts 의 SEND_KILL_SWITCH)',
+      error: OUTBOUND_LOCK_MESSAGE,
       killSwitch: true,
     }, { status: 423 });
   }
@@ -164,6 +152,19 @@ export async function POST(req: Request) {
       textPayload = renderedBody.replace(/<[^>]+>/g, '') + sigText;
     } else {
       textPayload = renderedBody + sigText;
+    }
+
+    // 잠금 중이면 테스트 주소가 아닌 곳은 여기서 떨어뜨린다.
+    // 실수로 전 건을 눌러도 실제로 나가는 것은 테스트 주소뿐이다.
+    if (!canSendTo(to)) {
+      failed++;
+      results.push({
+        leadId: lead.leadId,
+        ok: false,
+        error: `발송 잠금 중 — 지금은 ${TEST_RECIPIENTS.join(', ')} 로만 나갑니다`,
+        locked: true,
+      });
+      continue;
     }
 
     // 발송 (또는 DRY_RUN)

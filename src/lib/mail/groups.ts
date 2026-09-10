@@ -279,3 +279,105 @@ export async function listGroups(accountId?: string): Promise<{ groups: GroupRow
     byAccount: Object.fromEntries([...byAccount].map(([id, list]) => [id, list.sort(order)])),
   };
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   나머지 자동 배치 — "미분류 0건" 을 만드는 마지막 단계.
+
+   폴더 학습(suggestGroupBySender)과 제목 매칭(suggestGroupByName)은
+   **이미 본 적 있는 거래처**만 잡는다. 처음 보는 발신자는 참고할 이력이
+   없어 그대로 남는다. 실측으로 미분류 44통 중 38통이 그런 경우였다.
+
+   그 38통을 뜯어보니 성격이 셋으로 갈렸다.
+     · 자사 발신 17통 — 내부 시스템 리포트·브리핑 (거래처가 아니다)
+     · 광고·자동발송 20통 — 링크드인 알림, 전시회 홍보, 인증번호
+     ·  실제 거래처  7통 — Besko, Toun28, Arencia, F&F, 무신사 …
+
+   그래서 이 순서로 배치한다. 위에서 걸리면 아래는 보지 않는다.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/** 거래처가 아닌 것들을 모아두는 폴더 이름 (화면에서 구분되게 접두사를 붙인다) */
+export const GROUP_INTERNAL = '· 사내';
+export const GROUP_NOISE    = '· 광고·자동발송';
+export const GROUP_MISC     = '· 기타';
+
+/**
+ * 발신 도메인으로 폴더를 새로 만들 최소 통수.
+ *
+ * 처음엔 도메인마다 폴더를 만들었더니 1통짜리 폴더가 7개 생겼다.
+ * 대표가 손으로 나눠둔 폴더는 13~33통인데, 그 목록에 1통짜리가 끼면
+ * 진짜 거래처를 찾기가 더 어려워진다.
+ * 한 번 주고받고 만 곳은 폴더가 아니라 '· 기타' 로 모은다.
+ */
+export const MIN_MAILS_FOR_OWN_FOLDER = 5;
+
+/**
+ * 도메인에서 회사 폴더명을 만든다.
+ *   besko.kr        → Besko
+ *   arencia.com     → Arencia
+ *   event.gitex.com → Gitex   (서브도메인은 버린다)
+ */
+export function groupNameFromDomain(domain: string): string {
+  const parts = String(domain || '').toLowerCase().split('.').filter(Boolean);
+  if (!parts.length) return '';
+  // co.kr / com.au 같은 2단계 국가 도메인을 감안해 뒤에서 찾는다
+  const SECOND = new Set(['co', 'com', 'net', 'org', 'or', 'go', 'ac', 'gov', 'edu']);
+  let i = parts.length - 2;
+  if (i > 0 && SECOND.has(parts[i])) i -= 1;
+  const core = parts[Math.max(0, i)] || parts[0];
+  return core.charAt(0).toUpperCase() + core.slice(1);
+}
+
+export interface AutoAssignResult {
+  group: string;
+  by: 'own-domain' | 'noise' | 'sender-domain';
+}
+
+/**
+ * 학습으로도 안 잡힌 메일 한 통을 어디에 둘지 정한다.
+ * 어디에도 못 넣을 경우에만 null 을 돌려준다.
+ */
+export function autoAssignGroup(
+  mail: { from?: { address?: string; name?: string }; classification?: string },
+  ownDomainSet: Set<string>,
+  /** 발신 도메인별 누적 통수 — 폴더를 팔 만큼 오간 곳인지 판단한다 */
+  domainCounts?: Map<string, number>,
+): AutoAssignResult | null {
+  const addr = String(mail?.from?.address || '').toLowerCase();
+  const domain = addr.split('@')[1] || '';
+  if (!domain) return null;
+
+  // 1. 우리가 보낸 것 — 내부 리포트·브리핑. 거래처로 두면 폴더가 오염된다.
+  if (ownDomainSet.has(domain)) return { group: GROUP_INTERNAL, by: 'own-domain' };
+
+  // 2. 광고·자동발송 — 사람이 읽고 답할 것이 아니다. 한 곳에 몰아둔다.
+  if (['ad', 'system', 'newsletter'].includes(String(mail?.classification || ''))) {
+    return { group: GROUP_NOISE, by: 'noise' };
+  }
+
+  // 3. 실제 거래처로 보이는 것 — 발신 도메인으로 폴더를 만든다.
+  //    개인 메일 도메인(gmail 등)은 회사를 특정하지 못하므로 잡음으로 보낸다.
+  if (FREE_MAIL.has(domain)) return { group: GROUP_NOISE, by: 'noise' };
+
+  // 한두 번 오간 곳에까지 폴더를 파면 거래처 목록이 1통짜리로 뒤덮인다.
+  // 충분히 오간 곳만 자기 폴더를 갖고, 나머지는 '· 기타' 로 모은다.
+  const seen = domainCounts?.get(domain) ?? 0;
+  if (seen < MIN_MAILS_FOR_OWN_FOLDER) return { group: GROUP_MISC, by: 'sender-domain' };
+
+  const name = groupNameFromDomain(domain);
+  return name ? { group: name, by: 'sender-domain' } : null;
+}
+
+/** 자사 도메인 집합 — 라우트에서 재사용할 수 있게 노출한다 */
+export async function getOwnDomains(): Promise<Set<string>> {
+  const out = new Set<string>();
+  try {
+    const accounts: any[] = await MailAccount.find({}, { smtpUser: 1, fromAddress: 1 }).lean();
+    for (const a of accounts) {
+      for (const u of [a.smtpUser, a.fromAddress]) {
+        const d = String(u || '').toLowerCase().split('@')[1];
+        if (d) out.add(d);
+      }
+    }
+  } catch { /* 계정을 못 읽어도 나머지 규칙은 돈다 */ }
+  return out;
+}

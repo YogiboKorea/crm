@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { STAGES } from '@/lib/stages';
 
 export interface ILead extends Document {
   leadId: string;
@@ -47,7 +48,7 @@ export interface ILead extends Document {
   //   partner     : 계약 성사 = 최종 완료 (자동 메일 발송 대상에서 자동 제외)
   //   archived    : 무효/폐기
   //   failed      : 검증 실패 (컨택 수단 없음 등)
-  stage?: 'imported' | 'ai-searched' | 'verifying' | 'verified' | 'contacted' | 'replied' | 'negotiating' | 'partner' | 'archived' | 'failed';
+  stage?: 'imported' | 'ai-searched' | 'verifying' | 'verified' | 'queued' | 'contacted' | 'replied' | 'negotiating' | 'partner' | 'archived' | 'failed';
   stageChangedAt?: string;
   becamePartnerAt?: string;    // 파트너 성사 시각 (최종 완료 timestamp)
   readyForOutreach?: boolean;  // 발송 승인 게이트 — verified 후 대표가 승인해야 자동 발송 대상
@@ -128,6 +129,21 @@ const LeadSchema: Schema = new Schema({
   // 클라이언트가 "디스트리뷰터를 꼼꼼히 보고 싶다"고 해서 필터 가능한 축을 따로 둔다.
   // 값: Distributor | Brand/Manufacturer | Retail Chain | Online Store | Retailer | Clinic | Other
   Category: { type: String, default: '' },
+
+  // 영문 원문의 한국어본.
+  //
+  // 발굴 워크플로우가 근거·업종을 영어로 적어 넣는다. 쓰는 사람이 전부
+  // 한국인이라 화면에서는 한국어로 읽는 편이 낫지만, 원문(Evidence/Type)은
+  // 엑셀 컬럼이자 출처 대조용이라 덮어쓰지 않고 옆에 따로 둔다.
+  // 화면은 한국어본이 있으면 그것을, 없으면 원문을 보여준다.
+  EvidenceKo: { type: String, default: '' },
+  TypeKo: { type: String, default: '' },
+
+  // 발송 우선순위 (src/lib/reco-score.ts).
+  // 매번 계산하면 정렬·페이지네이션을 DB 에 맡길 수 없어 저장해 둔다.
+  // 규칙을 고치면 scripts/rebuild-reco.mjs 를 다시 돌려야 값이 맞는다.
+  recoScore: { type: Number, default: 0 },
+  recoReasons: { type: [String], default: [] },
   Evidence: { type: String, default: '' },
   BrandsChannels: { type: String, default: '' },
   LinkedInCompany: { type: String, default: '' },
@@ -158,7 +174,10 @@ const LeadSchema: Schema = new Schema({
   // 새 파이프라인 stage
   stage: {
     type: String,
-    enum: ['imported', 'ai-searched', 'verifying', 'verified', 'contacted', 'replied', 'negotiating', 'partner', 'archived', 'failed'],
+    // queued = 발송 리스트. 검증만 끝난 것(verified)과 "이제 보내도 된다"고
+    // 사람이 정한 것을 구분하려고 둔다. 이 구분이 없으면 검증 통과한 전 건이
+    // 곧바로 발송 대상이 되어, 고르는 단계 자체가 사라진다.
+    enum: STAGES,
     default: 'imported',
     index: true,
   },

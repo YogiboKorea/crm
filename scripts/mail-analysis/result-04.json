@@ -1,0 +1,404 @@
+[
+ {
+  "id": "6aa0d3b28f83165dc75cea80",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "Dangaard 독점 계약 — 지역 확정 · 결제조건 협의 필요",
+  "summary": "오스템파마가 독점 계약 관련 긴급 회의를 열어 독점 지역에는 큰 이견이 없고 진행 확정이라고 알렸습니다. 계약 기간은 2년으로 같은 생각이며, 결제조건은 협의가 필요하다고 했습니다. 세부 조건은 첨부 PDF에 있고, 컨퍼런스 콜은 4월 22일(수) 또는 23일(목) 15시경 가능하니 일정을 조율해 회신해 달라고 요청했습니다.",
+  "keyPoints": [
+   "독점 지역 — 이견 없음, 진행 확정",
+   "계약 기간 2년으로 양측 의견 일치",
+   "⚠️ 결제조건은 협의 필요 — 세부 조건 첨부 PDF 확인",
+   "컨퍼런스 콜 가능: 4/22(수) 또는 4/23(목) 15시경"
+  ],
+  "intent": "결제조건 협의와 컨퍼런스 콜 일정 확정",
+  "needsReply": true,
+  "replyReason": "컨퍼런스 콜 일정 조율을 명시적으로 요청했고, 결제조건도 답을 기다리고 있습니다.",
+  "deadline": "2026-04-22", "deadlineText": "4.22(수) 또는 4.23(목) 15시", "deadlineType": "meeting",
+  "urgency": "high", "suggestedAction": "첨부 PDF의 결제조건을 검토해 의견을 정리하고 컨콜 날짜를 확정해 회신"
+ },
+ {
+  "id": "6aa0d3b48f83165dc75cea8c",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "Dangaard 자료 누락 — 재전달 요청 · 코스모프로프 불참",
+  "summary": "오스템파마가 첨부에서 Dangaard 자료가 빠진 것 같다며 재전달을 요청했습니다. 또한 이번 코스모프로프 전시에는 참여하지 않는다고 알렸습니다.",
+  "keyPoints": [
+   "Dangaard 자료 첨부 누락 — 재전달 필요",
+   "오스템파마는 코스모프로프 전시 불참"
+  ],
+  "intent": "누락된 Dangaard 자료 확보",
+  "needsReply": true,
+  "replyReason": "자료 재전달을 요청받았고, 없으면 검토가 진행되지 않습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "Dangaard 회사소개 자료를 다시 첨부해 재발송"
+ },
+ {
+  "id": "6aa0d3be8f83165dc75ceab3",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\n그쪽과 진행하고 싶습니다. 며칠 안에 계획을 세워 빠르게 공유하겠습니다.\n\n보건부 서류 관련해서는 알려주셔서 좋았습니다. 계약서는 아직 법무팀에서 작업 중이며, 준비되는 대로 바로 전달하겠습니다.\n\nAMUSE 가격표를 기다리고 있습니다.\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "진행 의사 확인 · AMUSE 가격표 재촉",
+  "summary": "Schestowitz가 해당 건을 진행하고 싶다며 며칠 안에 계획을 공유하겠다고 했습니다. 보건부 서류 안내에 감사를 표했고 계약서는 법무팀 작업 중입니다. AMUSE 가격표를 계속 기다리고 있다고 재차 언급했습니다.",
+  "keyPoints": [
+   "진행 의사 확정 — 며칠 내 계획 공유 예정",
+   "계약서는 법무팀 작업 중",
+   "⚠️ AMUSE 가격표 재촉 (반복 요청)"
+  ],
+  "intent": "AMUSE 가격표 확보",
+  "needsReply": true,
+  "replyReason": "AMUSE 가격표를 여러 차례 요청받았고 아직 전달되지 않았습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "AMUSE 매입가·권장소비자가 가격표를 우선 확보해 송부"
+ },
+ {
+  "id": "6aa0d3be8f83165dc75ceab4",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "안녕하세요,\n\n길라드 — MIXSOON 을 진행하려면 공급사와 진전을 만들기 위해 저희 쪽에서 무엇이 필요한가요?\n\n감사합니다.\nKeren",
+  "topic": "MIXSOON 진행에 필요한 준비사항 문의",
+  "summary": "Schestowitz의 Keren이 MIXSOON을 진행하려면 공급사와의 협의를 위해 자사가 무엇을 준비해야 하는지 물었습니다. 짧지만 명확한 질문입니다.",
+  "keyPoints": ["MIXSOON 진행을 위한 자사 준비사항 문의"],
+  "intent": "MIXSOON 진행 요건 파악",
+  "needsReply": true,
+  "replyReason": "필요 조건을 묻는 직접 질문이며 답이 없으면 진행되지 않습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "MIXSOON 공급사가 요구하는 조건(사업계획·최소물량·독점 여부 등)을 정리해 회신"
+ },
+ {
+  "id": "6aa0d3bf8f83165dc75ceab5",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드, 데이비드 님께\n\n아래에 갱신된 답변을 빨간색으로 적었습니다.\n\n진행할 수 있도록 가능 여부를 알려 주세요.\n\n계약서는 내일 전달할 수 있을 것 같습니다. 법무팀에서 작업 중입니다.\n\nAMUSE 가격표에 대한 업데이트가 있나요?\n\n감사합니다.\nKeren",
+  "topic": "질문 답변 회신 · 계약서 내일 전달 예정 · AMUSE 가격표 재문의",
+  "summary": "Schestowitz가 앞선 질문들에 본문 내 빨간 글씨로 답변을 달아 회신했습니다. 계약서는 내일 전달 예정이며, AMUSE 가격표 업데이트를 다시 물었습니다. 빨간 글씨 답변은 텍스트 추출로는 구분되지 않아 원문 확인이 필요합니다.",
+  "keyPoints": [
+   "⚠️ 답변이 본문에 색상으로 표시 — 원문 확인 필요",
+   "계약서 내일 전달 예정",
+   "AMUSE 가격표 재문의 (반복)"
+  ],
+  "intent": "답변 확인 후 진행 가부 회신",
+  "needsReply": true,
+  "replyReason": "진행 가능 여부를 알려달라고 명시했고 AMUSE 가격표도 다시 요청받았습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "웹메일에서 빨간색 답변을 확인하고, 진행 가부와 AMUSE 가격표를 함께 회신"
+ },
+ {
+  "id": "6aa0d3b48f83165dc75cea8d",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "단가표 전달 · 전성분은 MSDS 갈음 · 회사소개서 요청",
+  "summary": "오스템파마가 단가표를 전달하며 내부 협의를 요청했습니다. 전성분은 MSDS로 갈음하면 되고 INCI 표기라 문제없다고 인허가팀에서 확인했으며 CPNP 진행 이력도 있다고 안내했습니다. 별도로 요기코퍼레이션의 회사소개서와 사업자등록증, Dangaard 회사소개서나 수치 자료를 아직 못 받았다며 전달을 요청했습니다.",
+  "keyPoints": [
+   "단가표 전달 — 내부 협의 요청",
+   "전성분은 MSDS 로 갈음 가능 · INCI 표기 · CPNP 진행 이력 있음",
+   "⚠️ 요청: 요기코퍼레이션 회사소개서 + 사업자등록증",
+   "⚠️ 요청: Dangaard 회사소개서 또는 대략적 수치 자료"
+  ],
+  "intent": "회사 자료 확보 후 계약 검토 진행",
+  "needsReply": true,
+  "replyReason": "회사소개서·사업자등록증·Dangaard 자료 세 건을 요청받았고, 없으면 내부 검토가 막힙니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "high", "suggestedAction": "회사소개서·사업자등록증과 Dangaard 자료를 함께 송부하고 단가표 검토 의견을 회신"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea4b",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [My K Romania] Yogi Corporation, 전략적 K-뷰티 브랜드 포트폴리오",
+  "translationBody": "David 님께\n\n메시지와 최근 논의 후 주신 긍정적인 피드백 감사합니다. 저 역시 이야기 나눠 즐거웠습니다.\n\n다음 단계로 나아가면서, 이번 협업의 전체 틀과 기대치를 더 명확히 하는 것이 중요하다고 생각합니다. 특히 이 파트너십의 주요 목표가 상업적·전략적 관점에서 무엇인지 더 잘 이해하고 싶습니다.\n\n또한 다음도 필수적이라고 봅니다. (이하 계속)",
+  "topic": "협업 목표·기대치 명확화 요청",
+  "summary": "My K Romania의 Andreea가 다음 단계로 넘어가기 전에 협업의 전체 틀과 기대치를 명확히 하자고 요청했습니다. 특히 이 파트너십의 주요 목표가 상업적·전략적으로 무엇인지 이해하고 싶다고 했습니다. 관계 초기의 정의 단계입니다.",
+  "keyPoints": [
+   "협업 전체 틀과 기대치 명확화 요청",
+   "파트너십의 상업적·전략적 목표 설명 요구",
+   "본문 일부 생략 — 추가 요구 항목이 더 있음"
+  ],
+  "intent": "협업 구조와 목표에 대한 합의",
+  "needsReply": true,
+  "replyReason": "협업 목표를 설명해 달라는 직접 요청이며, 여기서 정의가 안 되면 이후 논의가 겉돕니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "high", "suggestedAction": "파트너십 목표·역할 분담·기대 성과를 문서로 정리해 회신"
+ },
+ {
+  "id": "6aa0d3b48f83165dc75cea8e",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "덴마크(Dangaard) 진행 상황 공유 요청 · 튀르키예는 추가 검토",
+  "summary": "오스템파마가 튀르키예 건은 추가 검토가 필요하다고 했습니다. 날인해 넘긴 계약과 관련해 덴마크 진행 상황이 어느 단계인지, Dangaard와 어느 정도 진척됐는지 공유해 주면 내부 컨펌 후 계약서를 진행하겠다고 했습니다.",
+  "keyPoints": [
+   "튀르키예 건 — 오스템파마 추가 검토 필요",
+   "⚠️ 덴마크(Dangaard) 진행 단계·진척도 공유 요청",
+   "공유받아야 내부 컨펌 후 계약서 진행 가능"
+  ],
+  "intent": "Dangaard 진척 상황 파악 후 계약 확정",
+  "needsReply": true,
+  "replyReason": "진행 상황 공유가 계약 확정의 전제 조건으로 명시됐습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "Dangaard 협의 단계와 예상 물량·일정을 정리해 회신"
+ },
+ {
+  "id": "6aa0d3bf8f83165dc75ceab6",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드, 데이비드 님께\n\n질문들을 저희 규제 담당자에게 전달했고, 답변이 오면 알려드리겠습니다.\n\n감사합니다.\nKeren",
+  "topic": "규제 담당자에게 질문 전달 — 답변 대기",
+  "summary": "Schestowitz의 Keren이 규제 관련 질문을 자사 규제 담당자에게 전달했고 답변이 오면 알려주겠다고 했습니다. 공은 상대에게 넘어간 상태입니다.",
+  "keyPoints": ["규제 질문을 담당자에게 전달", "답변 회신 예정 — 우리는 대기"],
+  "intent": "진행 상황 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "회신이 늦어지면 팔로우업"
+ },
+ {
+  "id": "6aa0d3b48f83165dc75cea8f",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "계약서 피드백 수용 · 제3조 판매지역만 수정 · 계약 대상은 Dangaard 한정",
+  "summary": "오스템파마가 계약서 피드백에 큰 이견이 없으며 제안된 문구를 수용했다고 알렸습니다. 다만 제3조 판매지역 조항만 수정했고 첨부 워드파일 확인을 요청했습니다. 튀르키예 Distribution Group은 회사 정보와 유통채널 자료를 받아 내부 검토 후 진행 여부를 판단하겠다며, 현재 계약서에는 Dangaard만 넣었다고 밝혔습니다.",
+  "keyPoints": [
+   "계약서 피드백 대부분 수용 — 문구 반영 완료",
+   "⚠️ 제3조 판매지역 조항만 수정 — 첨부 확인 필요",
+   "계약 대상은 Dangaard 한정 (튀르키예는 제외)",
+   "튀르키예 진행하려면 회사 정보·유통채널 자료 제공 필요"
+  ],
+  "intent": "수정 계약서 확인과 튀르키예 자료 확보",
+  "needsReply": true,
+  "replyReason": "제3조 수정 내용 확인과 튀르키예 자료 제공 두 가지가 필요합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "제3조 수정안을 검토해 회신하고, 튀르키예 Distribution Group 회사 정보·유통채널 자료를 송부"
+ },
+ {
+  "id": "6aa0d3b58f83165dc75cea90",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "계약서 피드백 내부 논의 중 · 샘플 내일 도착 예정",
+  "summary": "오스템파마가 전달받은 계약서 피드백을 내부 논의 후 회신하겠다고 알렸습니다. 샘플은 빠르면 다음 날 요기코퍼레이션에 도착할 예정입니다.",
+  "keyPoints": ["계약서 피드백 내부 논의 중", "샘플 익일 도착 예정"],
+  "intent": "진행 상황 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "빠르면 내일 중 도착", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "샘플 수령을 확인하고 계약서 회신을 대기"
+ },
+ {
+  "id": "6aa0d3a48f83165dc75cea4c",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [My K Romania] Yogi Corporation, 전략적 K-뷰티 브랜드 포트폴리오",
+  "translationBody": "David 님께\n\n어제 시간 내어 만나 주셔서 다시 한 번 감사합니다. 이야기 나눠 즐거웠고, 저희도 성공적인 파트너십을 만들 큰 가능성을 보고 있습니다.\n\n논의에 이어, 저희가 당장 우선순위로 두는 브랜드는 Biodance 와 Medicube 입니다. Zoom 미팅에서 말씀드린 대로 현재 Biodance 로 월 약 15만 유로의 매출을 내고 있으며, 이는 저희 경험과 역량을 보여주는 수치입니다.",
+  "topic": "우선순위 브랜드 확정 — Biodance · Medicube (월 15만 유로 실적)",
+  "summary": "My K Romania가 당장 우선순위로 두는 브랜드를 Biodance와 Medicube로 명확히 했습니다. 특히 Biodance로 현재 월 약 15만 유로 매출을 내고 있다고 밝혀 실제 판매 역량을 수치로 제시했습니다. 협업 논의에 무게를 실어주는 근거입니다.",
+  "keyPoints": [
+   "우선순위 브랜드: Biodance, Medicube",
+   "💰 Biodance 월 매출 약 15만 유로 — 실증된 판매 역량",
+   "성공적 파트너십 가능성에 대한 긍정적 평가"
+  ],
+  "intent": "Biodance·Medicube 공급 협의 착수",
+  "needsReply": true,
+  "replyReason": "우선순위 브랜드를 특정했으므로 해당 브랜드 공급 가능 여부와 조건을 회신해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "Biodance·Medicube 공급 경로와 조건을 확인해 회신"
+ },
+ {
+  "id": "6aa0d3b58f83165dc75cea91",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "오스템파마 표준 물품공급계약서 송부",
+  "summary": "오스템파마 오랄케어사업부가 자사 표준 물품공급계약서를 전달하며 검토 후 회신을 요청했습니다. 앞서 수수료 기반 계약이 불가하다는 피드백 이후 대안으로 제시된 형태입니다.",
+  "keyPoints": [
+   "오스템파마 표준 물품공급계약서 전달",
+   "검토 후 회신 요청",
+   "수수료 기반 계약 불가에 따른 대안 구조"
+  ],
+  "intent": "물품공급계약 형태로 전환 협의",
+  "needsReply": true,
+  "replyReason": "계약서 검토 후 회신을 직접 요청받았습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "물품공급계약서를 검토해 조항별 의견을 회신"
+ },
+ {
+  "id": "6aa0d3958f83165dc75ce9da",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "RE: Vegan Super - 미국 시장 수입가/소매가",
+  "translationBody": "감사합니다. 기대하겠습니다.\n\n제가 준비해 드릴 것이 있으면 언제든 말씀해 주세요.\n\nNeil",
+  "topic": "짧은 확인 회신 · 필요 자료 제공 의사",
+  "summary": "Beauty Lyrics의 Neil이 짧은 감사 회신과 함께 필요한 자료가 있으면 언제든 요청하라고 했습니다.",
+  "keyPoints": ["짧은 확인 회신", "필요 자료 제공 의사 표명"],
+  "intent": "협조 의사 표시",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "별도 조치 불필요"
+ },
+ {
+  "id": "6aa0d3958f83165dc75ce9db",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "RE: 미국 시장용 teoandthe 가격표",
+  "translationBody": "David 님\n\nteoandthe 가격표를 보내 주셔서 감사합니다. 검토한 뒤 곧 의견을 드리겠습니다.\n\nNeil",
+  "topic": "teoandthe 가격표 수령 — 검토 후 회신 예정",
+  "summary": "Beauty Lyrics의 Neil이 teoandthe 가격표를 받았고 검토 후 곧 의견을 주겠다고 했습니다. 공은 상대에게 있습니다.",
+  "keyPoints": ["teoandthe 가격표 수령 확인", "검토 후 의견 회신 예정"],
+  "intent": "가격표 검토 착수 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "의견 회신이 늦어지면 팔로우업"
+ },
+ {
+  "id": "6aa0d3a48f83165dc75cea4d",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [My K Romania] Yogi Corporation, 전략적 K-뷰티 브랜드 포트폴리오",
+  "translationBody": "박 대표님께\n\n오늘 만나 주셔서 감사합니다. 귀사에 대해 더 알게 되어 좋았습니다.\n\n저희 회사 소개서와 파트너십 제안서를 함께 보내드립니다. 며칠 안에 논의한 대로 브랜드 제안 목록과 회사 프로필을 파워포인트로 보내드리겠습니다.\n\nMy K Romania(www.my-k.ro)는 2019년부터 현지 시장에서 활동해 왔으며 (이하 계속)",
+  "topic": "My K Romania 회사 소개 · 파트너십 제안서 전달",
+  "summary": "My K Romania가 미팅 후 회사 소개서와 파트너십 제안서를 전달했습니다. 2019년부터 루마니아 현지 시장에서 활동해 왔다고 소개했고, 며칠 안에 브랜드 제안 목록과 회사 프로필을 추가로 보내겠다고 했습니다.",
+  "keyPoints": [
+   "회사 소개서 + 파트너십 제안서 첨부",
+   "My K Romania — 2019년부터 루마니아 시장 활동",
+   "브랜드 제안 목록·회사 프로필 추가 발송 예정"
+  ],
+  "intent": "파트너십 논의 개시",
+  "needsReply": true,
+  "replyReason": "제안서를 받았으므로 검토 결과와 다음 단계를 회신해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "제안서를 검토하고 관심 브랜드·협업 구조에 대한 의견을 회신"
+ },
+ {
+  "id": "6aa0d3b58f83165dc75cea92",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "⚠️ 수수료 기반 계약 불가 — 물품공급 방식 역제안",
+  "summary": "오스템파마 법무팀 검토 결과 수수료 기반 계약은 진행 불가라는 피드백이 나왔습니다. 회계 처리 문제와 오스템임플란트 자회사로서 본사 정책상 수수료 기반 계약을 지양한다는 이유입니다. 대안으로 오스템파마가 요기코퍼레이션에 물품을 공급하고, 요기코퍼레이션이 직접 Dangaard로 수출하는 구조를 제안했습니다. 계약과 무관하게 샘플은 준비되는 대로 양측에 발송하겠다고 했습니다.",
+  "keyPoints": [
+   "⚠️ 수수료 기반 계약 진행 불가 (법무팀 검토 결과)",
+   "사유: 회계 처리 + 오스템임플란트 본사 정책",
+   "대안 제시: 오스템파마 → 요기코퍼레이션 물품공급 → 요기코퍼레이션이 Dangaard 직수출",
+   "샘플은 계약과 무관하게 발송 예정"
+  ],
+  "intent": "계약 구조를 물품공급 방식으로 전환",
+  "needsReply": true,
+  "replyReason": "계약 구조 자체를 바꾸자는 역제안이라 수용 여부를 결정해 회신해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "물품공급 방식의 마진 구조·리스크를 검토해 수용 여부를 회신"
+ },
+ {
+  "id": "6aa0d3b58f83165dc75cea93",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "CPNP 등록 기준 발송 가능 품목 안내 — 샘플 범위 확인 요청",
+  "summary": "오스템파마가 CPNP 등록 기준으로 발송 가능한 품목을 정리해 전달했습니다. 칫솔(더블와이드·울트라·라이트), 치약(뷰센 H·S·C·G·O, 오스템 S·C·G), 가글(지엔 쿨가글 오리지널·마일드) 3개 제품군입니다. 뷰센7은 치과의사 감독이 필수라 제외됐습니다. 이 전체 샘플이 다 필요한지 최종 확인을 요청했습니다.",
+  "keyPoints": [
+   "칫솔: 더블와이드, 울트라, 라이트",
+   "치약: 뷰센 H·S·C·G·O / 오스템 S·C·G",
+   "가글: 지엔 쿨가글 오리지널·마일드",
+   "⚠️ 뷰센7 제외 — 치과의사 감독 필수",
+   "전체 샘플 필요 여부 최종 확인 요청"
+  ],
+  "intent": "샘플 발송 범위 확정",
+  "needsReply": true,
+  "replyReason": "어느 품목의 샘플이 필요한지 확인을 요청받았고, 답이 없으면 발송이 진행되지 않습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "high", "suggestedAction": "Dangaard 측 관심 품목을 확인해 필요한 샘플 목록을 회신"
+ },
+ {
+  "id": "6aa0d3958f83165dc75ce9dc",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Vegan Super - 미국 시장 수입가 / 소매가",
+  "translationBody": "David 님께\n\n현재 한국 소매가와 수입 원가를 공유해 주셔서 감사합니다. 한국 화장품 브랜드를 미국 시장에 소개해 온 저희 경험을 토대로, 그리고 DTC·아마존·주요 도매 파트너 전반에서 브랜드를 장기적으로 건강하게 유지한다는 관점에서 Vegan Super 의 미국 소매가 체계를 다음과 같이 제안드립니다.\n\n제품별 제안 가격\n· Wave Tint — 한국 소매가 $8.36 / 수입 원가(관세 별도) $3.14 / 미국 권장 소매가 (이하 계속)",
+  "topic": "Vegan Super 미국 소매가 체계 제안",
+  "summary": "Beauty Lyrics의 Neil이 Vegan Super의 미국 시장 소매가 체계를 제품별로 제안했습니다. 한국 브랜드를 미국에 들여온 경험과 DTC·아마존·도매 채널 전반의 장기적 브랜드 건강성을 근거로 삼았습니다. 예시로 Wave Tint는 한국 소매가 $8.36, 수입 원가(관세 별도) $3.14 기준으로 미국 권장가를 제시했습니다.",
+  "keyPoints": [
+   "제품별 미국 소매가 체계 제안",
+   "Wave Tint — 한국 소매가 $8.36 · 수입원가 $3.14(관세 별도)",
+   "근거: DTC·아마존·도매 전 채널의 장기 브랜드 건강성",
+   "본문 일부 생략 — 원문에 제품별 가격이 더 있음"
+  ],
+  "intent": "미국 가격 정책 합의",
+  "needsReply": true,
+  "replyReason": "가격 체계 제안에 대한 수용 여부를 브랜드와 협의해 회신해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "브랜드 측과 제안 소매가를 검토하고 수용 가능선을 회신"
+ },
+ {
+  "id": "6aa0d3a48f83165dc75cea4e",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [My K Romania] Yogi Corporation, 전략적 K-뷰티 브랜드 포트폴리오",
+  "translationBody": "박 대표님께\n\nMy K Romania 에 연락 주셔서 감사합니다.\n\n귀사에 대해 더 알아보고 협업 가능성을 검토하고 싶습니다.\n\n다음 주 월요일 2월 9일 오전 10시(부쿠레슈티 시간)에 미팅을 제안드립니다. 저희 사업을 소개하고 세부 사항을 논의하는 자리가 되면 좋겠습니다.\n\n이 시간이 괜찮으신지 알려 주세요.",
+  "topic": "첫 미팅 제안 — 2월 9일 10시 (부쿠레슈티 시간)",
+  "summary": "My K Romania가 콜드메일에 회신해 협업 가능성을 검토하고 싶다며 2월 9일 월요일 오전 10시(부쿠레슈티 시간) 미팅을 제안했습니다. 콜드 아웃리치가 실제 미팅으로 이어진 사례입니다.",
+  "keyPoints": [
+   "콜드메일에 대한 긍정 회신 — 협업 검토 의사",
+   "미팅 제안: 2월 9일(월) 10:00 부쿠레슈티 시간",
+   "시간 가능 여부 확인 요청"
+  ],
+  "intent": "첫 미팅 성사",
+  "needsReply": true,
+  "replyReason": "미팅 시간 가능 여부를 확인 요청받았습니다.",
+  "deadline": "2026-02-09", "deadlineText": "Monday, 9 February, at 10:00 AM (Bucharest time)", "deadlineType": "meeting",
+  "urgency": "high", "suggestedAction": "제안된 시간을 확정하고 화상회의 링크를 공유"
+ },
+ {
+  "id": "6aa0d3958f83165dc75ce9de",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "RE: Vegan Super 계약 - 초기 피드백",
+  "translationBody": "David 님\n\n메일과 결제 조건에 시간 내어 주셔서 감사합니다.\n\n보험 관련해서는 의견이 있으신가요? 이 부분도 매우 중요합니다.\n\n마지막으로 Vegan Super 발주서와 권장 유통사 가격을 보내 주실 수 있을까요?\n\n감사합니다.\nNeil",
+  "topic": "보험 조항 의견 요청 · 발주서와 유통사 가격 요청",
+  "summary": "Beauty Lyrics의 Neil이 결제 조건 논의에 감사를 표하며 두 가지를 요청했습니다. 보험 관련 의견(매우 중요하다고 강조)과, Vegan Super 발주서 및 권장 유통사 가격입니다.",
+  "keyPoints": [
+   "⚠️ 보험 조항 의견 요청 — 상대가 중요하다고 강조",
+   "Vegan Super 발주서 요청",
+   "권장 유통사 가격 요청"
+  ],
+  "intent": "계약 조건 확정과 발주 준비",
+  "needsReply": true,
+  "replyReason": "보험 의견과 발주서·가격표 세 건이 모두 답변 대기 중입니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "보험 조항에 대한 입장을 정리하고 발주서·유통사 가격표를 함께 송부"
+ },
+ {
+  "id": "6aa0d3b58f83165dc75cea94",
+  "classification": "b2b", "lang": "ko", "translationSubject": "", "translationBody": "",
+  "topic": "최신 카탈로그 전달 · CPNP(EU) 등록 품목 정리",
+  "summary": "오스템파마가 라인업 재편에 따라 최신 카탈로그를 전달했습니다. CPNP(EU) 기준 등록 완료 품목은 칫솔(뷰센 더블와이드·라이트·울트라), 치약(뷰센 H·S·C·G·O·7, 오스템 S·C·G·O), 가글(오스템 지엔 쿨가글, 마일드)입니다. 미백 라인인 뷰센7은 의사가 첫 사용을 감독해야 하고 치과 협의가 필요해 리테일 판매는 불가하다고 재확인했습니다.",
+  "keyPoints": [
+   "최신 카탈로그 전달 (라인업 재편 반영)",
+   "CPNP(EU) 등록 완료: 칫솔 3종 · 치약 9종 · 가글 2종",
+   "⚠️ 뷰센7 — 의사 감독 필요, 리테일 판매 불가",
+   "추가 문의 시 회신 예정"
+  ],
+  "intent": "제품 라인업과 EU 등록 현황 공유",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "CPNP 등록 품목 기준으로 Dangaard 제안 품목을 확정"
+ },
+ {
+  "id": "6aa0d3958f83165dc75ce9e0",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "RE: Vegan Super 계약 - 초기 피드백",
+  "translationBody": "감사합니다.\n\n샘플 잘 받았습니다. teoandthe 에 대한 추가 정보를 기다리겠습니다.\n\n좋은 주말 보내세요.\nNeil",
+  "topic": "샘플 수령 확인 · teoandthe 자료 요청",
+  "summary": "Beauty Lyrics의 Neil이 샘플을 잘 받았다고 확인하며 teoandthe 브랜드에 대한 추가 정보를 기다린다고 했습니다.",
+  "keyPoints": ["샘플 수령 확인", "teoandthe 추가 자료 요청"],
+  "intent": "teoandthe 브랜드 자료 확보",
+  "needsReply": true,
+  "replyReason": "teoandthe 정보를 기다린다고 명시했습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "teoandthe 브랜드 소개서와 가격표를 송부"
+ },
+ {
+  "id": "6aa0d3a08f83165dc75cea35",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 튀르키예 Distribution Group 을 위한 Yogi Corporation LOA",
+  "translationBody": "David 님께\n\n감사합니다. 파일을 확인하고 다시 말씀드리겠습니다.\n\nOkan Can",
+  "topic": "브랜드 목록 파일 확인 예정",
+  "summary": "터키 Distribution Group의 Okan이 공유받은 브랜드 목록 파일을 확인한 뒤 다시 연락하겠다고 한 짧은 회신입니다.",
+  "keyPoints": ["브랜드 목록 파일 확인 예정", "공은 상대에게"],
+  "intent": "검토 착수 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "회신이 늦어지면 팔로우업"
+ },
+ {
+  "id": "6aa0d3a08f83165dc75cea36",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 튀르키예 Distribution Group 을 위한 Yogi Corporation LOA",
+  "translationBody": "David 님께\n\n목록 감사합니다. 어떤 제품이 튀르키예 시장에서 판매 가능한지도 확인해 보셨나요?\n\nOkan Can",
+  "topic": "튀르키예 시장 판매 가능 제품 확인 요청",
+  "summary": "터키 Distribution Group이 공유받은 브랜드 목록 중 어떤 제품이 실제로 튀르키예 시장에서 판매 가능한지 확인했는지 물었습니다. 규제·등록 가능 여부를 묻는 실무 질문입니다.",
+  "keyPoints": [
+   "브랜드 목록 수령 확인",
+   "⚠️ 튀르키예 시장 판매 가능 품목 확인 요청 (규제·등록 기준)"
+  ],
+  "intent": "튀르키예 판매 가능 제품 범위 파악",
+  "needsReply": true,
+  "replyReason": "판매 가능 품목을 확인했는지 묻는 직접 질문이며, 답이 없으면 제안이 진전되지 않습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "high", "suggestedAction": "브랜드별로 튀르키예 등록·판매 가능 여부를 확인해 목록으로 회신"
+ }
+]

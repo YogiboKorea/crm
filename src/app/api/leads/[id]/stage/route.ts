@@ -1,15 +1,14 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
+import { STAGES } from '@/lib/stages';
 
 export const runtime = 'nodejs';
 
-// Lead 모델의 stage enum 과 반드시 일치시킬 것 —
-// 여기 빠진 stage 로는 이동 자체가 400 으로 막힌다 (원클릭 이동 버튼이 조용히 실패).
-const VALID_STAGES = [
-  'imported', 'ai-searched', 'verifying', 'verified', 'contacted',
-  'replied', 'negotiating', 'partner', 'archived', 'failed',
-] as const;
+// 목록은 lib/stages.ts 한 곳에서만 관리한다.
+// 예전에는 여기에 복사본이 있었고, 새 단계를 모델에만 추가했더니 이 API 가
+// 400 으로 이동을 막아 "발송 리스트로 옮기기"가 조용히 실패했다.
+const VALID_STAGES = STAGES;
 
 /**
  * POST /api/leads/[id]/stage

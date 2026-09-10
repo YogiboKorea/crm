@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { runIngest } from '@/lib/mail/ingest';
+import { createDueFollowUps } from '@/lib/mail/follow-up';
 import { buildBriefing, renderBriefingHtml } from '@/lib/mail/briefing';
 import { getMailSettings } from '@/lib/mail-settings';
 import { MailAccount } from '@/models/MailAccount';
@@ -17,6 +18,7 @@ export const maxDuration = 300;
  *   2. 분류    광고·자동발송 규칙 필터                    무료
  *   3. 거래처  폴더 → 발신자 이력 → 제목                  무료
  *   4. 매칭    답장을 리드에 연결 · stage 자동 이동        무료
+ *   4.5 재발송 답 없는 곳에 다음 메일 예약 (최대 3회)      무료
  *   5. 브리핑  회신 필요·기한을 대표 메일로               무료
  *
  * AI 분석(유료)은 여기서 돌리지 않는다 — 크론이 매일 자동 과금하면
@@ -52,6 +54,18 @@ export async function GET(req: Request) {
     report.steps.ingest = { error: String(e?.message || e) };
   }
 
+  // ── 4.5 자동 재발송 예약 만들기 ──
+  //
+  // 반드시 수집(4)이 끝난 뒤에 돌린다. 오늘 새로 온 답장이 먼저 반영돼야
+  // 이미 답한 곳에 팔로우업이 잡히지 않는다. 순서가 바뀌면 대화가 시작된
+  // 상대에게 광고 메일이 한 번 더 나간다.
+  try {
+    const f = await createDueFollowUps();
+    report.steps.followUp = { created: f.created, checked: f.checked };
+  } catch (e: any) {
+    report.steps.followUp = { error: String(e?.message || e) };
+  }
+
   // ── 5. 브리핑 ──
   try {
     const settings = await getMailSettings();
@@ -73,6 +87,8 @@ export async function GET(req: Request) {
         report.steps.briefing = { error: '발송 계정 없음' };
       } else {
         const dateLabel = new Date().toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' });
+        // 브리핑은 우리 주소로 가는 내부 메일이라 아웃바운드 잠금 대상이 아니다
+        // (막는 것은 '먼저 보내는 콜드메일' 뿐 — src/lib/outbound-lock.ts 참고)
         const result = await sendMail({
           to,
           subject: `[Yogico] 오늘의 브리핑 ${dateLabel} · 회신필요 ${briefing.totals.needsReply}건`

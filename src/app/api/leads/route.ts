@@ -7,6 +7,14 @@ import { Lead } from '@/models/Lead';
 // 리스트 뷰에서 실제로 화면에 렌더되는 필드만 · aiReasoning (긴 텍스트) 등 제외
 // 상세는 개별 GET /api/leads/[id] 에서 전체 반환.
 const LIST_PROJECTION = {
+  // 발송 우선순위 — 목록에서 바로 배지로 보여준다
+  recoScore: 1, recoReasons: 1, Category: 1,
+  // 근거·업종의 한국어본 (화면은 이쪽을 우선 표시)
+  EvidenceKo: 1, TypeKo: 1,
+  // AI 판정 사유 — 이미 한국어로 저장돼 있는데 화면에 안 나오고 있었다.
+  // 검증 실패 화면에서 "왜 실패했나"를 설명하는 유일한 근거다.
+  // (aiVerdict 는 아래 검증 배지용으로 이미 들어 있다)
+  'verification.aiReasoning': 1,
   // 필수 식별/표시
   leadId: 1, Company: 1, Country: 1,
   BuyerContact: 1, Title: 1, Email: 1, Phone: 1,
@@ -40,12 +48,42 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '50000');
     const full = searchParams.get('full') === '1';
+    // 정렬 — 'reco' 면 발송 우선순위(recoScore) 높은 순.
+    // 점수는 미리 계산해 저장해 둔다(scripts/rebuild-reco.mjs). 매번 계산하면
+    // 정렬·페이지네이션을 DB 에 맡길 수 없어 전 건을 메모리로 올려야 한다.
+    // 타입은 Record<string, SortOrder> 로 고정한다. 삼항으로 두 객체를 만들면
+    // 유니온 타입이 되어 mongoose 의 sort() 시그니처와 맞지 않는다.
+    // reco    — 발송 우선순위 높은 순
+    // country — 같은 나라끼리 묶어서 (나라 안에서는 다시 우선순위 순)
+    // 그 외    — 최근 등록순
+    const sortKey = searchParams.get('sort');
+    const sort: Record<string, 1 | -1> =
+      sortKey === 'reco'    ? { recoScore: -1, Country: 1, Company: 1 } :
+      sortKey === 'country' ? { Country: 1, recoScore: -1, Company: 1 } :
+                              { createdAt: -1 };
     const stage = searchParams.get('stage');
     const sub = searchParams.get('sub');
     const tier = searchParams.get('tier');   // 'A' | 'B' | 'C' (verified 전용)
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
 
-    const filter: any = {};
+    // 검색어 — 단계 안에서 좁히는 용도.
+    // 이게 없던 동안에는 검색하면 화면이 통째로 '전체 리드'로 튕겨서,
+    // 검증 완료 409건을 보다가 갑자기 보관함까지 섞인 6,073건을 보게 됐다.
+    const q = (searchParams.get('q') || '').trim();
+
+    // 지운 건은 어느 화면에도 나오면 안 된다.
+    // 이게 없던 동안에는 중복 정리로 deleted=true 를 붙인 2,771건이 보관함
+    // 목록에 그대로 떠서, 정리를 하고도 숫자가 줄지 않았다.
+    // (화면 쪽에서 l.deleted 로 한 번 더 거르는 곳이 있지만, 서버가 내려보내면
+    //  total 과 페이지 수가 이미 틀어져 "50건씩 122페이지" 같은 값이 나온다.)
+    const filter: any = { deleted: { $ne: true } };
+    if (q) {
+      const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [
+        { Company: rx }, { Country: rx }, { Email: rx },
+        { BuyerContact: rx }, { BrandsChannels: rx }, { WebsiteContact: rx },
+      ];
+    }
     if (stage === '__failed') {
       filter.stage = 'archived';
       filter['verification.aiVerdict'] = 'not-buyer';
@@ -54,6 +92,7 @@ export async function GET(req: Request) {
     }
     if (stage === 'verifying') {
       if (sub === 'unverified') {
+        if (filter.$or) { filter.$and = [...(filter.$and || []), { $or: filter.$or }]; delete filter.$or; }
         filter.$or = [
           { 'verification.aiVerifiedAt': { $exists: false } },
           { 'verification.aiVerifiedAt': '' },
@@ -65,7 +104,10 @@ export async function GET(req: Request) {
       if (sub === 'approved') filter.readyForOutreach = true;
       else if (sub === 'pending') filter.readyForOutreach = { $ne: true };
       else if (sub === 'no-email') {
-        filter.$or = [{ Email: '' }, { Email: /^Not found/i }, { Email: { $exists: false } }];
+        // 검색어의 $or 와 충돌하지 않게 $and 로 합친다 — 그냥 덮으면 검색이 무시된다
+        const noEmail = [{ Email: '' }, { Email: /^Not found/i }, { Email: { $exists: false } }];
+        if (filter.$or) { filter.$and = [...(filter.$and || []), { $or: filter.$or }, { $or: noEmail }]; delete filter.$or; }
+        else filter.$or = noEmail;
       }
     }
 
@@ -78,7 +120,7 @@ export async function GET(req: Request) {
       const matchIds = allMatching.filter((l) => getLeadTier(l as any) === tier).map((l) => l._id);
       const tierFilter = { ...filter, _id: { $in: matchIds } };
       const skip = (page - 1) * limit;
-      const query = Lead.find(tierFilter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+      const query = Lead.find(tierFilter).sort(sort).skip(skip).limit(limit).lean();
       if (!full) query.select(LIST_PROJECTION);
       const leads = await query.exec();
       const total = matchIds.length;
@@ -94,7 +136,7 @@ export async function GET(req: Request) {
 
     const skip = (page - 1) * limit;
     const query = Lead.find(filter)
-      .sort({ createdAt: -1 })
+      .sort(sort)
       .skip(stage ? skip : 0)
       .limit(limit)
       .lean();
@@ -102,7 +144,9 @@ export async function GET(req: Request) {
 
     const [leads, total] = await Promise.all([
       query.exec(),
-      stage ? Lead.countDocuments(filter) : Lead.estimatedDocumentCount(),
+      // estimatedDocumentCount 는 필터를 못 받아 지운 건까지 센다.
+      // 그래서 전체 화면 상단이 6,073 으로 떴다 (실제로 볼 수 있는 건 3,302).
+      Lead.countDocuments(filter),
     ]);
 
     return NextResponse.json({

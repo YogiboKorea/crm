@@ -220,7 +220,7 @@ let state = {
   folderView: { openBatch: null },
   // 검증완료 페이지 서브 필터 (승인 상태로 나눔)
   //   'all'        - 전체 verified
-  //   'approved'   - readyForOutreach=true (발송 대기열)
+  //   'approved'   - readyForOutreach=true (검증 완료 목록)
   //   'pending'    - readyForOutreach=false (승인 대기)
   //   'no-email'   - Email 필드 비었거나 "Not found" — 승인 불가
   verifiedSubFilter: 'all',
@@ -236,6 +236,7 @@ let state = {
     variables: [],
     variableGroups: [],
     currentTemplateId: null,
+    mode: 'list',            // 'list' = 게시판 · 'edit' = 편집기
     previewAccountId: null,
     wizardStep: 1,           // 템플릿 생성 마법사 스텝 (1..4)
 
@@ -452,8 +453,13 @@ async function loadLeads(opts) {
 var _serverPageCache = null;   // { stage, page, sub, leads, total, totalPages, ts }
 const SERVER_PAGE_CACHE_TTL_MS = 30 * 1000;   // 30초
 
+// 검증 완료 정렬 — 'reco'(추천순) 기본, 'recent'(최근 등록순)
+var _leadSort = 'reco';
+
 async function loadServerPage(stage, page, sub, force, tier) {
-  const cacheKey = `${stage}::${sub || ''}::${tier || ''}::${page}`;
+  // 검색어는 지금 보고 있는 단계 안에서만 좁힌다 (화면을 옮기지 않는다)
+  const q = (state.query || '').trim();
+  const cacheKey = `${stage}::${sub || ''}::${tier || ''}::${page}::${_leadSort}::${q}`;
   const now = Date.now();
   if (!force && _serverPageCache && _serverPageCache.cacheKey === cacheKey && (now - _serverPageCache.ts) < SERVER_PAGE_CACHE_TTL_MS) {
     return _serverPageCache;
@@ -464,6 +470,8 @@ async function loadServerPage(stage, page, sub, force, tier) {
   if (tier) params.set('tier', tier);
   params.set('page', String(page));
   params.set('limit', '50');
+  if (q) params.set('q', q);
+  if (_leadSort === 'reco' || _leadSort === 'country') params.set('sort', _leadSort);
   const res = await fetch(`/api/leads?${params.toString()}`);
   const data = await res.json();
   if (!data.success) throw new Error(data.error || 'load page failed');
@@ -509,7 +517,9 @@ function updateNavBadges(counts) {
     const key = el.dataset.navBadge;
     // 메일함 배지는 stage 가 아니라 별도 API 에서 채운다 (loadMailCounts)
     if (key === 'inboxUnread' || key === 'inboxNeedsReply' || key === 'inboxDeadlines' || key === 'inboxTrash') return;
-    const n = s[key] || 0;
+    // 발송 관리 배지는 그 화면이 실제로 담고 있는 수 — 보낼 메일(queued) + 발송 완료(contacted).
+    // contacted 만 세면 옮겨둔 곳이 있는데도 0 으로 떠서 "안 옮겨졌나" 싶어진다.
+    const n = key === 'contacted' ? ((s.queued || 0) + (s.contacted || 0)) : (s[key] || 0);
     el.textContent = n.toLocaleString();
     el.dataset.count = String(n);
   });
@@ -524,8 +534,10 @@ async function loadMailCounts(force) {
     return _mailCountsCache;
   }
   try {
-    // 메일함에서 계정을 골랐으면 배지도 그 계정 기준으로 센다
-    const acc = (typeof _inboxState !== 'undefined' && _inboxState.accountId) || 'all';
+    // 배지도 지금 보고 있는 메일함(=대표 계정) 기준으로 센다.
+    // 계정 목록이 먼저 있어야 대표를 알 수 있다 — 캐시가 있으면 바로 돌아온다.
+    await loadInboxAccounts();
+    const acc = currentMailboxAccountId();
     const data = await safeJsonFetch(`/api/mail/counts?accountId=${encodeURIComponent(acc)}`);
     if (data && data.success) {
       _mailCountsCache = { counts: data.counts, ts: now };
@@ -653,6 +665,15 @@ function bindEvents() {
       // 모든 뷰 진입 시 필터 초기화 — 이전 뷰에서 남은 country/status/priority 가
       // 다음 뷰의 데이터까지 좁히는 문제 방지
       resetAllFilters();
+      // 메일 양식은 사이드바로 들어오면 늘 목록(게시판)부터.
+      // mode 가 남아 있으면 전에 편집하던 양식이 그대로 열려서, 목록을 보러
+      // 온 사람에게 남의 편집 화면처럼 보인다.
+      // (편집기 안에서의 저장·이동은 renderB2BEmailManager 를 직접 부르므로
+      //  여기를 거치지 않는다 — 그쪽 흐름은 그대로 유지된다.)
+      if (targetView === 'tool-b2b-email') {
+        state.email.mode = 'list';
+        state.email.dirty = false;
+      }
       if (targetStatus) {
         state.status = targetStatus;
         const statusEl = els.status;
@@ -704,7 +725,7 @@ function bindEvents() {
     }
     if (event.target.closest("#verifyCloseBtn") || event.target.closest("#verifyCancelBtn")) {
       const modal = document.getElementById("verifyModal");
-      if (modal) modal.style.display = "none";
+      if (modal) modal.style.display = "none"; syncBodyScrollLock();
       return;
     }
     if (event.target.closest("#verifyStartBtn")) {
@@ -736,34 +757,35 @@ function bindEvents() {
     // 4. Modal Close actions
     if (event.target.closest("#modalCloseBtn") || event.target.closest("#modalCancelBtn")) {
       const modal = document.getElementById("addLeadModal");
-      if (modal) modal.style.display = "none";
+      if (modal) modal.style.display = "none"; syncBodyScrollLock();
       return;
     }
     if (event.target.closest("#editModalCloseBtn") || event.target.closest("#editModalCloseBtn2")) {
       const modal = document.getElementById("editLeadModal");
-      if (modal) modal.style.display = "none";
+      if (modal) modal.style.display = "none"; syncBodyScrollLock();
       return;
     }
     if (event.target.closest("#importModalCloseBtn") || event.target.closest("#importCancelBtn")) {
       const modal = document.getElementById("importCsvModal");
-      if (modal) modal.style.display = "none";
+      if (modal) modal.style.display = "none"; syncBodyScrollLock();
       resetImportModal();
       return;
     }
     if (event.target.closest("#settingsCloseBtn")) {
       const modal = document.getElementById("settingsModal");
-      if (modal) modal.style.display = "none";
+      if (modal) modal.style.display = "none"; syncBodyScrollLock();
       return;
     }
     if (event.target.closest("#importHistoryCloseBtn") || event.target.closest("#importHistoryCloseBtn2")) {
       const modal = document.getElementById("importHistoryModal");
-      if (modal) modal.style.display = "none";
+      if (modal) modal.style.display = "none"; syncBodyScrollLock();
       return;
     }
 
     // 5. Click outside modal content (backdrop clicks)
     if (event.target.classList.contains("modal-backdrop")) {
       event.target.style.display = "none";
+      syncBodyScrollLock();
       if (event.target.id === "importCsvModal") resetImportModal();
       return;
     }
@@ -818,7 +840,7 @@ function bindEvents() {
       if (state.selectedId) {
         deleteLead(state.selectedId);
         const modal = document.getElementById("editLeadModal");
-        if (modal) modal.style.display = "none";
+        if (modal) modal.style.display = "none"; syncBodyScrollLock();
       }
       return;
     }
@@ -1086,9 +1108,14 @@ function bindEvents() {
   document.addEventListener("input", (event) => {
     if (event.target.id === "searchInput") {
       state.query = event.target.value.trim();
-      state.view = "leads";
+      // 단계 화면(검증 완료 등)에서 검색하면 그 화면 안에서 좁힌다.
+      // 예전에는 무조건 'leads'(전체 리드)로 바꿔버려서, 검증 완료 409건을
+      // 보다가 검색 한 번에 보관함까지 섞인 6,073건 화면으로 튕겼다.
+      const onStagePage = typeof state.view === 'string' && state.view.startsWith('pipeline-');
+      if (!onStagePage) state.view = "leads";
+      _serverPageCache = null;   // 검색어가 캐시 키에 들어가므로 새로 받는다
       resetPagination();
-      if (state.query) {
+      if (state.query && !onStagePage) {
         state.country = "All";
         state.status = "All";
         state.priority = "All";
@@ -1140,7 +1167,7 @@ function bindEvents() {
       render();
       
       const modal = document.getElementById("addLeadModal");
-      if (modal) modal.style.display = "none";
+      if (modal) modal.style.display = "none"; syncBodyScrollLock();
 
       try {
         const res = await fetch("/api/leads", {
@@ -1317,15 +1344,27 @@ async function _renderInner() {
   // ── 검증대기/검증완료 탭에서 자동 리로드 (AI 배치 진행 실시간 반영) ─
   managePipelineAutoRefresh(state.view);
 
+  // ── 발송 관리 ─────────────────────────────────────────────
+  // 리드 표가 아니라 "메일이 어디까지 갔는가"를 보는 화면이라 stageMap 을
+  // 타지 않는다. 이 검사가 stageMap 뒤에 있었을 때는 stageMap 이 먼저
+  // pipeline-contacted 를 잡아 일반 표를 그리고 return 해버려서, 여기까지
+  // 아예 오지 못했다 (화면이 비어 보이던 원인).
+  if (state.view === 'pipeline-contacted') {
+    els.viewTitle.textContent = '📨 발송 관리';
+    els.viewSubtitle.textContent = '보낼 메일 · 예약된 메일 · 나간 메일을 단계별로 봅니다.';
+    renderOutboxPage();
+    return;
+  }
+
   // ── 새 파이프라인 뷰 (stage 기반) ─────────────────────────────
   const stageMap = {
     'pipeline-import':      { stage: 'imported',    title: '📥 가져오기 (Import)',  sub: '엑셀에서 새로 업로드된 회사들. 검증 진행 대기.' },
-    'pipeline-ai-searched': { stage: 'ai-searched', title: '🤖 AI 서칭 결과',       sub: 'Claude 가 웹에서 자동 발굴한 K-뷰티 B2B 후보. 검토 후 검증대기(추가 검증) / 발송대기(즉시 활용) / 제외로 이동.' },
+    'pipeline-ai-searched': { stage: 'ai-searched', title: '🤖 AI 서칭 결과',       sub: 'Claude 가 웹에서 자동 발굴한 K-뷰티 B2B 후보. 검토 후 검증대기(추가 검증) / 검증 완료(즉시 활용) / 제외로 이동.' },
     'pipeline-verifying':   { stage: 'verifying',   title: '🔍 검증 대기',          sub: '검증 진행 중이거나 필요한 회사들.' },
-    'pipeline-verified':    { stage: 'verified',    title: '✅ 발송 대기',          sub: 'AI 검증 통과. 승인 후 메일 발송할 대상. 메일 없으면 크롤링.' },
+    'pipeline-verified':    { stage: 'verified',    title: '✅ 검증 완료',          sub: '검증을 통과해 메일을 보낼 수 있는 곳입니다. 아닌 곳은 빼주세요.' },
     'pipeline-failed':      { stage: '__failed',    title: '🚫 검증 실패',          sub: 'AI가 K-beauty 무관으로 판정. 잘못 판정된 것은 수동으로 검증완료로 되돌리기 가능.' },
-    'pipeline-contacted':   { stage: 'contacted',   title: '📨 메일 발송함',        sub: '이미 메일 보낸 리드 · 단체 즉시 발송 / 단체 예약 발송 여기서.' },
-    'pipeline-replied':     { stage: 'replied',     title: '💬 답장 받음',            sub: '상대방이 답장 보내옴. 다음 팔로우업 필요.' },
+    // pipeline-contacted 는 여기 두지 않는다 — 위에서 renderOutboxPage 로 먼저 빠진다.
+    'pipeline-replied':     { stage: 'replied',     title: '💬 답장 받음',            sub: '답장이 온 곳입니다. 답장하거나, 아닌 곳은 빼주세요.' },
     'pipeline-negotiating': { stage: 'negotiating', title: '🤝 대화 진행 중',        sub: '조건/일정/가격 등 실제 협상 오가는 상태.' },
     'pipeline-partner':     { stage: 'partner',     title: '⭐ 파트너십 확정',        sub: '계약/합의 완료된 실 파트너. 자동 발송 대상에서 자동 제외.' },
     'pipeline-archived':    { stage: 'archived',    title: '📦 보관함',             sub: '수동 폐기 또는 정리한 리드. 필요 시 복구 가능.' },
@@ -1461,8 +1500,13 @@ async function _renderInner() {
       // 'all' 은 stage=verifying 필터 그대로
       // 'failed' 는 사이드바 별도 페이지로 이동됨
     }
-    // 검증완료 stage 는 발송 승인 상태 하위 필터 적용
+    // 검증완료 stage 하위 필터.
+    // approved/pending 칩은 없앴지만(readyForOutreach 가 늘 전체와 같아 무의미)
+    // 예전 세션에 그 값이 남아 있으면 목록이 통째로 비어 보인다 — all 로 되돌린다.
     if (s.stage === 'verified') {
+      if (state.verifiedSubFilter === 'approved' || state.verifiedSubFilter === 'pending') {
+        state.verifiedSubFilter = 'all';
+      }
       const sub = state.verifiedSubFilter || 'all';
       const hasRealEmail = (l) => l.Email && l.Email.trim() && !/^Not found/i.test(l.Email);
       if (sub === 'approved') {
@@ -1555,8 +1599,8 @@ async function _renderInner() {
     return;
   }
   if (state.view === "tool-legacy") {
-    els.viewTitle.textContent = "📚 기존 데이터";
-    els.viewSubtitle.textContent = "예전에 올린 엑셀 데이터. 보낼 만한 곳을 골라 발송 대기로 되돌릴 수 있습니다.";
+    els.viewTitle.textContent = "📚 올린 데이터";
+    els.viewSubtitle.textContent = "예전에 올린 엑셀 데이터. 보낼 만한 곳을 골라 검증 완료로 되돌릴 수 있습니다.";
     renderLegacyPage();
     return;
   }
@@ -1782,74 +1826,8 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
         </div>
       </div>
     `;
-  } else if (stageInfo.stage === 'contacted') {
-    // 메일 발송함 = 이미 발송된 리드 · 재발송/팔로우업 (즉시 또는 예약)
-    const contactedLeads = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted');
-    const withEmail = contactedLeads.filter(l => {
-      const e = (l.Email || '').trim();
-      return e && !/^Not found/i.test(e) && /@/.test(e);
-    });
-    const alreadySent = contactedLeads.filter(l => (l.emailHistory || []).length > 0);
-
-    heroCard = `
-      <div class="verify-hero" style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
-        <!-- 요약 배지 -->
-        <div style="padding:12px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:12px;color:#1e3a8a;font-size:13px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-          <div>
-            📨 발송함 리드 <b>${contactedLeads.length.toLocaleString()}건</b> · 이메일 유효 <b>${withEmail.length}건</b>
-            ${_mailerEnvCache?.dryRun ? ' · 🧪 <b>DRY_RUN</b>' : ''}
-          </div>
-          <div style="font-size:11px;color:#4c1d95">
-            📊 리드당 최대 3회 · 최소 간격 48h (과도 발송 자동 차단)
-          </div>
-        </div>
-
-        <!-- 2카드: 즉시 / 예약 -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border:1px solid #93c5fd;display:flex;flex-direction:column;gap:10px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <div style="font-size:32px">📤</div>
-              <div style="flex:1">
-                <div style="font-size:14px;font-weight:800;color:#1e40af">단체 즉시 발송</div>
-                <div style="font-size:11px;color:#1e3a8a">지금 바로 · 메일 양식대로 · 회사명 자동 치환</div>
-              </div>
-            </div>
-            <button id="openBulkComposeBtn" type="button" style="
-              font-size:14px;font-weight:700;padding:11px 16px;white-space:nowrap;
-              background:#2563eb;color:white;border:none;border-radius:8px;cursor:pointer;
-              box-shadow:0 2px 6px rgba(37,99,235,0.3);
-              ${withEmail.length === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-            " ${withEmail.length === 0 ? 'disabled' : ''}>
-              📤 지금 발송 (${withEmail.length})
-            </button>
-          </div>
-
-          <div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1px solid #fcd34d;display:flex;flex-direction:column;gap:10px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <div style="font-size:32px">📅</div>
-              <div style="flex:1">
-                <div style="font-size:14px;font-weight:800;color:#92400e">단체 예약 발송</div>
-                <div style="font-size:11px;color:#78350f">시각 정해서 자동 · Vercel Cron 5분 주기</div>
-              </div>
-            </div>
-            <button id="openBulkScheduleBtn" type="button" style="
-              font-size:14px;font-weight:700;padding:11px 16px;white-space:nowrap;
-              background:#d97706;color:white;border:none;border-radius:8px;cursor:pointer;
-              box-shadow:0 2px 6px rgba(217,119,6,0.3);
-              ${withEmail.length === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-            " ${withEmail.length === 0 ? 'disabled' : ''}>
-              📅 예약 발송 (${withEmail.length})
-            </button>
-          </div>
-        </div>
-
-        <div style="font-size:11px;color:var(--text-tertiary);text-align:center">
-          💡 답장 온 리드는 자동 제외 예정 (B2B 메일 관리에서 수집한 답장 매칭 · 개발 중)
-        </div>
-      </div>
-    `;
   } else if (stageInfo.stage === 'verified') {
-    // 발송 대기 = "승인하면 바로 나가는" 자리. 카드 하나로 끝낸다.
+    // 검증 완료 = "승인하면 바로 나가는" 자리. 카드 하나로 끝낸다.
     //
     // 예전에는 여기에 (1) 메일 크롤링 카드 (2) A/B 등급 원클릭 발송 카드가 같이 떴다.
     // 등급을 나눈 건 "많으니 좋은 것부터 보내자"는 뜻이었는데, 어차피 전부 눈으로
@@ -1859,8 +1837,17 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     const emailOk = (l) =>
       !l.deleted && (l.stage || 'imported') === 'verified' &&
       l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email);
-    const emailReadyCount = baseLeads.filter(emailOk).length;
-    const readySendCount = baseLeads.filter((l) => emailOk(l) && l.readyForOutreach).length;
+    // baseLeads 에 기대면 안 된다. 사이드바에서 검증 완료로 바로 들어오면
+    // 그 배열이 비어 있어서 "발송 가능 0건" 으로 뜨고 버튼까지 죽는다
+    // (발송 관리 화면이 통째로 비어 보이던 것과 같은 원인).
+    // 서버 집계를 우선 쓰고, 없을 때만 로컬 배열로 떨어진다.
+    const localReady = baseLeads.filter(emailOk).length;
+    const serverVerified = _stageCountsCache?.stages?.verified;
+    const emailReadyCount = (typeof serverVerified === 'number' && serverVerified > localReady)
+      ? serverVerified : localReady;
+    // "승인 완료 / 검토 남음" 은 readyForOutreach 로 세던 값이라 늘 전체와 같았다.
+    // 지금 의미 있는 수는 "발송 리스트로 옮긴 곳"뿐이라 그것만 쓴다.
+    const queuedCount = (_stageCountsCache?.stages?.queued) || 0;
 
     heroCard = `
       <div class="verify-hero" style="margin-top:12px">
@@ -1876,22 +1863,22 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
               ${emailReadyCount.toLocaleString()}<span style="font-size:14px;font-weight:600;color:#3b82f6;margin-left:4px">건</span>
             </div>
             <p style="font-size:12px;color:#1e3a8a;margin:6px 0 0;line-height:1.5">
-              승인 완료 <b>${readySendCount.toLocaleString()}건</b> · 검토 남음 <b>${(emailReadyCount - readySendCount).toLocaleString()}건</b>
+              이 중 <b>${queuedCount.toLocaleString()}곳</b>을 발송 리스트로 옮겼습니다
             </p>
           </div>
           <button id="startReviewBtn" type="button" style="
             font-size:14px;font-weight:700;padding:12px 18px;white-space:nowrap;
             background:#fff;color:#1d4ed8;border:1px solid #2563eb;border-radius:10px;cursor:pointer;
-            ${emailReadyCount - readySendCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-          " ${emailReadyCount - readySendCount === 0 ? 'disabled' : ''}>
+            ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+          " ${emailReadyCount === 0 ? 'disabled' : ''}>
             ⚡ 빠른 검토
           </button>
           <button id="openFirstSendBtn" type="button" style="
             font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
             background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
             box-shadow:0 2px 8px rgba(37,99,235,0.3);
-            ${readySendCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-          " ${readySendCount === 0 ? 'disabled' : ''}>
+            ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
+          " ${emailReadyCount === 0 ? 'disabled' : ''}>
             ✉ 메일 보내기
           </button>
         </div>
@@ -1931,9 +1918,15 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     state.view = 'tool-review';
     render();
   });
-  // 발송 대기 · 첫 발송 진입점 (verified stage · 승인된 리드 or 이메일 있는 리드 대상)
-  document.getElementById('openFirstSendBtn')?.addEventListener('click', () => openComposeModal('bulk-verified'));
-  // 원클릭 등급별 발송 (A/B) — 발송함으로 자동 이동 · 발송 대기에서 사라짐
+  // 검증 완료 · 첫 발송 진입점 (verified stage · 승인된 리드 or 이메일 있는 리드 대상)
+  // 발송은 한 곳(발송 화면)에서만 시작한다. 여기서 모달을 바로 띄우면
+  // 같은 일을 두 자리에서 하게 되고, "보낼 메일" 목록을 건너뛰게 된다.
+  // 화면 이동은 사이드바 항목을 눌러서 한다 — 진입 처리가 그 핸들러에 몰려 있다.
+  document.getElementById('openFirstSendBtn')?.addEventListener('click', () => {
+    _outboxTab = 'ready';
+    document.querySelector('.nav-item[data-view="pipeline-contacted"]')?.click();
+  });
+  // 원클릭 등급별 발송 (A/B) — 발송함으로 자동 이동 · 검증 완료에서 사라짐
   document.getElementById('sendAllTierABtn')?.addEventListener('click', () => openComposeModal('tier-A'));
   document.getElementById('sendAllTierBBtn')?.addEventListener('click', () => openComposeModal('tier-B'));
   document.getElementById('deleteAllFailedHeroBtn')?.addEventListener('click', () => deleteAllFailedLeads());
@@ -1944,6 +1937,7 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     openComposeModal('bulk-contacted');
   });
   document.getElementById('openTemplateEditorBtn')?.addEventListener('click', () => {
+    state.email.mode = 'list';   // 늘 목록부터 — 전에 편집하던 양식이 열리면 안 된다
     state.view = 'tool-b2b-email';
     render();
   });
@@ -2188,22 +2182,18 @@ function renderVerifiedSubFilterChips(allInStage) {
   container.innerHTML = `
     <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:space-between">
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-        <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">📤 발송 승인:</span>
-        ${chip('all', '전체', cAll, '#334155')}
-        ${chip('approved', '✅ 승인됨 (대기열)', cApproved, '#15803d')}
-        ${chip('pending', '⏳ 승인 대기', cPending, '#f59e0b')}
+        <!-- readyForOutreach 기준 승인 칩·버튼은 뺐다. 그 플래그는 검증 완료
+             전 건에 켜져 있어 "승인됨" 이 늘 전체와 같은 수로 떴고, 실제로 보낼
+             목록(발송 리스트)과는 무관했다. 승인은 이제 발송 리스트로 옮기는
+             것 하나뿐이다. (bulkApproveVisible / runDryRunSimulation 은 그대로
+             살아 있어 되살리기 쉽다.) -->
+        ${chip('all', '아직 안 옮김', cAll, '#334155')}
         ${chip('no-email', '📭 이메일 없음', cNoEmail, '#94a3b8')}
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-        <button id="bulkApproveAllBtn" class="button primary" type="button" style="font-size:12px;padding:6px 12px" title="필터에 노출된 리드 전부를 승인 처리">
-          ✅ 화면 전체 승인 (${cur === 'pending' ? cPending : (cur === 'approved' ? cApproved : cAll)})
-        </button>
-        <button id="bulkUnapproveAllBtn" class="button ghost" type="button" style="font-size:12px;padding:6px 12px" title="필터에 노출된 리드 전부의 승인 취소">
-          ⏸ 전체 승인 취소
-        </button>
-        <button id="dryrunSendBtn" class="button secondary" type="button" style="font-size:12px;padding:6px 12px" title="실제 발송 없이 승인된 리드 대상 발송 시뮬레이션">
-          🧪 dry-run 시뮬레이션
-        </button>
+        <span style="font-size:11px;color:var(--text-tertiary)">
+          보낼 곳을 체크해서 <b>[발송 리스트로 옮기기]</b>
+        </span>
       </div>
     </div>
   `;
@@ -2215,9 +2205,6 @@ function renderVerifiedSubFilterChips(allInStage) {
       render();
     });
   });
-  document.getElementById('bulkApproveAllBtn')?.addEventListener('click', () => bulkApproveVisible(true));
-  document.getElementById('bulkUnapproveAllBtn')?.addEventListener('click', () => bulkApproveVisible(false));
-  document.getElementById('dryrunSendBtn')?.addEventListener('click', () => runDryRunSimulation());
 }
 function clearVerifiedSubFilterChips() {
   const c = document.getElementById('verifiedSubFilterChips');
@@ -2399,13 +2386,29 @@ function renderVerifiedSubFilterChipsServer(verifiedSub, _failedCount) {
       ${label} <span style="opacity:0.7;font-weight:500">${(count || 0).toLocaleString()}</span>
     </button>`;
   };
+  // ── 승인 상태 줄 ──
+  //
+  // 예전에는 readyForOutreach 기준으로 "승인됨 409 · 승인 대기 0" 이 떴다.
+  // 그 플래그는 검증 완료 전 건에 켜져 있어 항상 전체와 같은 수가 나왔고,
+  // 정작 실제로 보낼 목록(발송 리스트, queued)과는 아무 상관이 없었다.
+  // 지금 승인은 "발송 리스트로 옮겼는가" 하나뿐이라 그것만 보여준다.
+  const queuedN = verifiedSub.queued || 0;
   container.innerHTML = `
-    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-      <span style="font-size:11px;color:var(--text-tertiary);margin-right:4px;font-weight:600">📤 발송 승인:</span>
-      ${chip('all', '전체', verifiedSub.all, '#334155')}
-      ${chip('approved', '✅ 승인됨', verifiedSub.approved, '#15803d')}
-      ${chip('pending', '⏳ 승인 대기', verifiedSub.pending, '#f59e0b')}
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      ${chip('all', '아직 안 옮김', verifiedSub.all, '#334155')}
       ${chip('no-email', '📭 이메일 없음', verifiedSub.noEmail, '#94a3b8')}
+      <button type="button" id="goSendListBtn"
+        title="발송 리스트로 옮긴 곳을 봅니다 (발송 관리 → 보낼 메일)"
+        style="padding:6px 12px;font-size:12px;font-weight:700;border-radius:99px;cursor:pointer;
+               display:inline-flex;align-items:center;gap:6px;
+               background:${queuedN ? '#e0f2fe' : 'var(--surface-1)'};
+               color:${queuedN ? '#075985' : 'var(--text-tertiary)'};
+               border:1px solid ${queuedN ? '#7dd3fc' : 'var(--border)'}">
+        📋 발송 리스트 <span style="opacity:.75;font-weight:600">${queuedN.toLocaleString()}</span> →
+      </button>
+      <span style="font-size:11px;color:var(--text-tertiary)">
+        보낼 곳을 체크해서 <b>[발송 리스트로 옮기기]</b> 를 누르면 발송 관리로 넘어갑니다
+      </span>
     </div>
   `;
   container.querySelectorAll('.v-sub-filter-chip').forEach(el => {
@@ -2414,6 +2417,10 @@ function renderVerifiedSubFilterChipsServer(verifiedSub, _failedCount) {
       resetPagination();
       render();
     });
+  });
+  container.querySelector('#goSendListBtn')?.addEventListener('click', () => {
+    _outboxTab = 'ready';
+    document.querySelector('.nav-item[data-view="pipeline-contacted"]')?.click();
   });
 }
 
@@ -2436,35 +2443,58 @@ function renderServerPagedTable(pageData, stageInfo) {
       <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
         Delete Selected (${state.selectedLeadIds.size})
       </button>
-      <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary);display:inline-flex;align-items:center;gap:8px">
+      <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary);display:inline-flex;align-items:center;gap:10px">
+        <label style="display:inline-flex;align-items:center;gap:5px">
+          정렬
+          <select id="leadSortSelect" style="padding:4px 8px;font-size:12px;border:1px solid var(--border-default);
+                  border-radius:6px;background:var(--bg-surface);color:var(--text-primary);cursor:pointer">
+            <option value="reco" ${_leadSort === 'reco' ? 'selected' : ''}>추천순</option>
+            <option value="country" ${_leadSort === 'country' ? 'selected' : ''}>국가별</option>
+            <option value="recent" ${_leadSort === 'recent' ? 'selected' : ''}>최근 등록순</option>
+          </select>
+        </label>
         <span>총 <b style="color:var(--text-primary)">${pageData.total.toLocaleString()}</b>건 중 <b style="color:var(--text-primary)">${start}~${end}</b>번 표시</span>
       </span>
     </div>
+    ${_leadSort === 'country' ? `
+      <div style="margin:-4px 0 10px;font-size:11.5px;color:var(--text-tertiary);line-height:1.6">
+        국가별 = 같은 나라끼리 묶어서 봅니다. 한 시장을 연달아 보면 판단 기준이 덜 흔들리고,
+        나라별로 메일 문구를 다르게 쓸 때도 편합니다. 같은 나라 안에서는 추천순입니다.
+      </div>` : ''}
+    ${_leadSort === 'reco' ? `
+      <div style="margin:-4px 0 10px;font-size:11.5px;color:var(--text-tertiary);line-height:1.6">
+        추천순 = <b>거래 규모</b>(유통사·체인이 위) + <b>담당자 도달</b>(b2b@·wholesale@ 이 info@ 보다 위)
+        + <b>K-뷰티 실적</b>(한국 브랜드를 이미 파는 곳). 각 회사의 근거는 순위 옆에 마우스를 올리면 보입니다.
+      </div>` : ''}
     ${renderPaginationBar(pageData.page, pageData.totalPages, pageData.total, { compact: true })}
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th><span class="sr-only">Select</span></th>
-            <th>Company</th>
-            <th>Country</th>
-            <th>Stage</th>
-            <th>발송승인</th>
-            <th>Priority</th>
-            <th>검증</th>
-            <th>Contact</th>
-            <th>Email</th>
-            <th>Website</th>
+            <th style="width:34px"><span class="sr-only">선택</span></th>
+            ${_leadSort === 'reco' ? '<th style="width:52px" title="발송 우선순위 — 마우스를 올리면 근거가 보입니다">순위</th>' : ''}
+            <th>회사</th>
+            <th style="width:110px">국가</th>
+            <th style="width:230px">이메일</th>
+            <th style="width:260px">웹사이트</th>
+            <th style="width:120px">전화</th>
+            <th style="width:170px;white-space:nowrap" title="이 회사는 아니다 싶으면 다른 단계로 옮깁니다. 지워지지 않아 언제든 되돌릴 수 있습니다">이동</th>
           </tr>
         </thead>
         <tbody>
-          ${leads.map(l => rowHtml(l)).join('')}
+          ${leads.map((l, i) => rowHtml(l, _leadSort === 'reco' ? (pageData.page - 1) * 50 + i + 1 : null)).join('')}
         </tbody>
       </table>
     </div>
     ${renderPaginationBar(pageData.page, pageData.totalPages, pageData.total)}
   `;
 
+  els.content.querySelector('#leadSortSelect')?.addEventListener('change', (e) => {
+    _leadSort = e.target.value;
+    state.pagination.currentPage = 1;
+    invalidateServerPage();
+    render();
+  });
   els.content.querySelector('[data-select-visible]')?.addEventListener('click', () => {
     if (allVisibleSelected) visibleIds.forEach(id => state.selectedLeadIds.delete(id));
     else visibleIds.forEach(id => state.selectedLeadIds.add(id));
@@ -2565,7 +2595,7 @@ async function runDryRunSimulation() {
   );
 
   if (!approved.length) {
-    alert('발송 대기열이 비어있습니다. 먼저 리드를 "✅ 승인" 처리하세요.');
+    alert('검증 완료 목록이 비어있습니다. 먼저 리드를 "✅ 승인" 처리하세요.');
     return;
   }
 
@@ -2678,7 +2708,7 @@ async function openComposeModal(scope) {
   let recipients = [];
   const hasValidEmail = (l) => l && l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email);
   if (scope === 'bulk-verified') {
-    // 발송 대기 (verified) 승인된 리드 · 첫 발송 대상
+    // 검증 완료 (verified) 승인된 리드 · 첫 발송 대상
     recipients = baseLeads.filter(l =>
       !l.deleted && (l.stage || 'imported') === 'verified' && l.readyForOutreach && hasValidEmail(l),
     );
@@ -2687,13 +2717,20 @@ async function openComposeModal(scope) {
       recipients = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'verified' && hasValidEmail(l));
     }
   } else if (scope === 'tier-A' || scope === 'tier-B') {
-    // 발송 대기 (verified) 안에서 특정 등급만 한 방에 · 원클릭 발송
+    // 검증 완료 (verified) 안에서 특정 등급만 한 방에 · 원클릭 발송
     const wantTier = scope === 'tier-A' ? 'A' : 'B';
     recipients = baseLeads.filter(l =>
       !l.deleted && (l.stage || 'imported') === 'verified' && hasValidEmail(l) && getClientLeadTier(l) === wantTier,
     );
+  } else if (scope === 'outbox-ready') {
+    // 발송함 [보낼 메일] 이 보여준 그 목록 그대로.
+    // 여기서 다시 필터를 짜면 화면 숫자와 모달 숫자가 어긋나고,
+    // 이미 예약해 둔 곳에 또 예약이 걸린다.
+    recipients = _outboxReadyIds
+      .map((id) => baseLeads.find((l) => l.leadId === id))
+      .filter(hasValidEmail);
   } else if (scope === 'bulk-contacted') {
-    // 첫 메일 발송함 (contacted) · 재발송 대상 (답장 안 온 애들 우선)
+    // 첫 발송 관리 (contacted) · 재발송 대상 (답장 안 온 애들 우선)
     recipients = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted' && hasValidEmail(l));
   } else if (scope === 'bulk-resend-no-reply') {
     // 재발송 (답장 없는 리드만) - contacted stage + emailHistory 있음 + replied 로 안 넘어감
@@ -2728,9 +2765,15 @@ async function openComposeModal(scope) {
     _composeState.subject = defaultTpl.subject;
     _composeState.body = defaultTpl.body;
   }
-  // 최초 진입 시 기본 발송 계정 선택
+  // 최초 진입 시 발송 계정 선택.
+  //
+  // 테스트 발송 계정(isTestSender)이 지정돼 있으면 그것을 먼저 잡는다.
+  // 대량 발송을 대표 주소로 하면 실수 한 번에 진행 중인 거래 메일까지
+  // 상대 스팸함으로 들어간다. 기본 계정(isDefault)은 수신함·답장용이다.
   if (!_composeState.mailAccountId && (_mailAccounts || []).length > 0) {
-    const defAcc = _mailAccounts.find(a => a.isDefault) || _mailAccounts[0];
+    const defAcc = _mailAccounts.find(a => a.isTestSender)
+      || _mailAccounts.find(a => a.isDefault)
+      || _mailAccounts[0];
     _composeState.mailAccountId = defAcc._id;
   }
 
@@ -2738,12 +2781,19 @@ async function openComposeModal(scope) {
   renderComposeModal();
 }
 
-function closeComposeModal() {
+function closeComposeModal(skipRefresh) {
   if (_composeState.sending) {
     if (!confirm('발송 진행 중입니다. 정말 닫으시겠습니까? (진행 상황 유실)')) return;
   }
+  const sentSomething = !!_composeState.resultSummary;
   _composeState.isOpen = false;
   document.getElementById('composeModalRoot')?.remove();
+  // 발송/예약을 하고 닫았으면 발송함이 옛 목록을 들고 있다.
+  // 보낸 곳이 [보낼 메일]에 그대로 남아 있으면 또 보내게 된다.
+  if (!skipRefresh && sentSomething && state.view === 'pipeline-contacted') {
+    _composeState.resultSummary = null;
+    renderOutboxPage();
+  }
 }
 
 async function refreshMailerEnv() {
@@ -2836,21 +2886,71 @@ function renderComposeModal() {
           <!-- 좌: 편집 -->
           <div style="padding:16px 20px;overflow-y:auto;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:12px">
 
-            <!-- 수신자 chip (많으면 접힘) -->
+            <!-- 받는 사람 —— 여기가 이 화면에서 제일 중요한 정보다.
+                 예전에는 12곳만 칩으로 보이고 나머지는 "+N명" 이었다. 409곳을 보낼 때
+                 무엇이 나가는지 알 수 없어 사실상 눈 감고 누르는 셈이었다.
+                 나라별로 몇 곳인지 먼저 보여주고, 전체 목록은 펼쳐서 확인하게 한다. -->
             <div>
-              <label style="font-size:11px;color:var(--text-secondary);font-weight:700">받는 사람 (${recipients.length})</label>
-              <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;max-height:80px;overflow-y:auto;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)">
-                ${recipients.slice(0, 12).map(l => `
-                  <span style="padding:3px 8px;background:#dbeafe;color:#1e40af;border-radius:99px;font-size:11px;font-weight:500">
-                    ${escapeHtml(l.Company || '?')} · ${escapeHtml(l.Email)}
-                  </span>
-                `).join('')}
-                ${recipients.length > 12 ? `<span style="padding:3px 8px;color:var(--text-tertiary);font-size:11px">... + ${recipients.length - 12}명</span>` : ''}
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <label style="font-size:11px;color:var(--text-secondary);font-weight:700">받는 사람</label>
+                <span style="font-size:15px;font-weight:800;color:#1d4ed8">${recipients.length.toLocaleString()}곳</span>
+                <button type="button" id="composeToggleList"
+                  style="margin-left:auto;padding:3px 10px;font-size:11px;font-weight:700;
+                         border:1px solid var(--border-default);border-radius:99px;
+                         background:var(--bg-surface);color:var(--text-secondary);cursor:pointer">
+                  전체 목록 보기
+                </button>
+              </div>
+
+              <!-- 나라별 요약 — "어디로 나가는지"가 한눈에 들어온다 -->
+              <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+                ${(() => {
+                  const byCountry = {};
+                  for (const l of recipients) {
+                    const c = l.Country || '(국가 미상)';
+                    byCountry[c] = (byCountry[c] || 0) + 1;
+                  }
+                  return Object.entries(byCountry).sort((a, b) => b[1] - a[1]).map(([c, n]) => `
+                    <span style="padding:3px 9px;background:var(--bg-surface-alt);border-radius:99px;
+                                 font-size:11px;color:var(--text-secondary)">
+                      ${escapeHtml(c)} <b style="color:var(--text-primary)">${n}</b>
+                    </span>`).join('');
+                })()}
+              </div>
+
+              <div id="composeRecipientList" style="display:none;margin-top:6px;max-height:220px;overflow-y:auto;
+                   padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)">
+                ${recipients.map((l, i) => `
+                  <div style="display:flex;gap:8px;padding:3px 4px;font-size:11.5px;
+                              border-bottom:1px solid var(--border-subtle)">
+                    <span style="width:34px;flex:none;color:var(--text-quaternary)">${i + 1}</span>
+                    <span style="flex:1;min-width:0;color:var(--text-primary);overflow:hidden;
+                                 text-overflow:ellipsis;white-space:nowrap">${escapeHtml(l.Company || '?')}</span>
+                    <span style="color:var(--text-tertiary)">${escapeHtml(l.Country || '')}</span>
+                    <span style="width:200px;flex:none;color:var(--text-tertiary);overflow:hidden;
+                                 text-overflow:ellipsis;white-space:nowrap">${escapeHtml(l.Email)}</span>
+                  </div>`).join('')}
               </div>
             </div>
 
-            <!-- 발송 계정 선택 -->
+            <!-- 발송 계정 선택 —— 어느 주소로 나가는지가 목록만큼 중요하다.
+                 대표 주소로 잘못 쏘면 진행 중인 거래 메일까지 평판이 같이 상한다. -->
             <div>
+              ${(() => {
+                // 어느 주소로 나가는지는 받는 사람 목록만큼 중요하다.
+                // 다만 '테스트 계정' 같은 라벨은 붙이지 않는다 — 화면에 설명이 늘수록
+                // 정작 봐야 할 주소가 묻힌다. 주소 자체만 크게 보여준다.
+                const acc = (_mailAccounts || []).find(a => a._id === _composeState.mailAccountId);
+                if (!acc) return '';
+                return `<div style="padding:9px 12px;margin-bottom:6px;border-radius:8px;
+                  background:var(--bg-surface-alt);border:1px solid var(--border-default)">
+                  <div style="font-size:10.5px;font-weight:800;color:var(--text-tertiary);
+                              text-transform:uppercase;letter-spacing:.4px">보내는 주소</div>
+                  <div style="font-size:14px;font-weight:800;color:var(--text-primary);margin-top:2px">
+                    ${escapeHtml(acc.fromAddress || acc.smtpUser)}
+                  </div>
+                </div>`;
+              })()}
               <label style="font-size:11px;color:var(--text-secondary);font-weight:700">📮 발송 계정</label>
               <select id="composeAccountSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
                 ${(_mailAccounts || []).length === 0 ? `
@@ -3018,6 +3118,15 @@ function renderComposeModal() {
     }
     renderComposeModal();
   });
+  // 받는 사람 전체 목록 펼치기/접기
+  document.getElementById('composeToggleList')?.addEventListener('click', (e) => {
+    const list = document.getElementById('composeRecipientList');
+    if (!list) return;
+    const open = list.style.display !== 'none';
+    list.style.display = open ? 'none' : '';
+    e.currentTarget.textContent = open ? '전체 목록 보기' : '목록 접기';
+  });
+
   document.getElementById('composeAccountSel')?.addEventListener('change', (e) => {
     _composeState.mailAccountId = e.target.value || null;
     renderComposeModal();
@@ -3104,6 +3213,7 @@ async function handleComposeSend() {
     );
     if (!ok) return;
     _composeState.sending = true;
+    let movedToSchedule = false;
     renderComposeModal();
     try {
       const res = await fetch('/api/mail/schedule', {
@@ -3118,13 +3228,26 @@ async function handleComposeSend() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || '예약 실패');
-      alert(`✅ ${data.scheduled}건 예약 완료\n\n예약 시각: ${new Date(data.scheduledFor).toLocaleString('ko-KR')}\n\n"📅 예약 발송 관리" 페이지에서 관리하세요.`);
+      alert(
+        `✅ ${data.scheduled}건 예약 완료\n\n` +
+        `예약 시각: ${new Date(data.scheduledFor).toLocaleString('ko-KR')}\n\n` +
+        `[발송 관리 → 📅 예약 발송] 에서 확인·취소할 수 있습니다.`,
+      );
       _composeState.resultSummary = { requested: recipients.length, sent: 0, failed: 0, scheduled: data.scheduled };
+      // 예약한 곳은 [보낼 메일]에서 빠지고 [예약 발송]으로 내려가야 한다.
+      // finally 가 모달을 다시 그리므로 여기서 바로 닫지 않고 표시만 해 둔다.
+      if (state.view === 'pipeline-contacted') movedToSchedule = true;
     } catch (e) {
       alert(`예약 실패: ${e.message || 'unknown'}`);
     } finally {
       _composeState.sending = false;
-      renderComposeModal();
+      if (movedToSchedule) {
+        _outboxTab = 'scheduled';
+        closeComposeModal(true);   // 아래에서 직접 그린다
+        renderOutboxPage();
+      } else {
+        renderComposeModal();
+      }
     }
     return;
   }
@@ -3497,6 +3620,19 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
   els.content.innerHTML = `
     <div class="bulk-actions">
       <button class="button secondary" data-select-visible type="button">${allVisibleSelected ? "이 페이지 선택 해제" : "이 페이지 전체 선택"}</button>
+      ${state.view === 'pipeline-verified' ? `
+        <button class="button primary" id="moveToQueueBtn" type="button" ${state.selectedLeadIds.size ? '' : 'disabled'}
+          title="고른 곳을 [발송 관리 → 보낼 메일] 로 옮깁니다. 옮겨야 발송 대상이 됩니다."
+          style="${state.selectedLeadIds.size ? '' : 'opacity:.45;cursor:default'}">
+          📋 발송 리스트로 옮기기 (${state.selectedLeadIds.size})
+        </button>
+        <!-- 아닌 곳을 검증 실패로 다 뺀 뒤에는 남은 전체를 한 번에 옮기는 게 자연스럽다.
+             418건을 페이지마다 체크하게 두면 9페이지를 넘겨야 한다. -->
+        <button class="button" id="moveAllToQueueBtn" type="button"
+          title="지금 검증 완료에 남아 있는 곳을 전부 발송 리스트로 옮깁니다 (검색·국가로 좁혀 놨으면 그 범위만)"
+          style="border:1px solid #15803d;background:#f0fdf4;color:#15803d;font-weight:700">
+          ⇢ 남은 전체 옮기기
+        </button>` : ''}
       <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
         Delete Selected (${state.selectedLeadIds.size})
       </button>
@@ -3513,21 +3649,22 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
     ${renderPaginationBar(page, totalPages, leads.length, { compact: true })}
     <div class="table-wrap">
       <table>
+        <!-- 이 헤더는 rowHtml 이 실제로 그리는 칸과 반드시 같아야 한다.
+             예전에는 Stage·발송승인·Priority·검증 까지 10칸이 적혀 있었는데
+             rowHtml 은 7칸만 그려서, 값이 한 칸씩 밀리고 끝의 세 칸이
+             비어 보였다 (검색 결과 화면에서 그대로 드러났다). -->
         <thead>
           <tr>
-            <th><span class="sr-only">Select</span></th>
-            <th>Company</th>
-            <th class="sortable" data-sort="Country" style="cursor: pointer; user-select: none;" title="Sort by Country">
-              Country
-              <span style="color: #999; font-size: 0.8em; margin-left: 4px;">${state.sortField === 'Country' ? (state.sortOrder === 'asc' ? '▲' : '▼') : '⇕'}</span>
+            <th style="width:34px"><span class="sr-only">선택</span></th>
+            <th>회사</th>
+            <th class="sortable" data-sort="Country" style="width:110px;cursor:pointer;user-select:none" title="국가순 정렬">
+              국가
+              <span style="color:#999;font-size:0.8em;margin-left:4px">${state.sortField === 'Country' ? (state.sortOrder === 'asc' ? '▲' : '▼') : '⇕'}</span>
             </th>
-            <th>Stage</th>
-            <th>발송승인</th>
-            <th>Priority</th>
-            <th>검증</th>
-            <th>Contact</th>
-            <th>Email</th>
-            <th>Website</th>
+            <th style="width:230px">이메일</th>
+            <th style="width:260px">웹사이트</th>
+            <th style="width:120px">전화</th>
+            <th style="width:170px;white-space:nowrap" title="이 회사는 아니다 싶으면 다른 단계로 옮깁니다. 지워지지 않아 언제든 되돌릴 수 있습니다">이동</th>
           </tr>
         </thead>
         <tbody>
@@ -3595,6 +3732,8 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
   });
 
   els.content.querySelector("[data-delete-selected]")?.addEventListener("click", deleteSelectedLeads);
+  els.content.querySelector('#moveToQueueBtn')?.addEventListener('click', moveSelectedToQueue);
+  els.content.querySelector('#moveAllToQueueBtn')?.addEventListener('click', moveAllToQueue);
 
   els.content.querySelectorAll("[data-select-lead]").forEach((checkbox) => {
     checkbox.addEventListener("click", (event) => event.stopPropagation());
@@ -3870,24 +4009,33 @@ const STAGE_STYLE = {
   imported:      { bg: '#f1f5f9', fg: '#475569', label: '📥 가져오기' },
   'ai-searched': { bg: '#ede9fe', fg: '#5b21b6', label: '🤖 AI 서칭' },
   verifying:     { bg: '#fef9c3', fg: '#854d0e', label: '🔍 검증 대기' },
-  verified:      { bg: '#dcfce7', fg: '#166534', label: '✅ 발송 대기' },
-  contacted:     { bg: '#dbeafe', fg: '#1e40af', label: '📨 메일 발송함' },
+  verified:      { bg: '#dcfce7', fg: '#166534', label: '✅ 검증 완료' },
+  queued:        { bg: '#e0f2fe', fg: '#075985', label: '📋 발송 리스트' },
+  contacted:     { bg: '#dbeafe', fg: '#1e40af', label: '📨 발송 관리' },
   replied:       { bg: '#e0e7ff', fg: '#3730a3', label: '💬 답장 받음' },
   negotiating:   { bg: '#fed7aa', fg: '#9a3412', label: '🤝 대화 진행 중' },
   partner:       { bg: '#f3e8ff', fg: '#6b21a8', label: '⭐ 파트너십 확정' },
   archived:      { bg: '#f3f4f6', fg: '#6b7280', label: '📦 보관함' },
   failed:        { bg: '#fee2e2', fg: '#991b1b', label: '🚫 검증 실패' },
 };
-const STAGE_ORDER = ['imported','ai-searched','verifying','verified','contacted','replied','negotiating','partner','archived','failed'];
+const STAGE_ORDER = ['imported','ai-searched','verifying','verified','queued','contacted','replied','negotiating','partner','archived','failed'];
 
 // 각 stage 에서 실무적으로 자주 이동하는 다음 단계들 (원클릭 버튼)
 const STAGE_QUICK_MOVES = {
   imported:      ['verifying', 'archived'],
-  'ai-searched': ['verifying', 'verified', 'archived'],  // AI 발굴 후보 → 검증대기 승격 / 즉시 발송대기 / 제외
+  'ai-searched': ['verifying', 'verified', 'archived'],  // AI 발굴 후보 → 검증대기 승격 / 즉시 검증 완료 / 제외
   verifying:     ['verified', 'archived'],
-  verified:      ['contacted', 'partner', 'archived'],
+  // 검증 완료에서 클라이언트가 실제로 하는 판단은 두 가지다.
+  //   "이 업체는 아닌데"  → 검증 실패 (아예 대상이 아님)
+  //   "지금은 아닌데"      → 보관함  (나중에 다시 볼 수도)
+  verified:      ['queued', 'failed', 'archived'],
+  queued:        ['verified', 'failed', 'archived'],   // 되돌리기 = 발송 리스트에서 빼기
   contacted:     ['replied', 'archived'],
-  replied:       ['negotiating', 'partner', 'archived'],
+  // 답장 받음에서 실제로 하는 판단은 셋이다.
+  //   "얘기가 되겠다"     → 대화 진행 중
+  //   "우리랑 안 맞는다"  → 검증 실패 (아예 대상이 아니었음)
+  //   "지금은 아니다"     → 보관함 (나중에 다시 볼 수도)
+  replied:       ['negotiating', 'partner', 'failed', 'archived'],
   negotiating:   ['partner', 'archived'],
   partner:       ['negotiating', 'archived'],
   archived:      ['verified', 'verifying', 'imported'],
@@ -3905,23 +4053,37 @@ function sendCountBadgeHtml(lead) {
   const bd    = sentCount >= MAX ? '#fca5a5' : (sentCount >= 2 ? '#fcd34d' : '#86efac');
   const lastSent = lead.lastEmailSentAt ? new Date(lead.lastEmailSentAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit' }) : '';
   const tip = `이 리드에 총 ${sentCount}회 발송됨\n최대 ${MAX}회 · 48h 최소 간격 · 초과 시 자동 차단${lastSent ? '\n최근 발송: ' + lastSent : ''}`;
-  return `<span title="${escapeAttr(tip)}" style="display:inline-block;margin-top:3px;padding:2px 8px;background:${bg};color:${color};border:1px solid ${bd};border-radius:99px;font-size:10px;font-weight:700;line-height:1.4">✉ ${sentCount}회차${sentCount >= MAX ? ' (한도)' : ''}</span>`;
+  return `<span title="${escapeAttr(tip)}" style="display:inline-block;margin-top:3px;padding:2px 8px;background:${bg};color:${color};border:1px solid ${bd};border-radius:99px;font-size:10px;font-weight:700;line-height:1.4">✉ 메일 ${sentCount}회 발송${sentCount >= MAX ? ' (한도)' : ''}</span>`;
 }
 
 function stageCellHtml(lead) {
   const cur = lead.stage || 'imported';
   const style = STAGE_STYLE[cur] || STAGE_STYLE.imported;
-  const options = STAGE_ORDER.map(s => {
-    const st = STAGE_STYLE[s];
-    return `<option value="${s}" ${s === cur ? 'selected' : ''}>${st.label}</option>`;
-  }).join('');
+  // 사이드바에서 숨긴 단계(가져오기·AI 서칭·검증 대기)는 목록에서 뺀다.
+  // 옮겨놓고 나면 볼 화면이 없어서 리드가 사라진 것처럼 된다.
+  // 단, 지금 그 단계에 있는 리드라면 자기 값은 보여야 하므로 예외로 남긴다.
+  const HIDDEN_STAGES = new Set(['imported', 'ai-searched', 'verifying']);
+  const options = STAGE_ORDER
+    .filter(s => !HIDDEN_STAGES.has(s) || s === cur)
+    .map(s => {
+      const st = STAGE_STYLE[s];
+      return `<option value="${s}" ${s === cur ? 'selected' : ''}>${st.label}</option>`;
+    }).join('');
 
   // 원클릭 이동 버튼 (현재 stage 에서 실무적으로 자주 가는 다음 단계들)
   const quickTargets = STAGE_QUICK_MOVES[cur] || [];
   const quickBtns = quickTargets.map(target => {
     const t = STAGE_STYLE[target];
-    // 짧은 라벨 (이모지 + 첫 단어)
-    const shortLabel = t.label.replace(/^([^\s]+)\s(.+)$/, '$1 $2');
+    // 같은 단계라도 어디서 옮기느냐에 따라 뜻이 다르다.
+    // 답장까지 온 곳을 'failed' 로 보내는 것은 검증이 틀렸다는 뜻이 아니라
+    // "얘기해 보니 우리랑 안 맞는다"는 뜻이라, 라벨을 그에 맞게 바꿔 준다.
+    const CONTEXT_LABEL = {
+      'replied:failed': '🚫 컨택 실패',
+      'negotiating:failed': '🚫 컨택 실패',
+      'queued:verified': '↩ 리스트에서 빼기',
+    };
+    const shortLabel = CONTEXT_LABEL[`${cur}:${target}`]
+      || t.label.replace(/^([^\s]+)\s(.+)$/, '$1 $2');
     // ⚠️ 인라인 onclick 으로 stopPropagation 을 하면 안 된다.
     //    클릭 핸들러가 document 에 위임 등록돼 있어서, 여기서 전파를 끊으면
     //    핸들러가 아예 호출되지 않는다 (버튼이 먹통이 된다).
@@ -3931,7 +4093,7 @@ function stageCellHtml(lead) {
       class="stage-quick-move"
       data-quick-lead="${escapeAttr(lead.id)}"
       data-quick-target="${target}"
-      title="${t.label}로 이동"
+      title="${shortLabel.replace(/^[^\s]+\s/, '')}(으)로 이동"
       style="padding:2px 6px;font-size:10px;border:1px solid ${t.fg}30;border-radius:99px;background:${t.bg};color:${t.fg};font-weight:600;cursor:pointer;white-space:nowrap;line-height:1.4"
     >→ ${shortLabel}</button>`;
   }).join('');
@@ -3958,15 +4120,39 @@ function stageCellHtml(lead) {
 
 // accountId: 어느 메일함을 볼지. 'all' 이면 등록된 계정 전부.
 // 등록된 발송 계정(MailAccount)이 곧 수신 계정이다 — 이카운트는 자격증명이 같다.
-var _inboxState = { page: 1, classification: '', q: '', linked: '', accountId: 'all', group: '' };
+var _inboxState = { page: 1, classification: '', q: '', linked: '', accountId: 'all', group: '', trashed: false };
 var _mailAccountsCache = null;
 var _mailGroupsCache = null;
+
+/**
+ * 지금 보고 있는 메일함의 계정 id.
+ *
+ * 대표 계정이 곧 메일함이다. 사용자가 메일함에서 계정 탭을 직접 누른 동안에만
+ * (accountPicked) 그 선택을 따르고, 그 밖에는 늘 대표 계정을 가리킨다.
+ *
+ * _inboxState 는 메모리에만 있어서 새로고침하면 accountId 가 'all' 로 돌아간다.
+ * 사이드바 배지(받은 메일함·회신 필요·기한 관리)는 메일함 화면보다 먼저 그려지기
+ * 때문에, 이 함수를 거치지 않으면 대표를 바꿔놔도 배지만 '전체 계정' 숫자로 남는다.
+ * 실제로 대표를 fe 로 바꿨는데 배지가 david 것까지 합친 100 으로 떠 있었다.
+ *
+ * accountId 는 MailAccount._id 문자열과 같다(lib/mail/accounts.ts summarize).
+ */
+function currentMailboxAccountId() {
+  if (typeof _inboxState === 'undefined') return 'all';
+  if (_inboxState.accountPicked) return _inboxState.accountId || 'all';
+  const def = (_mailAccountsCache?.accounts || []).find((a) => a.isDefault);
+  if (def?.accountId) {
+    _inboxState.accountId = def.accountId;   // 화면들이 같은 값을 보게 맞춰둔다
+    return def.accountId;
+  }
+  return _inboxState.accountId || 'all';
+}
 
 // 거래처(폴더) 목록 — 대표가 메일함에서 나눠둔 폴더가 그대로 온다
 async function loadMailGroups(force) {
   if (!force && _mailGroupsCache) return _mailGroupsCache;
   try {
-    const acc = _inboxState.accountId || 'all';
+    const acc = currentMailboxAccountId();
     const r = await safeJsonFetch(`/api/mail/groups?accountId=${encodeURIComponent(acc)}`);
     if (r && r.success) { _mailGroupsCache = r; return r; }
   } catch (e) { console.warn('mail-groups', e); }
@@ -3990,19 +4176,35 @@ async function loadInboxAccounts(force) {
   return null;
 }
 
+// 메일 분류 7가지.
+//
+// desc 는 배지에 마우스를 올리면 뜬다. 이름만으로는 "광고와 자동발송이 뭐가
+// 다른가", "제휴는 어디까지인가"를 알 수 없어서, 판단 기준을 한 줄로 붙였다.
+// (분류 규칙 자체는 src/lib/ai/analyze-mail.ts 의 SYSTEM 프롬프트에 있다)
 const MAIL_CLASS = {
-  b2b:        { label: '💼 B2B 거래', bg: '#dcfce7', fg: '#166534' },
-  inquiry:    { label: '❓ 문의·견적', bg: '#dbeafe', fg: '#1e40af' },
-  partner:    { label: '🤝 제휴',     bg: '#e0e7ff', fg: '#3730a3' },
-  newsletter: { label: '📰 뉴스레터', bg: '#fef3c7', fg: '#92400e' },
-  ad:         { label: '📢 광고',     bg: '#fee2e2', fg: '#991b1b' },
-  system:     { label: '⚙ 자동발송',  bg: '#f1f5f9', fg: '#64748b' },
-  unknown:    { label: '· 미분류',    bg: '#f8fafc', fg: '#475569' },
+  b2b:        { label: '💼 B2B 거래', bg: '#dcfce7', fg: '#166534',
+                desc: '실제 거래·수입·유통·대리점·OEM 관련. 이미 거래 중이거나 구체적인 거래 의사가 있는 메일.' },
+  inquiry:    { label: '❓ 문의·견적', bg: '#dbeafe', fg: '#1e40af',
+                desc: '제품·가격·MOQ·재고·견적·샘플 문의. 아직 거래 전이지만 회사와 담당자가 특정되는 실제 문의.' },
+  partner:    { label: '🤝 제휴',     bg: '#e0e7ff', fg: '#3730a3',
+                desc: '제휴·협업·입점·미디어·전시회 참가 제안 중 검토할 가치가 있는 것.' },
+  newsletter: { label: '📰 뉴스레터', bg: '#fef3c7', fg: '#92400e',
+                desc: '정기 소식지·업계 뉴스·구독 콘텐츠. 개별 응답이 필요 없는 것.' },
+  ad:         { label: '📢 광고',     bg: '#fee2e2', fg: '#991b1b',
+                desc: '사람이 보냈지만 우리에게 무언가를 팔려는 메일. 대량 발송 영업, 전시회 참가 권유, 마케팅·개발 외주 제안 등.' },
+  system:     { label: '⚙ 자동발송',  bg: '#f1f5f9', fg: '#64748b',
+                desc: '사람이 아니라 시스템이 자동으로 보낸 것. 인증번호, 알림, 부재중 자동응답, 읽음 확인, 발송 실패 통지, 건물 공지 등.' },
+  unknown:    { label: '· 미분류',    bg: '#f8fafc', fg: '#475569',
+                desc: '위 어디에도 확실히 넣기 어렵거나, 아직 AI 분석을 돌리지 않아 판단 근거가 부족한 메일.' },
 };
 
 async function renderInboxPage(opts) {
   const needsReplyOnly = opts && opts.needsReplyOnly === true;
   els.content.innerHTML = `<div class="inline-loader">메일함 불러오는 중…</div>`;
+
+  // 계정 목록을 먼저 받아야 대표 계정을 알 수 있다. 이 줄이 params 뒤에 있던 동안에는
+  // 새로고침 직후 첫 조회가 accountId='all' 로 나가서 남의 계정 메일까지 섞여 보였다.
+  const accInfo = await loadInboxAccounts();
 
   const params = new URLSearchParams({
     page: String(_inboxState.page),
@@ -4012,10 +4214,12 @@ async function renderInboxPage(opts) {
   if (_inboxState.classification) params.set('classification', _inboxState.classification);
   if (_inboxState.q) params.set('q', _inboxState.q);
   if (_inboxState.linked) params.set('linked', _inboxState.linked);
-  if (_inboxState.accountId) params.set('accountId', _inboxState.accountId);
+  params.set('accountId', currentMailboxAccountId());
   if (_inboxState.group) params.set('group', _inboxState.group);
+  // 휴지통 보기 — 치운 메일은 기본 목록에서 빠져 있다
+  if (_inboxState.trashed) { params.set('trashed', '1'); params.set('flat', '1'); }
 
-  const [accInfo, groupInfo] = await Promise.all([loadInboxAccounts(), loadMailGroups()]);
+  const groupInfo = await loadMailGroups();
 
   let data;
   try {
@@ -4090,6 +4294,8 @@ async function renderInboxPage(opts) {
 
     return `
       <tr class="inbox-row" data-mail-id="${escapeAttr(String(m._id))}" style="cursor:pointer">
+        <td style="width:32px"><input type="checkbox" class="inbox-check" data-mail-id="${escapeAttr(String(m._id))}"
+          style="width:15px;height:15px;cursor:pointer"></td>
         <td style="white-space:nowrap;color:var(--text-tertiary);font-size:12px">${dt(m.date)}</td>
         <td>
           <div style="font-weight:600;color:var(--text-primary);font-size:13px">
@@ -4107,7 +4313,7 @@ async function renderInboxPage(opts) {
           ${m.analysis?.summary ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(String(m.analysis.summary).slice(0, 90))}</div>` : ''}
         </td>
         <td style="white-space:nowrap">
-          <span style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${cls.label}</span>
+          <span title="${escapeAttr(cls.desc || '')}" style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;cursor:help">${cls.label}</span>
         </td>
         <td style="white-space:nowrap">
           ${m.status === 'replied'
@@ -4127,12 +4333,14 @@ async function renderInboxPage(opts) {
   // 등록된 계정이 하나뿐이면 굳이 보여주지 않는다 (선택지가 없는 선택기는 잡음이다)
   const accounts = accInfo?.accounts || [];
 
-  // 처음 열 때는 기본 계정을 잡아준다. 'all' 로 두면 "지금 누구 메일함을
-  // 보고 있는지"가 흐려지는데, 대표 계정에 메일이 몰려 있어 더 헷갈린다.
-  // 사용자가 탭을 눌러 고른 뒤에는(accountPicked) 건드리지 않는다.
-  if (!_inboxState.accountPicked && _inboxState.accountId === 'all' && accounts.length) {
-    const def = accounts.find((a) => a.isDefault) || accounts[0];
-    if (def) _inboxState.accountId = def.accountId;
+  // 어느 계정 메일함을 그릴지는 한 군데(currentMailboxAccountId)에서만 정한다.
+  // 사이드바 배지도 같은 함수를 쓰기 때문에 화면끼리 숫자가 어긋나지 않는다.
+  // 대표가 아직 하나도 없으면(예: 전부 해제된 상태) 첫 계정으로 떨어뜨린다.
+  {
+    const resolved = currentMailboxAccountId();
+    if (resolved === 'all' && !_inboxState.accountPicked && accounts.length) {
+      _inboxState.accountId = accounts[0].accountId;
+    }
   }
   const accountTabs = accounts.length > 1 ? `
     <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
@@ -4147,7 +4355,7 @@ async function renderInboxPage(opts) {
                    border:1px solid ${active ? 'var(--brand)' : 'var(--border-default)'};
                    background:${active ? 'var(--brand-soft)' : 'var(--bg-surface)'};
                    color:${active ? 'var(--brand-text)' : 'var(--text-secondary)'}">
-            ${escapeHtml(a.label)}${a.isDefault ? ' ✓' : ''}
+            ${escapeHtml(a.label)}${a.isDefault ? ' <span title="설정 → 메일 계정에서 지정한 대표 계정입니다" style="font-size:9.5px;font-weight:800;color:#1e40af">대표</span>' : ''}
             <span style="opacity:.65;font-weight:400">${a.mailCount || 0}</span>
           </button>`;
         }).join('')}
@@ -4212,6 +4420,21 @@ async function renderInboxPage(opts) {
       ${folderItem('전체', '', total, 0, '📬')}
       ${groups.map((g) => folderItem(g.group, g.group, g.total, g.fresh, '📁')).join('')}
       ${ungrouped ? folderItem('미분류', '__none__', ungrouped, 0, '❔') : ''}
+      <!-- 휴지통도 폴더의 하나로 둔다. 별도 화면으로 빼두면 "치웠는데 어디 갔지"가 되고,
+           치운 메일을 되돌리려면 다른 화면으로 나가야 해서 흐름이 끊긴다.
+           DB 에서 지우지 않으므로 여기서 언제든 되살릴 수 있다. -->
+      <div style="border-top:1px solid var(--border-subtle);margin-top:6px;padding-top:6px">
+        <button type="button" class="inbox-group" data-group="__trash__"
+          style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:7px 10px;
+                 font-size:12.5px;border:none;border-radius:7px;cursor:pointer;margin-bottom:2px;
+                 background:${_inboxState.trashed ? 'var(--brand-soft)' : 'transparent'};
+                 color:${_inboxState.trashed ? 'var(--brand-text)' : 'var(--text-secondary)'};
+                 font-weight:${_inboxState.trashed ? '700' : '500'}">
+          <span style="width:16px;flex-shrink:0">🗑</span>
+          <span style="flex:1">휴지통</span>
+          <span style="color:var(--text-quaternary);font-size:11px">${(_mailCountsCache?.counts?.trash ?? 0)}</span>
+        </button>
+      </div>
       <div style="border-top:1px solid var(--border-subtle);margin-top:8px;padding-top:8px">
         <button type="button" id="inboxRegroupBtn"
           style="width:100%;padding:6px;font-size:11px;border:1px solid var(--border-default);
@@ -4239,6 +4462,12 @@ async function renderInboxPage(opts) {
       ${filterChip('💼 B2B·문의', 'classification', 'b2b,inquiry,partner')}
       ${filterChip('· 미분류', 'classification', 'unknown')}
       ${filterChip('📢 광고·자동', 'classification', 'ad,system,newsletter')}
+      <!-- 이름만으로는 '광고와 자동발송이 뭐가 다른가'를 알 수 없다.
+           눌러서 펼치는 설명을 옆에 둔다 (평소엔 접혀 있어 화면을 어지럽히지 않는다) -->
+      <button type="button" id="clsHelpBtn" title="분류 기준 보기"
+        style="width:20px;height:20px;padding:0;border-radius:50%;border:1px solid var(--border-default);
+               background:var(--bg-surface);color:var(--text-tertiary);font-size:11px;font-weight:800;
+               cursor:pointer;line-height:1">?</button>
       <span style="width:1px;height:20px;background:var(--border-default)"></span>
       ${filterChip('리드 연결됨', 'linked', '1')}
       ${filterChip('미연결', 'linked', '0')}
@@ -4250,8 +4479,55 @@ async function renderInboxPage(opts) {
       -->
     </div>
 
+    <div id="clsHelpPanel" style="display:none;margin-bottom:12px;padding:12px 14px;
+         background:var(--bg-surface-alt);border:1px solid var(--border-default);border-radius:10px">
+      <div style="font-size:11.5px;font-weight:800;color:var(--text-secondary);margin-bottom:8px">
+        메일 분류 기준 — 받은 메일은 아래 7가지 중 하나로 자동 분류됩니다
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:7px">
+        ${Object.values(MAIL_CLASS).map((c) => `
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <span style="flex:none;background:${c.bg};color:${c.fg};padding:2px 8px;border-radius:99px;
+                         font-size:11px;font-weight:700;white-space:nowrap">${c.label}</span>
+            <span style="font-size:11.5px;color:var(--text-secondary);line-height:1.5">${escapeHtml(c.desc)}</span>
+          </div>`).join('')}
+      </div>
+      <div style="margin-top:9px;padding-top:8px;border-top:1px solid var(--border-default);
+                  font-size:11px;color:var(--text-tertiary);line-height:1.6">
+        <b>📢 광고와 ⚙ 자동발송의 차이</b> — 광고는 <b>사람</b>이 우리에게 팔려고 보낸 것,
+        자동발송은 <b>기계</b>가 알리려고 보낸 것입니다. 둘 다 배지 숫자에서 빠집니다
+        (인증번호까지 세면 "받은 메일 N통"이 의미를 잃기 때문입니다).
+        <br>분류가 틀렸으면 메일을 열어 직접 바꿀 수 있고, 손으로 고친 분류는 재분석이 덮지 않습니다.
+      </div>
+    </div>
+
+    <!-- 선택 액션 — 아무것도 안 골랐으면 숨어 있다가 체크하면 나타난다 -->
+    <div id="inboxBulkBar" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;
+         background:var(--brand-soft);border:1px solid var(--brand);border-radius:9px">
+      <span style="font-size:12.5px;font-weight:700;color:var(--brand-text)">
+        <span id="inboxSelCount">0</span>통 선택됨
+      </span>
+      ${_inboxState.trashed
+        ? `<button type="button" id="inboxRestoreBtn" class="button" style="padding:5px 14px;font-size:12px">↩ 받은함으로 되돌리기</button>`
+        : `
+          <!-- 폴더 이동 — 자동 분류가 애매한 것은 미분류로 남고, 여기서 사람이 옮긴다 -->
+          <select id="inboxMoveGroup" style="padding:5px 10px;font-size:12px;border-radius:7px;
+                  border:1px solid var(--border-default);background:var(--bg-surface);
+                  color:var(--text-primary);cursor:pointer">
+            <option value="">거래처 폴더로 이동…</option>
+            ${(groupInfo?.groups || []).map((g) => `<option value="${escapeAttr(g.group)}">📁 ${escapeHtml(g.group)}</option>`).join('')}
+            <option value="__none__">❔ 미분류로 되돌리기</option>
+          </select>
+          <button type="button" id="inboxTrashBtn" class="button secondary" style="padding:5px 14px;font-size:12px">🗑 휴지통으로</button>`}
+      <button type="button" id="inboxSelClear" style="background:none;border:none;color:var(--text-tertiary);
+              font-size:12px;cursor:pointer">선택 해제</button>
+      <span style="font-size:11px;color:var(--text-tertiary);margin-left:auto">
+        휴지통으로 보내도 <b>지워지지 않습니다</b> — 언제든 되돌릴 수 있습니다
+      </span>
+    </div>
+
     <div style="margin-bottom:10px;font-size:12px;color:var(--text-tertiary);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span>총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>개 대화
+      <span>총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>${_inboxState.trashed ? '통 (휴지통)' : '개 대화'}
       ${needsReplyOnly ? ' · 회신 필요만' : ''}
       ${_inboxState.group ? ` · 📁 ${escapeHtml(_inboxState.group === '__none__' ? '미분류' : _inboxState.group)}` : ''}</span>
       <span id="inboxAiStatus" style="color:var(--text-quaternary)"></span>
@@ -4262,10 +4538,11 @@ async function renderInboxPage(opts) {
       <table>
         <thead>
           <tr>
+            <th style="width:32px"><input type="checkbox" id="inboxCheckAll" title="이 페이지 전체 선택" style="width:15px;height:15px;cursor:pointer"></th>
             <th>받은 시각</th><th>발신자</th><th>제목</th><th>분류</th><th>상태</th><th>리드</th>
           </tr>
         </thead>
-        <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:var(--text-tertiary);padding:32px">조건에 맞는 메일이 없습니다.</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:32px">조건에 맞는 메일이 없습니다.</td></tr>'}</tbody>
       </table>
     </div>
     ${renderPaginationBar(data.page, totalPages, total)}
@@ -4298,10 +4575,112 @@ function bindInboxActions() {
     });
   });
 
-  // 거래처 폴더 선택
+  // 분류 기준 설명 펼치기/접기
+  els.content.querySelector('#clsHelpBtn')?.addEventListener('click', () => {
+    const p = els.content.querySelector('#clsHelpPanel');
+    if (p) p.style.display = p.style.display === 'none' ? '' : 'none';
+  });
+
+  // ── 목록에서 여러 통 골라 휴지통으로 / 되돌리기 ──
+  // 한 통씩 상세를 열어 치우면 수십 통 정리에 한참 걸린다.
+  const selected = new Set();
+  const bar = els.content.querySelector('#inboxBulkBar');
+  const syncBar = () => {
+    if (!bar) return;
+    bar.style.display = selected.size ? 'flex' : 'none';
+    const c = els.content.querySelector('#inboxSelCount');
+    if (c) c.textContent = String(selected.size);
+  };
+  els.content.querySelectorAll('.inbox-check').forEach((cb) => {
+    // 체크박스 클릭이 행 클릭(상세 열기)까지 번지지 않게 막는다
+    cb.addEventListener('click', (ev) => ev.stopPropagation());
+    cb.addEventListener('change', () => {
+      if (cb.checked) selected.add(cb.dataset.mailId); else selected.delete(cb.dataset.mailId);
+      syncBar();
+    });
+  });
+  els.content.querySelector('#inboxCheckAll')?.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const on = ev.target.checked;
+    els.content.querySelectorAll('.inbox-check').forEach((cb) => {
+      cb.checked = on;
+      if (on) selected.add(cb.dataset.mailId); else selected.delete(cb.dataset.mailId);
+    });
+    syncBar();
+  });
+  els.content.querySelector('#inboxSelClear')?.addEventListener('click', () => {
+    selected.clear();
+    els.content.querySelectorAll('.inbox-check, #inboxCheckAll').forEach((cb) => { cb.checked = false; });
+    syncBar();
+  });
+
+  const bulkTrash = async (restore) => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const btn = els.content.querySelector(restore ? '#inboxRestoreBtn' : '#inboxTrashBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '처리 중…'; }
+    try {
+      const r = await safeJsonFetch('/api/mail/trash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mailIds: ids, restore }),
+      });
+      selected.clear();
+      _mailGroupsCache = null;       // 폴더별 통수가 바뀐다
+      await loadMailCounts(true);
+      render();
+      // 결과는 화면 숫자로 바로 보이므로 alert 은 되돌리기 안내만 남긴다
+      if (!restore) console.log(`[inbox] ${r.moved}통 휴지통으로`);
+    } catch (e) {
+      alert(`처리 실패: ${e.message || e}`);
+      if (btn) { btn.disabled = false; btn.textContent = restore ? '↩ 받은함으로 되돌리기' : '🗑 휴지통으로'; }
+    }
+  };
+  // 고른 메일을 거래처 폴더로 옮긴다
+  els.content.querySelector('#inboxMoveGroup')?.addEventListener('change', async (ev) => {
+    const sel = ev.target;
+    const val = sel.value;
+    if (!val || !selected.size) { sel.selectedIndex = 0; return; }
+    const group = val === '__none__' ? '' : val;
+    const label = group || '미분류';
+    if (!confirm(`선택한 ${selected.size}통을 [${label}] 로 옮깁니다.
+
+직접 옮긴 분류는 자동 재분류가 덮지 않습니다.`)) {
+      sel.selectedIndex = 0;
+      return;
+    }
+    try {
+      const r = await safeJsonFetch('/api/mail/move-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mailIds: [...selected], group }),
+      });
+      selected.clear();
+      _mailGroupsCache = null;      // 폴더별 통수가 바뀐다
+      await loadMailCounts(true);
+      render();
+      console.log(`[inbox] ${r.moved}통 → ${r.group}`);
+    } catch (e) {
+      alert(`이동 실패: ${e.message || e}`);
+      sel.selectedIndex = 0;
+    }
+  });
+
+  els.content.querySelector('#inboxTrashBtn')?.addEventListener('click', () => bulkTrash(false));
+  els.content.querySelector('#inboxRestoreBtn')?.addEventListener('click', () => bulkTrash(true));
+
+  // 거래처 폴더 선택 (휴지통 포함)
   els.content.querySelectorAll('.inbox-group').forEach((btn) => {
     btn.addEventListener('click', () => {
-      _inboxState.group = btn.dataset.group;
+      const g = btn.dataset.group;
+      if (g === '__trash__') {
+        // 휴지통은 폴더 필터가 아니라 "치운 것만" 이라는 별도 축이다
+        _inboxState.trashed = true;
+        _inboxState.group = '';
+      } else {
+        _inboxState.trashed = false;
+        _inboxState.group = g;
+      }
       _inboxState.page = 1;
       render();
     });
@@ -4439,7 +4818,11 @@ async function renderDeadlinesPage() {
   els.content.innerHTML = `<div class="inline-loader">기한 불러오는 중…</div>`;
   let data;
   try {
-    data = await safeJsonFetch('/api/mail/deadlines');
+    // 대표 계정 기준으로 — 사이드바 배지와 같은 계정을 봐야 숫자가 맞는다
+    await loadInboxAccounts();
+    data = await safeJsonFetch(
+      `/api/mail/deadlines?accountId=${encodeURIComponent(currentMailboxAccountId())}`,
+    );
   } catch (e) {
     els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
     return;
@@ -4503,6 +4886,13 @@ async function renderDeadlinesPage() {
          <p>상대가 "by Friday", "3영업일 내" 같은 표현을 쓰면 자동으로 여기에 모입니다.</p></div>`;
 }
 
+
+/**
+ * 예약된 발송을 발송함 화면에 펼쳐 보여준다.
+ *
+ * "언제 · 어디로 나가는가"가 안 보이면 예약은 그냥 블랙박스다.
+ * 날짜별로 묶어서, 그 날 나갈 회사를 이름까지 늘어놓는다.
+ */
 // ── AI 번역 (화면 어디서나) ───────────────────────────────────
 //
 // 화면 곳곳에 영문이 그대로 남아 있다 — 메일 제목·본문, 리드 근거 문장 등.
@@ -4603,7 +4993,7 @@ document.addEventListener('click', async (ev) => {
 //
 // 클라이언트가 원래 가지고 있던 CSV 업로드분(5천여 건). 대부분 중복 정리로
 // 보관함에 들어가 있지만 지운 것이 아니라, "이건 살려서 보내자" 싶은 걸
-// 골라 발송대기로 되돌릴 수 있게 한다.
+// 골라 검증 완료로 되돌릴 수 있게 한다.
 var _legacy = { batch: '', page: 1, q: '', country: '', sel: new Set() };
 
 async function renderLegacyPage() {
@@ -4631,10 +5021,23 @@ async function renderLegacyPage() {
       return m ? `${m[1]}-${m[2]}-${m[3]}` : '날짜 미상';
     };
     els.content.innerHTML = `
-      <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6">
-        예전에 올린 엑셀 데이터입니다. 중복 정리로 대부분 보관함에 있지만 <b>지워진 것은 아닙니다.</b>
-        보낼 만한 곳을 골라 [발송 대기]로 되돌릴 수 있습니다.
+      <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:13px;
+                  padding:17px 20px;margin-bottom:15px">
+        <div style="font-size:15px;font-weight:800;color:var(--text-primary);margin-bottom:5px">
+          올린 파일별로 나뉘어 있습니다
+        </div>
+        <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.75">
+          엑셀로 올린 데이터는 <b>올린 날짜별 폴더</b>로 들어옵니다. 여기서 사라지지 않습니다.<br>
+          보낼 만한 곳을 골라 <b>[검증 완료]</b> 로 되돌리면 발송 대상이 됩니다.
+        </div>
+        <div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border-subtle);
+                    font-size:12px;color:var(--text-tertiary);line-height:1.7">
+          같은 파일을 여러 번 올려 생긴 <b>완전 사본은 정리했습니다</b>
+          (회사명·이메일·국가가 모두 같은 건만). 국가나 연락처가 다르면 다른 업체로 보고 남겨 뒀습니다.
+        </div>
       </div>
+      <div style="font-size:11px;font-weight:800;color:var(--text-quaternary);letter-spacing:.04em;
+                  margin:0 2px 8px">📁 올린 파일 (${d.batches.length}개)</div>
       <div style="display:flex;flex-direction:column;gap:9px">
         ${d.batches.map((b) => `
           <div class="legacy-batch" data-batch="${escapeAttr(b._id || '')}"
@@ -4667,7 +5070,7 @@ async function renderLegacyPage() {
   const rows = d.items.map((l) => {
     const on = _legacy.sel.has(l.leadId);
     const why = l.dedupReason || l.bulkMoveReason || '';
-    return `<tr>
+    return `<tr class="legacy-row" data-oid="${escapeAttr(String(l._id))}" data-lead="${escapeAttr(l.leadId)}" style="cursor:pointer">
       <td style="width:34px"><input type="checkbox" class="lg-check" data-lead="${escapeAttr(l.leadId)}" ${on ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer"></td>
       <td>
         <div style="font-size:13px;font-weight:700;color:var(--text-primary)">${escapeHtml(l.Company || '')}</div>
@@ -4677,7 +5080,7 @@ async function renderLegacyPage() {
       <td style="white-space:nowrap;font-size:12px;color:var(--text-secondary)">${escapeHtml(l.Country || '')}</td>
       <td style="font-size:12px;color:var(--text-secondary)">${escapeHtml(String(l.Type || '').slice(0, 26))}</td>
       <td>${websiteLinkHtml(l.WebsiteContact, { short: true })}</td>
-      <td style="white-space:nowrap;font-size:11px;color:var(--text-tertiary)">${escapeHtml(l.stage || '')}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-tertiary)">${escapeHtml((STAGE_STYLE[l.stage] || {}).label || l.stage || '')}</td>
     </tr>`;
   }).join('');
 
@@ -4693,9 +5096,20 @@ async function renderLegacyPage() {
         ${(d.countries || []).map((c) => `<option value="${escapeAttr(c._id || '')}" ${_legacy.country === c._id ? 'selected' : ''}>${escapeHtml(c._id || '(없음)')} (${c.n})</option>`).join('')}
       </select>
       <span style="font-size:12px;color:var(--text-tertiary)">총 ${d.total.toLocaleString()}건</span>
-      <button class="button" id="lgMove" type="button" style="margin-left:auto" disabled>
-        선택한 <span id="lgCount">0</span>건 → 발송 대기로
+      <button type="button" id="lgSelectAll"
+        style="font-size:12px;padding:7px 13px;border:1px solid var(--border-default);border-radius:8px;
+               background:var(--bg-surface);color:var(--text-secondary);cursor:pointer;white-space:nowrap">
+        이 페이지 전체 선택
       </button>
+      <button id="lgMove" type="button" disabled
+        style="margin-left:auto;font-size:13.5px;font-weight:700;padding:10px 18px;border:none;
+               border-radius:9px;white-space:nowrap;background:#94a3b8;color:#fff;cursor:default">
+        선택한 <span id="lgCount">0</span>건 → ✅ 검증 완료로
+      </button>
+    </div>
+    <div style="font-size:12px;color:var(--text-tertiary);margin:-4px 2px 10px;line-height:1.6">
+      보낼 만한 곳을 체크한 뒤 오른쪽 버튼을 누르면 <b>[✅ 검증 완료]</b> 로 올라갑니다.
+      거기서 다시 <b>발송 리스트</b>로 옮겨야 실제 발송 대상이 됩니다.
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th></th><th>회사</th><th>국가</th><th>업종</th><th>웹사이트</th><th>상태</th></tr></thead>
@@ -4705,16 +5119,45 @@ async function renderLegacyPage() {
 
   const syncBtn = () => {
     const n = _legacy.sel.size;
+    const btn = els.content.querySelector('#lgMove');
     els.content.querySelector('#lgCount').textContent = String(n);
-    els.content.querySelector('#lgMove').disabled = n === 0;
+    btn.disabled = n === 0;
+    // disabled 속성만으로는 눌러도 되는 버튼처럼 보인다 — 색으로도 알린다
+    btn.style.background = n ? '#15803d' : '#94a3b8';
+    btn.style.cursor = n ? 'pointer' : 'default';
+    btn.style.boxShadow = n ? '0 2px 8px rgba(21,128,61,.3)' : 'none';
   };
   els.content.querySelectorAll('.lg-check').forEach((cb) => {
+    cb.addEventListener('click', (ev) => ev.stopPropagation());   // 체크가 행 클릭으로 번지지 않게
     cb.addEventListener('change', () => {
       if (cb.checked) _legacy.sel.add(cb.dataset.lead); else _legacy.sel.delete(cb.dataset.lead);
       syncBtn();
     });
   });
+
+  // 행 클릭 → 검증 완료와 같은 상세 팝업.
+  // 이 리드들은 화면 목록(baseLeads)에 없어서 _id 로 직접 받아온다.
+  els.content.querySelectorAll('.legacy-row').forEach((tr) => {
+    tr.addEventListener('click', (ev) => {
+      if (ev.target.closest('input, a, button')) return;
+      openLeadPopupByObjectId(tr.dataset.oid, tr.dataset.lead);
+    });
+  });
   syncBtn();
+
+  // 이 페이지에 보이는 것만 토글한다 — 전체 256건을 한 번에 잡으면
+  // 확인 없이 옮기게 되고, 되돌리려면 하나씩 빼야 한다.
+  els.content.querySelector('#lgSelectAll')?.addEventListener('click', (ev) => {
+    const boxes = [...els.content.querySelectorAll('.lg-check')];
+    const allOn = boxes.length > 0 && boxes.every((cb) => cb.checked);
+    boxes.forEach((cb) => {
+      cb.checked = !allOn;
+      if (cb.checked) _legacy.sel.add(cb.dataset.lead);
+      else _legacy.sel.delete(cb.dataset.lead);
+    });
+    ev.currentTarget.textContent = allOn ? '이 페이지 전체 선택' : '이 페이지 선택 해제';
+    syncBtn();
+  });
 
   els.content.querySelector('#lgBack').addEventListener('click', () => {
     _legacy.batch = ''; _legacy.sel.clear(); renderLegacyPage();
@@ -4730,7 +5173,7 @@ async function renderLegacyPage() {
 
   els.content.querySelector('#lgMove').addEventListener('click', async (e) => {
     const ids = [..._legacy.sel];
-    if (!confirm(`${ids.length}건을 발송 대기로 옮깁니다.\n\n옮긴 건은 바로 발송 대상이 됩니다.\n진행할까요?`)) return;
+    if (!confirm(`${ids.length}건을 검증 완료로 옮깁니다.\n\n옮긴 건은 바로 발송 대상이 됩니다.\n진행할까요?`)) return;
     e.currentTarget.disabled = true;
     e.currentTarget.textContent = '이동 중…';
     try {
@@ -4739,7 +5182,7 @@ async function renderLegacyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadIds: ids }),
       });
-      alert(`${r.moved}건을 발송 대기로 옮겼습니다.${r.skipped ? `\n(이메일 없는 ${r.skipped}건은 제외)` : ''}\n\n발송 대기 총 ${r.verified}건`);
+      alert(`${r.moved}건을 검증 완료로 옮겼습니다.${r.skipped ? `\n(이메일 없는 ${r.skipped}건은 제외)` : ''}\n\n검증 완료 총 ${r.verified}건`);
       _legacy.sel.clear();
       invalidateServerPage();
       loadStageCounts(true);
@@ -4824,7 +5267,7 @@ async function renderReviewPage() {
       <div class="empty-detail" style="padding:44px 24px">
         <div style="font-size:52px;margin-bottom:10px">🎉</div>
         <h3>${_review.category === 'all' ? '검토할 회사가 없습니다' : `[${escapeHtml(REVIEW_CATEGORY[_review.category] || _review.category)}] 검토 완료`}</h3>
-        <p>승인된 <b>${_review.approved.toLocaleString()}건</b>은 [✅ 발송 대기]에서 메일을 보낼 수 있습니다.</p>
+        <p>승인된 <b>${_review.approved.toLocaleString()}건</b>은 [✅ 검증 완료]에서 메일을 보낼 수 있습니다.</p>
         <p style="margin-top:6px">이번에 <b>${_review.done}건</b>을 판단하셨습니다. 위에서 다른 분류를 고르면 이어서 볼 수 있습니다.</p>
       </div>`;
     bindReviewCategoryTabs();
@@ -4866,25 +5309,35 @@ async function renderReviewPage() {
                        font-size:12px;font-weight:700;color:var(--text-secondary)">${escapeHtml(lead.Country || '—')}</span>
           ${lead.Category ? `<span style="flex:none;padding:4px 11px;background:#eef2ff;border-radius:99px;
                        font-size:12px;font-weight:700;color:#4338ca">${escapeHtml(REVIEW_CATEGORY[lead.Category] || lead.Category)}</span>` : ''}
+          ${lead.recoScore ? `<span title="발송 우선순위 점수" style="flex:none;padding:4px 10px;background:#ecfdf5;
+                       border-radius:99px;font-size:12px;font-weight:800;color:#047857">추천 ${lead.recoScore}</span>` : ''}
         </div>
         ${site ? `<a href="${escapeAttr(urlFor(site))}" target="_blank" rel="noreferrer"
              style="font-size:13px;color:#2563eb;text-decoration:none;word-break:break-all">${escapeHtml(site)} ↗</a>` : ''}
 
         <div style="margin-top:16px">
           ${row('이메일', escapeHtml(lead.Email || ''))}
-          ${row('업종', escapeHtml(lead.Type || ''))}
+          ${row('업종', escapeHtml(lead.TypeKo || lead.Type || ''))}
           ${row('전화', escapeHtml(lead.Phone || ''))}
           ${row('취급', escapeHtml(String(lead.BrandsChannels || '').slice(0, 300)))}
         </div>
 
-        ${lead.Evidence ? `
+        ${lead.Evidence || lead.EvidenceKo ? `
           <div style="margin-top:16px;padding:13px 15px;background:var(--bg-surface-alt);border-radius:10px">
             <div style="font-size:10.5px;font-weight:800;color:var(--text-tertiary);
                         text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">왜 이 회사인가</div>
-            <div style="font-size:13px;line-height:1.65;color:var(--text-secondary);white-space:pre-wrap">${escapeHtml(String(lead.Evidence).slice(0, 700))}</div>
-            ${translateBtnHtml(String(lead.Evidence).slice(0, 700), { inline: true })}
+            <!-- 한국어본이 있으면 그것을 보여준다. 쓰는 사람이 전부 한국인이라
+                 영문을 매번 번역 버튼으로 여는 건 손이 많이 간다. -->
+            <div style="font-size:13px;line-height:1.65;color:var(--text-secondary);white-space:pre-wrap">${escapeHtml(String(lead.EvidenceKo || lead.Evidence).slice(0, 700))}</div>
+            ${lead.EvidenceKo ? '' : translateBtnHtml(String(lead.Evidence).slice(0, 700), { inline: true })}
             ${lead.Sources ? `<div style="margin-top:8px;font-size:11.5px;color:var(--text-quaternary);word-break:break-all">
               출처 · ${escapeHtml(String(lead.Sources).slice(0, 300))}</div>` : ''}
+          </div>` : ''}
+
+        ${(lead.recoReasons || []).length ? `
+          <div style="margin-top:12px;display:flex;gap:5px;flex-wrap:wrap">
+            ${lead.recoReasons.map((r) => `<span style="padding:3px 9px;background:var(--bg-surface-alt);
+              border-radius:99px;font-size:11px;color:var(--text-secondary)">${escapeHtml(r)}</span>`).join('')}
           </div>` : ''}
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px">
@@ -5005,7 +5458,7 @@ async function renderTrashPage() {
         </div>
         <div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(m.from?.address || '')}</div>
       </td>
-      <td style="white-space:nowrap"><span style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${cls.label}</span></td>
+      <td style="white-space:nowrap"><span title="${escapeAttr(cls.desc || '')}" style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;cursor:help">${cls.label}</span></td>
       <td style="white-space:nowrap;color:var(--text-quaternary);font-size:11px">${dt(m.trashedAt)} 치움</td>
     </tr>`;
   }).join('');
@@ -5071,8 +5524,43 @@ async function renderTrashPage() {
 
 // ── 메일 상세 모달 ────────────────────────────────────────────
 function closeMailDetailModal() {
-  document.getElementById('mailDetailRoot')?.remove();
+  const el = document.getElementById('mailDetailRoot');
+  if (!el) return;                 // 열려 있지 않으면 잠금 카운트를 건드리지 않는다
+  el.remove();
+  unlockBodyScroll();
 }
+
+
+// ── 팝업 배경 스크롤 잠금 ─────────────────────────────────────
+//
+// 모달 안에서 스크롤하다 끝에 닿으면 뒤 목록이 이어서 움직인다(스크롤 체이닝).
+// 닫고 나면 보던 자리가 아닌 곳에 가 있어서 "어디였지"가 된다.
+//
+// 열고 닫는 지점이 20군데가 넘어 카운터로 세면 한 곳만 빠져도 화면이
+// 영영 잠긴다. 그래서 세지 않고 **지금 열려 있는 게 있나** 를 DOM 에서
+// 직접 본다 — 몇 번을 불러도 결과가 같아 어긋날 여지가 없다.
+//
+// 잠글 때 스크롤바가 사라지며 화면이 옆으로 튀는 것도 같이 막는다:
+// 사라지는 스크롤바 폭을 재서 padding 으로 메운다.
+function syncBodyScrollLock() {
+  const open = Boolean(
+    document.getElementById('mailDetailRoot') ||
+    document.getElementById('conversationModalRoot') ||
+    document.getElementById('sendLogicModalRoot') ||
+    document.getElementById('outboxPeekRoot') ||
+    [...document.querySelectorAll('.modal-backdrop')].some((el) => el.style.display === 'flex'),
+  );
+  if (open) {
+    const w = window.innerWidth - document.documentElement.clientWidth;
+    document.documentElement.style.setProperty('--scrollbar-w', `${Math.max(0, w)}px`);
+  } else {
+    document.documentElement.style.removeProperty('--scrollbar-w');
+  }
+  document.body.classList.toggle('modal-open', open);
+}
+// 이름을 그대로 두어 기존 호출부가 계속 동작하게 한다
+const lockBodyScroll = syncBodyScrollLock;
+const unlockBodyScroll = syncBodyScrollLock;
 
 async function openMailDetailModal(mailId) {
   closeMailDetailModal();
@@ -5083,6 +5571,7 @@ async function openMailDetailModal(mailId) {
   root.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:860px;width:100%;
     max-height:88vh;padding:40px;text-align:center;color:#64748b;font-size:14px">메일 불러오는 중…</div>`;
   document.body.appendChild(root);
+  lockBodyScroll();
 
   let data;
   try {
@@ -5115,7 +5604,10 @@ async function openMailDetailModal(mailId) {
     </div>` : `
     <div style="margin:12px 0;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
                 font-size:11.5px;color:#64748b">
-      AI 분석 전입니다 — 목록의 <b>🧠 AI 분석</b> 을 누르면 한글 번역·요약·기한이 붙습니다.
+      아직 분석하지 않은 메일입니다.
+      위의 <b>🧠 AI 분석</b> 을 누르면 <b>한글 번역까지 한 번에</b> 같이 진행됩니다
+      — 번역 · 요약 · 회신 필요 여부 · 회신 기한이 함께 붙습니다.
+      <br>본문만 한글로 보고 싶으면 본문 아래 <b>🌐 AI 번역</b> 을 누르세요 (더 저렴합니다).
     </div>`;
 
   const transBlock = m.translation?.body ? `
@@ -5141,7 +5633,7 @@ async function openMailDetailModal(mailId) {
       <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:12px">
         <div style="min-width:0">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
-            <span style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${cls.label}</span>
+            <span title="${escapeAttr(cls.desc || '')}" style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;cursor:help">${cls.label}</span>
             ${m.group ? `<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">📁 ${escapeHtml(m.group)}</span>` : ''}
             ${replied
               ? `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">✅ 회신함${m.repliedOutside ? ' (웹메일)' : ''}</span>`
@@ -5158,6 +5650,16 @@ async function openMailDetailModal(mailId) {
                      background:#16a34a;color:#fff;font-weight:700;cursor:pointer">💬 대화 전체</button>
           </div>` : ''}
         </div>
+        <!-- 한 통만 분석한다. 목록의 일괄 분석 버튼은 뺐지만(비용이 예측되지 않아서)
+             건당 1회는 비용이 정해져 있어 남겨둔다. -->
+        ${m.analysis?.method === 'ai' ? '' : `<button type="button" id="mdAnalyze"
+          style="padding:5px 11px;font-size:11.5px;font-weight:700;border:1px solid #c7d2fe;
+                 border-radius:7px;background:#eef2ff;color:#4338ca;cursor:pointer;white-space:nowrap"
+          title="이 메일 한 통만 — 한글 번역 + 요약 + 회신 필요 여부 + 기한을 한 번에. 누를 때만 비용이 발생합니다">🧠 AI 분석 (번역 포함)</button>`}
+        <button type="button" id="mdFullscreen"
+          style="padding:5px 11px;font-size:11.5px;font-weight:700;border:1px solid var(--border-default);
+                 border-radius:7px;background:#fff;color:#475569;cursor:pointer;white-space:nowrap"
+          title="편지를 화면 전체로 보기 (Esc 로 되돌리기)">⛶ 전체 보기</button>
         <button type="button" id="mailDetailClose"
           style="background:none;border:none;font-size:22px;color:#94a3b8;cursor:pointer;line-height:1;padding:0 4px">×</button>
       </div>
@@ -5190,6 +5692,52 @@ async function openMailDetailModal(mailId) {
     </div>`;
 
   root.querySelector('#mailDetailClose')?.addEventListener('click', closeMailDetailModal);
+
+  // 전체 보기 — 긴 편지는 팝업 안에서 좁게 읽기 힘들다
+  const fsBtn = root.querySelector('#mdFullscreen');
+  fsBtn?.addEventListener('click', () => {
+    const on = root.classList.toggle('mail-full');
+    fsBtn.textContent = on ? '⤡ 창으로 보기' : '⛶ 전체 보기';
+  });
+  // Esc — 전체 보기 중이면 창으로 되돌리고, 아니면 팝업을 닫는다
+  root.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    if (root.classList.contains('mail-full')) {
+      root.classList.remove('mail-full');
+      if (fsBtn) fsBtn.textContent = '⛶ 전체 보기';
+    } else closeMailDetailModal();
+  });
+  root.tabIndex = -1;
+  root.focus();
+
+  // 이 메일 한 통만 AI 분석 (번역까지 함께)
+  const anBtn = root.querySelector('#mdAnalyze');
+  anBtn?.addEventListener('click', async () => {
+    const msg = [
+      '이 메일 한 통을 AI로 분석합니다.',
+      '',
+      '한글 번역 + 요약 + 회신 필요 여부 + 기한이 한 번에 붙습니다.',
+      '비용은 메일 길이에 따라 대략 ₩5~20입니다.',
+      '',
+      '진행할까요?',
+    ].join('\n');
+    if (!confirm(msg)) return;
+    anBtn.disabled = true;
+    anBtn.textContent = '분석 중…';
+    try {
+      await safeJsonFetch('/api/mail/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mailIds: [m.id] }),
+      });
+      loadMailCounts(true);
+      openMailDetailModal(m.id);   // 결과를 반영해 다시 그린다
+    } catch (e) {
+      alert(`분석 실패: ${e.message || e}`);
+      anBtn.disabled = false;
+      anBtn.textContent = '🧠 AI 분석 (번역 포함)';
+    }
+  });
   root.addEventListener('click', (ev) => { if (ev.target === root) closeMailDetailModal(); });
 
   const patch = async (body, okMsg) => {
@@ -5452,7 +6000,10 @@ async function renderMailSettingsPage() {
 // 답장이 오간 뒤부터는 "어느 회사냐" 보다 "무슨 얘기가 오갔냐" 가 중요하므로,
 // 회사 목록이 아니라 메일 대화 형식으로 읽게 한다.
 function closeConversationModal() {
-  document.getElementById('conversationModalRoot')?.remove();
+  const el = document.getElementById('conversationModalRoot');
+  if (!el) return;
+  el.remove();
+  unlockBodyScroll();
 }
 
 async function openConversationModal(leadId) {
@@ -5469,6 +6020,7 @@ async function openConversationModal(leadId) {
       <div style="padding:40px;text-align:center;color:#64748b;font-size:14px">대화를 불러오는 중…</div>
     </div>`;
   document.body.appendChild(root);
+  lockBodyScroll();
 
   let data;
   try {
@@ -5929,14 +6481,16 @@ function outreachApprovalCellHtml(lead) {
     return `<span style="font-size:10px;color:#9ca3af">—</span>`;
   }
   const on = lead.readyForOutreach === true;
+  // white-space:nowrap 이 없으면 좁은 칸에서 "승/인/됨" 으로 세로로 쪼개진다
   return `
-    <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:11px" onclick="event.stopPropagation()">
+    <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11.5px;
+                  white-space:nowrap" onclick="event.stopPropagation()">
       <input type="checkbox" class="outreach-approval"
         data-approve-lead="${escapeAttr(lead.id)}"
         ${on ? 'checked' : ''}
-        style="width:14px;height:14px;cursor:pointer">
+        style="width:14px;height:14px;cursor:pointer;flex:none">
       <span style="color:${on ? '#166534' : '#6b7280'};font-weight:${on ? '700' : '400'}">
-        ${on ? '✓ 승인됨' : '승인'}
+        ${on ? '승인됨' : '승인'}
       </span>
     </label>
   `;
@@ -5998,36 +6552,82 @@ function sourceBatchBadgeHtml(lead) {
   </span>`;
 }
 
-function rowHtml(lead) {
+// rank: 추천순 정렬일 때만 넘어온다. null 이면 순위 칸을 그리지 않는다
+// (다른 화면에서도 이 함수를 쓰므로 헤더에 순위 열이 없을 때 칸이 밀리면 안 된다)
+function rowHtml(lead, rank) {
   const selected = lead.id === state.selectedId ? "selected" : "";
   const checked = state.selectedLeadIds.has(lead.id) ? "checked" : "";
+  // 점수 자체보다 "왜 위인지"가 중요하다 — 근거를 툴팁으로 붙인다
+  const rankCell = rank == null ? '' : `
+      <td style="text-align:center;white-space:nowrap"
+          title="${escapeAttr((lead.recoReasons || []).join(' · ') || '근거 없음')}">
+        <div style="font-size:13px;font-weight:800;color:var(--text-primary)">${rank}</div>
+        <div style="font-size:9.5px;color:var(--text-quaternary)">${lead.recoScore ?? '-'}점</div>
+      </td>`;
   return `
     <tr data-id="${escapeHtml(lead.id)}" class="${selected}">
       <td>
         <input class="lead-select" data-select-lead="${escapeAttr(lead.id)}" type="checkbox" ${checked} aria-label="Select ${escapeAttr(lead.Company)}">
-      </td>
+      </td>${rankCell}
       <td>
         <div class="company-cell">
           <strong>${escapeHtml(lead.Company)}</strong>
-          <span class="meta-line">${escapeHtml(truncate(lead.Type, 74))}</span>
-          ${conversationButtonHtml(lead)}
-          <div>${updatedInfoBadgeHtml(lead)}${sourceBatchBadgeHtml(lead)}</div>
+          <!-- 업종은 한국어본이 있으면 그걸 쓴다 (TypeKo). 없으면 원문.
+               배치 날짜 배지(📁 26/09/08)는 뺐다 — 우리 쪽 관리용이라
+               클라이언트가 보낼지 말지 판단하는 데는 쓰이지 않는데,
+               회사명 바로 아래를 차지해 정작 업종이 안 보였다. -->
+          <span class="meta-line">${escapeHtml(truncate(lead.TypeKo || lead.Type, 74))}</span>
+          ${conversationButtonHtml(lead)}${updatedInfoBadgeHtml(lead)}
         </div>
       </td>
-      <td>${escapeHtml(lead.Country)}</td>
+      <td style="font-size:12.5px;color:var(--text-secondary);line-height:1.35">${escapeHtml(lead.Country)}</td>
+      <td class="cell-ellipsis" title="${escapeAttr(lead.Email || '')}">${emailCell(lead.Email)}</td>
+      <!-- 홈페이지를 한눈에 보는 게 판단에 제일 크다 — 전화보다 앞에, 더 넓게. -->
+      <td class="cell-ellipsis" title="${escapeAttr(lead.WebsiteContact || '')}">${websiteLinkHtml(lead.WebsiteContact, { short: true })}</td>
+      <!-- 전화번호에 "+48 222 662 877 (B2B/wholesale) / +48 22 602 28 32 (retail…)"
+           같은 긴 값이 들어와 표를 옆으로 밀어냈다. 잘라 보여주고 전체는 툴팁으로. -->
+      <td class="cell-ellipsis" style="font-size:12px;color:var(--text-tertiary)"
+          title="${escapeAttr(lead.Phone || '')}">${escapeHtml(lead.Phone || '—')}</td>
+      <!-- 단계 이동 —— 클라이언트가 "이 업체는 아닌데" 싶을 때 여기서 넘긴다.
+           Stage 열을 뺄 때 같이 사라졌던 기능이라 되살렸다. -->
       <td>${stageCellHtml(lead)}</td>
-      <td>${outreachApprovalCellHtml(lead)}</td>
-      <td><span class="badge ${badgeClass(lead.Priority)}">${escapeHtml(lead.Priority || "-")}</span></td>
-      <td>${verifyBadgeHtml(lead)}</td>
-      <td>${escapeHtml(truncate(lead.BuyerContact || lead.Phone || "No public contact", 70))}</td>
-      <td>${emailCell(lead.Email)}</td>
-      <td>${websiteLinkHtml(lead.WebsiteContact, { short: true })}</td>
     </tr>
   `;
 }
 
+// 팝업으로 열어본 리드를 담아두는 곁방 캐시.
+//
+// baseLeads 는 현재 파이프라인 화면에 보이는 리드만 담는다. 여기에 보관함
+// 리드를 밀어 넣으면 상단 통계·필터 숫자가 같이 틀어지므로 섞지 않는다.
+// 상세 팝업만 이 캐시를 함께 뒤진다.
+var _popupLeadCache = [];
+
 function getLeads() {
   return baseLeads.filter(lead => !lead.deleted);
+}
+
+/** 상세 팝업이 찾는 범위 — 화면 목록 + 팝업으로 열어본 것 */
+function findLeadForPopup(id) {
+  return getLeads().find(l => l.id === id)
+      || _popupLeadCache.find(l => l.id === id);
+}
+
+/**
+ * leadId 든 _id 든 받아서 상세 팝업을 띄운다.
+ * 화면 목록에 없는 리드(보관함·기존 데이터)도 열 수 있다.
+ */
+async function openLeadPopupByObjectId(oid, fallbackLeadId) {
+  const cached = fallbackLeadId ? findLeadForPopup(fallbackLeadId) : null;
+  if (cached) { openEditModal(cached.id); return; }
+  try {
+    const r = await safeJsonFetch(`/api/leads/${oid}`);
+    if (!r?.lead) throw new Error('리드를 찾을 수 없습니다');
+    const lead = { ...r.lead, id: r.lead.leadId };
+    _popupLeadCache = _popupLeadCache.filter(l => l.id !== lead.id).concat(lead);
+    openEditModal(lead.id);
+  } catch (e) {
+    alert(`불러오기 실패: ${e.message || e}`);
+  }
 }
 
 // ── Stage 변경 핸들러 ───────────────────────────────────────
@@ -6272,7 +6872,8 @@ function aiVerdictBadgeHtml(lead) {
     'not-buyer':    { bg: '#fee2e2', fg: '#991b1b', bd: '#ef4444', label: '🧠 무관' },
   }[verdict] || { bg: '#f1f5f9', fg: '#475569', bd: '#94a3b8', label: '🧠 AI 검증됨' };
 
-  const tip = `AI 판정: ${verdict || '?'} (${conf || '?'})\n검증 완료: ${absTime || '?'}\n\n${fullReasoning}`;
+  // '검증 완료' 는 이제 단계 이름이라 여기서 쓰면 "그 단계로 갔다"는 뜻으로 읽힌다
+  const tip = `AI 판정: ${verdict || '?'} (${conf || '?'})\n검증 시각: ${absTime || '?'}\n\n${fullReasoning}`;
 
   return `<div style="margin-top:3px;display:flex;flex-direction:column;gap:2px;align-items:flex-start" title="${escapeAttr(tip)}">
     <span style="display:inline-block;padding:1px 6px;border-radius:99px;background:${style.bg};color:${style.fg};font-size:10px;font-weight:700;border:1px solid ${style.bd}40">${style.label}</span>
@@ -6486,6 +7087,9 @@ async function saveTemplate() {
     await loadEmailTemplates();
     state.email.currentTemplateId = data.template._id;
     state.email.dirty = false;
+    // 저장하면 목록으로 — 여러 양식을 오가며 관리하는 화면이라
+    // 편집기에 머무르면 "저장이 됐나" 를 목록에서 확인할 수 없다.
+    state.email.mode = 'list';
   } catch (e) {
     alert('저장 실패: ' + (e.message || 'unknown'));
   } finally {
@@ -6599,7 +7203,7 @@ function ensureSuggestBox() {
 }
 
 function hideSuggest() {
-  if (_varSuggest.el) _varSuggest.el.style.display = 'none';
+  if (_varSuggest.el) _varSuggest.el.style.display = 'none'; syncBodyScrollLock();
   _varSuggest.items = [];
   _varSuggest.triggerPos = -1;
 }
@@ -6722,6 +7326,213 @@ function attachVariableAutocomplete(textareaId) {
   ta.addEventListener('blur', () => setTimeout(hideSuggest, 150));
 }
 
+
+/** 양식 용도 — 목록에서 한눈에 구분되게 */
+const TEMPLATE_PURPOSE_KO = {
+  intro: { label: '첫 소개', bg: '#e0e7ff', fg: '#3730a3' },
+  followup: { label: '팔로우업', bg: '#fef3c7', fg: '#92400e' },
+  're-engage': { label: '재접촉', bg: '#ffedd5', fg: '#9a3412' },
+  'partner-onboarding': { label: '파트너 온보딩', bg: '#f3e8ff', fg: '#6b21a8' },
+  other: { label: '기타', bg: '#f1f5f9', fg: '#475569' },
+};
+
+/**
+ * 📝 메일 양식 — 목록(게시판).
+ *
+ * 영업 담당자마다, 상황마다 쓰는 문구가 다르다. 하나만 편집하는 화면이면
+ * 그때그때 덮어쓰는 수밖에 없어서 지난 문구가 남지 않는다. 여러 개 저장해
+ * 두고 발송할 때 고르는 편이 실제 쓰임에 맞다.
+ */
+function renderTemplateListPage(templates) {
+  const list = (templates || []).slice().sort((a, b) =>
+    String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+
+  const fmt = (v) => v
+    ? new Date(v).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' })
+    : '—';
+  const strip = (h) => String(h || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  els.content.innerHTML = `
+    <div style="max-width:940px;margin:0 auto;padding-bottom:32px">
+
+      <!-- 머리말 -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+                  flex-wrap:wrap;padding:4px 2px 16px">
+        <div style="min-width:0">
+          <h3 style="margin:0;font-size:19px;font-weight:800;color:var(--text-primary);
+                     letter-spacing:-.01em">메일 양식</h3>
+          <div style="font-size:13px;color:var(--text-secondary);margin-top:5px;line-height:1.65">
+            상황별로 양식을 만들어 두고, 메일 보낼 때 골라 씁니다.
+            <code style="background:var(--brand-soft,#eef2ff);padding:2px 7px;border-radius:5px;
+                         color:var(--brand-text,#4338ca);font-weight:700;font-size:12px">[회사명]</code>
+            을 넣으면 각 회사 이름으로 바뀝니다.
+          </div>
+        </div>
+        <button id="tplNewBtn" type="button"
+          style="font-size:13.5px;font-weight:700;padding:11px 20px;white-space:nowrap;
+                 background:var(--brand,#4f46e5);color:#fff;border:none;border-radius:10px;
+                 cursor:pointer;box-shadow:0 2px 8px rgba(79,70,229,.28)">
+          + 새 양식 작성
+        </button>
+      </div>
+
+      ${!list.length ? `
+        <div style="padding:56px 28px;text-align:center;background:var(--bg-surface);
+                    border:1px dashed var(--border-default);border-radius:14px">
+          <div style="font-size:38px;margin-bottom:12px;opacity:.5">📝</div>
+          <div style="font-size:15px;font-weight:800;color:var(--text-primary)">저장된 양식이 없습니다</div>
+          <div style="font-size:13px;margin-top:7px;line-height:1.7;color:var(--text-tertiary)">
+            [+ 새 양식 작성] 을 눌러 첫 양식을 만들어 주세요.<br>
+            만든 양식은 <b style="color:var(--text-secondary)">발송 관리 → 보낼 메일</b> 에서 고를 수 있습니다.
+          </div>
+        </div>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:11px">
+          ${list.map((t) => {
+            const p = TEMPLATE_PURPOSE_KO[t.purpose] || TEMPLATE_PURPOSE_KO.other;
+            const preview = truncate(strip(t.body), 140);
+            return `
+            <div class="tpl-card" data-tpl-id="${escapeAttr(t._id)}"
+                 title="클릭하면 이 양식을 엽니다"
+                 style="position:relative;background:var(--bg-surface);
+                        border:1px solid var(--border-default);border-radius:13px;
+                        padding:17px 19px 17px 23px;cursor:pointer;overflow:hidden;
+                        box-shadow:0 1px 2px rgba(16,24,40,.04);
+                        transition:box-shadow .14s ease, border-color .14s ease, transform .14s ease">
+              <!-- 용도별 색 띠 — 목록을 훑을 때 종류가 먼저 읽히게 -->
+              <span style="position:absolute;left:0;top:0;bottom:0;width:4px;background:${p.fg};opacity:.85"></span>
+
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px">
+                <div style="min-width:0;flex:1">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <strong style="font-size:15px;font-weight:800;color:var(--text-primary);
+                                   letter-spacing:-.01em">${escapeHtml(t.name || '(이름 없음)')}</strong>
+                    <span style="padding:2px 9px;background:${p.bg};color:${p.fg};border-radius:99px;
+                                 font-size:10.5px;font-weight:800;letter-spacing:.02em">${p.label}</span>
+                    ${t.isActive === false
+                      ? '<span style="padding:2px 9px;background:var(--bg-surface-hover);color:var(--text-tertiary);border-radius:99px;font-size:10.5px;font-weight:700">사용 안 함</span>'
+                      : ''}
+                  </div>
+
+                  <div style="display:flex;align-items:baseline;gap:7px;margin-top:9px;min-width:0">
+                    <span style="font-size:10.5px;font-weight:800;color:var(--text-quaternary);
+                                 letter-spacing:.04em;flex-shrink:0">제목</span>
+                    <span style="font-size:13px;font-weight:600;color:var(--text-primary);
+                                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      ${escapeHtml(t.subject || '(제목 없음)')}
+                    </span>
+                  </div>
+
+                  <div style="font-size:12px;color:var(--text-tertiary);margin-top:7px;line-height:1.65;
+                              display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+                              overflow:hidden">
+                    ${escapeHtml(preview) || '(본문 없음)'}
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0">
+                  <span style="font-size:11px;color:var(--text-quaternary);white-space:nowrap">
+                    ${fmt(t.updatedAt)} 수정
+                  </span>
+                  <div style="display:flex;gap:6px">
+                    <button type="button" class="tpl-copy" data-tpl-id="${escapeAttr(t._id)}"
+                      title="이 양식을 복사해 새로 만듭니다"
+                      style="font-size:11.5px;font-weight:600;padding:6px 12px;
+                             border:1px solid var(--border-default);border-radius:8px;
+                             background:var(--bg-surface);color:var(--text-secondary);cursor:pointer">복사</button>
+                    <button type="button" class="tpl-del" data-tpl-id="${escapeAttr(t._id)}"
+                      title="이 양식을 삭제합니다"
+                      style="font-size:11.5px;font-weight:600;padding:6px 12px;
+                             border:1px solid var(--border-default);border-radius:8px;
+                             background:var(--bg-surface);color:#dc2626;cursor:pointer">삭제</button>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+
+        <div style="margin-top:16px;padding:13px 17px;background:var(--bg-surface-alt);
+                    border:1px solid var(--border-subtle);border-radius:11px;
+                    font-size:12px;color:var(--text-tertiary);line-height:1.7">
+          💡 비슷한 문구가 필요하면 <b style="color:var(--text-secondary)">복사</b> 로 변형본을 만드세요.
+          담당자마다, 상황마다 다른 양식을 따로 두고 발송할 때 고르면 됩니다.
+        </div>
+      `}
+    </div>`;
+
+  // 카드 hover — 인라인 스타일이라 CSS 선택자 대신 직접 건다
+  els.content.querySelectorAll('.tpl-card').forEach((el) => {
+    el.addEventListener('mouseenter', () => {
+      el.style.boxShadow = '0 4px 14px rgba(16,24,40,.09)';
+      el.style.borderColor = 'var(--brand,#4f46e5)';
+      el.style.transform = 'translateY(-1px)';
+    });
+    el.addEventListener('mouseleave', () => {
+      el.style.boxShadow = '0 1px 2px rgba(16,24,40,.04)';
+      el.style.borderColor = 'var(--border-default)';
+      el.style.transform = 'none';
+    });
+  });
+
+  document.getElementById('tplNewBtn')?.addEventListener('click', () => openTemplateEditor(null));
+
+  els.content.querySelectorAll('.tpl-card').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.tpl-del') || e.target.closest('.tpl-copy')) return;
+      openTemplateEditor(el.dataset.tplId);
+    });
+  });
+
+  els.content.querySelectorAll('.tpl-copy').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const t = (state.email.templates || []).find((x) => x._id === b.dataset.tplId);
+      if (!t) return;
+      // 복사본은 저장 전 상태로 연다 — currentTemplateId 를 비워 POST 로 나가게 한다
+      openTemplateEditor(null, { ...t, _id: undefined, name: `${t.name} (복사본)` });
+    });
+  });
+
+  els.content.querySelectorAll('.tpl-del').forEach((b) => {
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const t = (state.email.templates || []).find((x) => x._id === b.dataset.tplId);
+      if (!t) return;
+      if (!confirm(`양식 "${t.name}" 을(를) 삭제합니다.\n되돌릴 수 없습니다. 진행할까요?`)) return;
+      try {
+        const r = await safeJsonFetch(`/api/email-templates/${t._id}`, { method: 'DELETE' });
+        if (!r?.success) throw new Error(r?.error || '삭제 실패');
+        await loadEmailTemplates();
+        if (state.email.currentTemplateId === t._id) state.email.currentTemplateId = null;
+        renderB2BEmailManager();
+      } catch (err) {
+        alert('삭제 실패: ' + (err.message || 'unknown'));
+      }
+    });
+  });
+}
+
+/** 목록에서 하나를 열거나(id) 새로 쓴다(null). seed 는 복사본용 초기값. */
+function openTemplateEditor(id, seed) {
+  const t = seed || (id ? (state.email.templates || []).find((x) => x._id === id) : null);
+  state.email.currentTemplateId = seed ? null : (id || null);
+  state.email.editor = t ? {
+    name: t.name || '',
+    language: 'en',
+    subject: t.subject || '',
+    body: t.body || '',
+    purpose: t.purpose || 'intro',
+    bodyIsHtml: true,
+    isActive: t.isActive !== false,
+    appendAccountSignature: t.appendAccountSignature !== false,
+    adPrefix: t.adPrefix === true,
+  } : { ...DEFAULT_TEMPLATE_EDITOR, language: 'en', bodyIsHtml: true };
+  state.email.dirty = !!seed;      // 복사본은 저장이 필요한 상태로 연다
+  state.email.mode = 'edit';
+  renderB2BEmailManager();
+}
+
 async function renderB2BEmailManager() {
   // 최초 진입 시 템플릿 + 메일 계정 병렬 로드
   if (state.email.templates.length === 0 && state.email.variables.length === 0) {
@@ -6740,23 +7551,14 @@ async function renderB2BEmailManager() {
     l.stage === 'contacted' || l.stage === 'replied' || l.stage === 'negotiating'
   ).slice(0, 100);
 
-  // ── 단일 양식 모드 ─────────────────────────────────────
-  // 첫 번째 템플릿을 자동으로 로드 · 없으면 빈 상태로 시작.
-  // 사용자는 이 하나만 편집 + 저장 (여러 개 관리 안 함).
+  // ── 목록(게시판) 모드 ───────────────────────────────────
+  // 예전에는 첫 템플릿을 자동으로 열어 그 하나만 편집하게 했다. 그러면 양식을
+  // 여러 개 만들어 상황에 맞게 골라 쓸 수가 없다. 기본은 목록이고, 거기서
+  // 골라 들어가거나 새로 쓴다.
   const templates = state.email.templates;
-  if (!state.email.currentTemplateId && templates.length > 0) {
-    state.email.currentTemplateId = templates[0]._id;
-    state.email.editor = {
-      name: templates[0].name || '메일 양식',
-      language: 'en',
-      subject: templates[0].subject || '',
-      body: templates[0].body || '',
-      purpose: 'intro',
-      bodyIsHtml: true,
-      isActive: true,
-      appendAccountSignature: templates[0].appendAccountSignature !== false,
-    };
-    state.email.dirty = false;
+  if (state.email.mode !== 'edit') {
+    renderTemplateListPage(templates);
+    return;
   }
   if (!state.email.editor) {
     state.email.editor = { ...DEFAULT_TEMPLATE_EDITOR, name: '메일 양식', language: 'en', bodyIsHtml: true };
@@ -6768,13 +7570,35 @@ async function renderB2BEmailManager() {
 
   els.content.innerHTML = `
     <!-- 단일 양식 편집 -->
-    <div id="tplEditorBox" style="max-width:960px;margin:0 auto;background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px;min-height:calc(100vh - 220px)">
+    <div id="tplEditorBox" style="max-width:960px;margin:0 auto;background:var(--bg-surface);border:1px solid var(--border-default);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:14px;min-height:calc(100vh - 220px);box-shadow:0 1px 3px rgba(16,24,40,.05)">
 
       <!-- 상단 헤더 + 저장 -->
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div>
-          <h3 style="margin:0;font-size:18px;font-weight:800;color:var(--text-primary)">📝 메일 양식</h3>
-          <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">
+        <div style="min-width:0;flex:1">
+          <button id="tplBackBtn" type="button"
+            style="font-size:12px;padding:5px 12px;margin-bottom:8px;border-radius:8px;cursor:pointer;
+                   border:1px solid var(--border-default);background:var(--bg-surface);color:var(--text-secondary)">
+            ← 양식 목록으로
+          </button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <label style="flex:1;min-width:220px">
+              <span style="font-size:12px;color:var(--text-secondary);font-weight:700">양식 이름 <span style="color:#dc2626">*</span></span>
+              <input id="templateNameInput" type="text" value="${escapeAttr(ed.name || '')}"
+                placeholder="예: 첫 소개 — 유럽 유통사용"
+                style="width:100%;padding:10px 13px;border:1px solid #cbd5e1;border-radius:8px;
+                       font-size:14px;font-weight:700;margin-top:4px;background:#ffffff;color:#0f172a">
+            </label>
+            <label style="min-width:150px">
+              <span style="font-size:12px;color:var(--text-secondary);font-weight:700">용도</span>
+              <select id="templatePurposeSel"
+                style="width:100%;padding:10px 11px;border:1px solid #cbd5e1;border-radius:8px;
+                       font-size:13px;margin-top:4px;background:#ffffff;color:#0f172a">
+                ${Object.entries(TEMPLATE_PURPOSE_KO).map(([k, v]) =>
+                  `<option value="${k}" ${ (ed.purpose || 'intro') === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:7px">
             발송할 메일을 그대로 작성하세요. 회사명 자리엔 <code style="background:#eef2ff;padding:2px 8px;border-radius:4px;color:#4338ca;font-weight:700">[회사명]</code> · 서명은 자동.
           </div>
         </div>
@@ -6931,6 +7755,29 @@ async function renderB2BEmailManager() {
 
   // ── 이벤트 바인딩 ─────────────────────────────────────────
   document.getElementById('saveTemplateBtn')?.addEventListener('click', saveTemplate);
+
+  // 목록으로 — 저장 안 한 내용이 있으면 확인하고 나간다
+  document.getElementById('tplBackBtn')?.addEventListener('click', () => {
+    if (state.email.dirty &&
+        !confirm('저장하지 않은 내용이 있습니다.\n목록으로 나가면 사라집니다. 나갈까요?')) return;
+    state.email.mode = 'list';
+    state.email.dirty = false;
+    renderB2BEmailManager();
+  });
+
+  // 양식 이름 · 용도 — 목록에서 구분하는 값이라 편집기 맨 위에 둔다
+  document.getElementById('templateNameInput')?.addEventListener('input', (e) => {
+    state.email.editor.name = e.target.value;
+    state.email.dirty = true;
+    const btn = document.getElementById('saveTemplateBtn');
+    if (btn) { btn.style.background = '#15803d'; btn.textContent = '💾 저장'; }
+  });
+  document.getElementById('templatePurposeSel')?.addEventListener('change', (e) => {
+    state.email.editor.purpose = e.target.value;
+    state.email.dirty = true;
+    const btn = document.getElementById('saveTemplateBtn');
+    if (btn) { btn.style.background = '#15803d'; btn.textContent = '💾 저장'; }
+  });
 
   // 서명 계정 선택 → 미리보기 갱신
   document.getElementById('sigAccountSelect')?.addEventListener('change', (e) => {
@@ -7160,397 +8007,279 @@ async function loadMailAccounts(force) {
 // ══════════════════════════════════════════════════════════════
 // 📖 사용 설명서 (User Guide) 페이지
 // ══════════════════════════════════════════════════════════════
+/**
+ * 📖 사용 설명서 — 클라이언트가 매일 하는 일을 순서대로.
+ *
+ * 예전 설명서는 지금 없는 화면(AI 서칭·검증 대기·크롤링·등급별 발송)을 설명하고,
+ * 예약이 "5분마다" 나간다는 등 실제와 다른 내용을 담고 있었다. 화면과 설명이
+ * 어긋나면 설명서를 믿지 않게 되므로, 지금 있는 화면만 순서대로 다시 적는다.
+ */
 function renderUserGuidePage() {
-  // 실제 사이드바 · 히어로 · 버튼 텍스트를 그대로 인용해서 초보자도 매칭 쉬움
-  const step = (n, icon, title, subtitle, uiElements, action, tip) => `
-    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:20px 22px;display:flex;gap:16px;align-items:flex-start">
-      <div style="min-width:44px;height:44px;background:linear-gradient(135deg,#4f8cff 0%,#3b6fe0 100%);color:white;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;box-shadow:0 4px 12px rgba(79,140,255,0.35)">${n}</div>
+  const stepCard = (n, icon, title, lead, doList, note, tone) => `
+    <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:14px;
+                padding:20px 22px;display:flex;gap:16px;align-items:flex-start;
+                box-shadow:0 1px 3px rgba(16,24,40,.05)">
+      <div style="min-width:40px;height:40px;background:${tone || 'linear-gradient(135deg,#4f8cff,#3b6fe0)'};
+                  color:#fff;border-radius:11px;display:flex;align-items:center;justify-content:center;
+                  font-size:16px;font-weight:800;flex-shrink:0">${n}</div>
       <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
-          <span style="font-size:20px">${icon}</span>
-          <h3 style="margin:0;font-size:16px;font-weight:800;color:var(--text-primary)">${title}</h3>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px;flex-wrap:wrap">
+          <span style="font-size:18px">${icon}</span>
+          <h3 style="margin:0;font-size:15.5px;font-weight:800;color:var(--text-primary)">${title}</h3>
         </div>
-        <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:12px">${subtitle}</div>
-
-        <div style="background:var(--surface-2);border-radius:8px;padding:12px 14px;margin-bottom:10px">
-          <div style="font-size:11px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">📍 화면에서 볼 것</div>
-          ${uiElements}
-        </div>
-
-        <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px 14px;margin-bottom:${tip ? '10px' : '0'}">
-          <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:4px">👉 여기서 하시는 것</div>
-          <div style="font-size:13px;color:#1e3a8a;line-height:1.6">${action}</div>
-        </div>
-
-        ${tip ? `
-          <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px">
-            <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:4px">💡 팁</div>
-            <div style="font-size:12px;color:#78350f;line-height:1.6">${tip}</div>
-          </div>
-        ` : ''}
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.75">${lead}</div>
+        ${doList ? `
+          <div style="margin-top:11px;background:var(--bg-surface-alt);border:1px solid var(--border-subtle);
+                      border-radius:9px;padding:11px 14px">
+            <div style="font-size:10.5px;font-weight:800;color:var(--text-quaternary);
+                        letter-spacing:.04em;margin-bottom:6px">여기서 하는 것</div>
+            <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.85">${doList}</div>
+          </div>` : ''}
+        ${note ? `
+          <div style="margin-top:9px;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;
+                      padding:10px 14px;font-size:12.5px;color:#78350f;line-height:1.7">${note}</div>` : ''}
       </div>
-    </div>
-  `;
+    </div>`;
 
-  const bullet = (items) => `
-    <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text-primary);line-height:1.7">
-      ${items.map(i => `<li>${i}</li>`).join('')}
-    </ul>
-  `;
+  const navChip = (label) =>
+    `<b style="background:var(--brand-soft,#eef2ff);color:var(--brand-text,#4338ca);
+      padding:2px 8px;border-radius:6px;font-size:12px;white-space:nowrap">${label}</b>`;
 
   els.content.innerHTML = `
-    <div style="max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
-      <!-- 시작 안내 -->
-      <div style="padding:20px 24px;background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%);border:1px solid #c7d2fe;border-radius:14px;color:#3730a3">
-        <div style="font-size:18px;font-weight:800;margin-bottom:6px">👋 처음이시라면 이 순서대로!</div>
-        <div style="font-size:13px;line-height:1.7">
-          이 프로그램은 <b>해외 K-beauty 업체 리드</b>를 관리하고 <b>단체 메일 발송</b>하는 도구입니다.
-          왼쪽 사이드바 위쪽부터 아래로 순서대로 진행하시면 됩니다.
-          <br>총 <b>7단계</b> · 각 단계마다 자동으로 다음으로 넘어가는 부분이 있습니다.
+    <div style="max-width:900px;margin:0 auto;padding-bottom:40px">
+
+      <!-- 한눈에 보는 흐름 -->
+      <div style="background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%);
+                  border:1px solid #c7d2fe;border-radius:16px;padding:22px 24px;margin-bottom:18px">
+        <h2 style="margin:0 0 6px;font-size:19px;font-weight:800;color:#312e81">
+          업체 하나가 거쳐 가는 길
+        </h2>
+        <div style="font-size:13px;color:#3730a3;line-height:1.7;margin-bottom:16px">
+          왼쪽 사이드바가 곧 순서입니다. 위에서 아래로 내려갑니다.
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px;font-weight:700">
+          <span style="background:#fff;color:#166534;padding:7px 13px;border-radius:9px;
+                       border:1px solid #86efac">✅ 검증 완료</span>
+          <span style="color:#6366f1">→</span>
+          <span style="background:#fff;color:#075985;padding:7px 13px;border-radius:9px;
+                       border:1px solid #7dd3fc">📋 발송 리스트</span>
+          <span style="color:#6366f1">→</span>
+          <span style="background:#fff;color:#b45309;padding:7px 13px;border-radius:9px;
+                       border:1px solid #fcd34d">📅 예약 발송</span>
+          <span style="color:#6366f1">→</span>
+          <span style="background:#fff;color:#1e40af;padding:7px 13px;border-radius:9px;
+                       border:1px solid #93c5fd">📨 발송 완료</span>
+          <span style="color:#6366f1">→</span>
+          <span style="background:#fff;color:#3730a3;padding:7px 13px;border-radius:9px;
+                       border:1px solid #a5b4fc">💬 답장 받음</span>
+        </div>
+        <div style="margin-top:14px;font-size:12.5px;color:#3730a3;line-height:1.7">
+          가운데 셋(발송 리스트 · 예약 발송 · 발송 완료)은 ${navChip('📨 발송 관리')} 안의 탭입니다.
         </div>
       </div>
 
-      <!-- 🗂 사이드바 구조 이해하기 -->
-      <div style="font-size:14px;font-weight:800;color:var(--text-secondary);margin-top:6px;padding:0 4px">
-        🗂 왼쪽 사이드바 · 두 그룹으로 나눠져 있어요
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        ${stepCard(1, '✅', '검증 완료 — 보낼 곳을 고릅니다',
+          '검증을 통과해 <b>메일을 보낼 수 있는</b> 업체 목록입니다. 매일 여기서 시작합니다.',
+          `· 회사를 클릭하면 <b>상세 정보</b>가 열립니다 — 업종·홈페이지·검증 근거를 보고 판단하세요.<br>
+           · 아닌 곳은 이동 버튼으로 <b>🚫 검증 실패</b> 또는 <b>📦 보관함</b> 으로 빼세요.<br>
+           · 보낼 곳은 왼쪽 체크박스를 누른 뒤 <b>[📋 발송 리스트로 옮기기]</b>.<br>
+           · 위쪽 <b>정렬</b>을 <b>추천순</b>으로 두면 가능성 높은 곳부터 나옵니다.`,
+          '옮기지 않은 곳에는 <b>메일이 절대 나가지 않습니다.</b> 여기서 고른 것만 발송 대상이 됩니다.')}
+
+        ${stepCard(2, '📝', '메일 양식 — 보낼 문구를 만듭니다',
+          `${navChip('⚙ 설정·도구 → 📝 메일 양식')} 에서 관리합니다. 상황별로 여러 개 만들어 두고 골라 씁니다.`,
+          `· <b>[+ 새 양식 작성]</b> 으로 새 문구를 만듭니다.<br>
+           · 회사명 자리에 <code style="background:#eef2ff;padding:1px 6px;border-radius:4px;color:#4338ca;font-weight:700">[회사명]</code> 을 넣으면 각 회사 이름으로 바뀝니다.<br>
+           · 비슷한 문구가 필요하면 <b>복사</b> 로 변형본을 만드세요.<br>
+           · 용도(첫 소개 / 팔로우업 / 재접촉)를 정해 두면 목록에서 구분됩니다.`,
+          '서명은 자동으로 붙습니다. 보내는 계정에 저장된 이름·직함·연락처가 들어갑니다.')}
+
+        ${stepCard(3, '✉️', '보낼 메일 — 문구를 확인하고 보냅니다',
+          `${navChip('📨 발송 관리')} → <b>보낼 메일</b> 탭. 옮겨둔 업체가 여기 모입니다.`,
+          `· 왼쪽에서 <b>양식</b>과 <b>보내는 계정</b>을 고릅니다.<br>
+           · 오른쪽에 <b>실제로 나갈 모습</b>이 회사명이 바뀐 채로 보입니다. 회사를 바꿔 가며 확인하세요.<br>
+           · 문구를 그 자리에서 고칠 수 있습니다 (이번 발송에만 적용).<br>
+           · 아래에서 <b>나눠 보내기</b>와 <b>자동 재발송</b>을 정합니다.<br>
+           · <b>[보내기]</b> 를 누르면 예약으로 깔립니다.`,
+          '표에서 회사를 클릭하면 상세가 열립니다. 보내기 전에 마지막으로 걸러낼 수 있습니다.')}
+
+        ${stepCard(4, '📅', '예약 발송 — 언제 누구에게 나갈지',
+          '누른 즉시 나가지 않습니다. 날짜별로 쌓이고, 시각이 되면 자동으로 나갑니다.',
+          `· 어느 회사에 며칠 나갈지 <b>날짜별로 묶여</b> 보입니다.<br>
+           · 나가기 전이면 <b>[취소]</b> 로 뺄 수 있습니다.<br>
+           · 나가지 못한 건은 <b>⚠️ 사유</b>와 함께 아래에 남습니다.`,
+          '메일은 <b>하루 최대 20통</b>, 한 통과 다음 통 사이 <b>8초</b>를 쉬며 나갑니다. ' +
+          '한꺼번에 보내면 스팸으로 걸려, 같은 주소로 나가는 실제 거래 메일까지 스팸함으로 갑니다.')}
+
+        ${stepCard(5, '📨', '발송 완료 — 며칠에 몇 번째로 보냈나',
+          '실제로 나간 곳입니다. 날짜별로 묶여 있고, 업체마다 몇 번째 메일인지 표시됩니다.',
+          `· <b>메일 1회 발송 → 2회 → 3회</b> 로 색이 진해집니다 (최대 3회).<br>
+           · 답이 없으면 <b>무응답 N일</b> 로 표시됩니다.<br>
+           · 위쪽 요약에서 <b>2번 보냈는데 무응답</b> · <b>3번 다 씀</b> 을 한눈에 봅니다.`,
+          '답장이 오면 그 업체는 <b>자동으로 [💬 답장 받음] 으로 옮겨가고 여기서 사라집니다.</b> ' +
+          '더 이상 광고 메일이 나가지 않습니다.')}
+
+        ${stepCard(6, '💬', '답장 받음 — 답하고, 아닌 곳은 뺍니다',
+          '상대가 답장을 보낸 곳입니다. 여기서부터는 사람이 직접 대응합니다.',
+          `· <b>[💬 답장 N통 보기]</b> 로 주고받은 내용을 열고 <b>회신</b>합니다.<br>
+           · 얘기가 되겠으면 <b>🤝 대화 진행 중</b> → 계약되면 <b>⭐ 파트너십 확정</b>.<br>
+           · 우리랑 안 맞으면 <b>🚫 컨택 실패</b> 로 뺍니다.<br>
+           · 지금은 아니지만 나중에 볼 곳은 <b>📦 보관함</b>.`,
+          null,
+          'linear-gradient(135deg,#6366f1,#4f46e5)')}
+
+        ${stepCard(7, '📬', '메일함 — 들어온 메일을 봅니다',
+          `사이드바 ${navChip('📬 메일함')} 은 회사 단위가 아니라 <b>메일 단위</b>로 봅니다. 최근 2개월 기준입니다.`,
+          `· <b>받은 메일함</b> — 거래처 폴더별로 나눠 봅니다. 광고·자동발송은 접힙니다.<br>
+           · <b>회신 필요</b> — 상대가 물었는데 아직 답 안 한 메일.<br>
+           · <b>기한 관리</b> — 본문에서 자동으로 찾아낸 회신 기한. 지난 것부터 나옵니다.`,
+          `여기 숫자는 ${navChip('📬 메일 계정')} 에서 지정한 <b>대표 계정</b> 기준입니다. ` +
+          '대표 계정을 바꾸면 메일함이 통째로 그 계정 것으로 바뀝니다.')}
       </div>
 
-      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:20px 22px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <!-- 그룹 A · 리드 정보 -->
-          <div style="padding:16px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px">
-            <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:10px">📊 리드 정보 (데이터 관리)</div>
-            <div style="font-size:11px;color:#64748b;line-height:1.7;margin-bottom:10px">
-              <b>업체 데이터를 넣고 · 검증하고 · 발송 준비하는</b> 영역. 아직 메일 안 나갑니다.
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#334155">
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">📥 <b>가져오기 (Import)</b> — CSV 업로드</div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">🔍 <b>검증 대기</b> — AI 검증 실행 <span style="background:#e2e8f0;color:#64748b;padding:1px 6px;border-radius:99px;font-size:10px">뱃지</span></div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">✅ <b>발송 대기</b> — 검증 통과 · 발송 준비 <span style="background:#e2e8f0;color:#64748b;padding:1px 6px;border-radius:99px;font-size:10px">뱃지</span></div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">💎 <b>추천 리스트</b> — 웹 발굴 시드</div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #e2e8f0">📋 <b>Import History</b> — 배치 롤백</div>
-            </div>
-          </div>
-
-          <!-- 그룹 B · 메일 발송 -->
-          <div style="padding:16px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px">
-            <div style="font-size:13px;font-weight:800;color:#1e40af;margin-bottom:10px">✉ 메일 발송 (실제 컨택)</div>
-            <div style="font-size:11px;color:#3b6fe0;line-height:1.7;margin-bottom:10px">
-              <b>실제 메일이 나가고 · 답장 진행되는</b> 영역. 여기부터가 실제 컨택 단계입니다.
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#1e3a8a">
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">📨 <b>메일 발송함</b> — 발송 완료 리드 · 재발송/예약 <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:99px;font-size:10px">뱃지</span></div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">💬 <b>답장 받음</b> — 상대방 답장 옴 <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:99px;font-size:10px">뱃지</span></div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">🤝 <b>대화 진행 중</b> — 협상 중</div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">⭐ <b>파트너십 확정</b> — 계약 완료</div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe;margin-top:4px">📅 <b>예약 발송 관리</b></div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">📬 <b>메일 계정</b> · 📝 <b>메일 양식</b></div>
-              <div style="padding:6px 10px;background:white;border-radius:6px;border:1px solid #dbeafe">📮 <b>B2B 메일 관리</b> ↗ (외부 창)</div>
-            </div>
-          </div>
-        </div>
-        <div style="margin-top:14px;padding:10px 14px;background:#fef9c3;border:1px solid #facc15;border-radius:8px;font-size:12px;color:#854d0e">
-          💡 <b>뱃지 숫자</b> = 그 stage 에 몇 건 있는지 실시간 · 데이터 변경 시 자동 갱신됩니다. 어디까지 진행됐는지 한눈에 확인!
-        </div>
-      </div>
-
-      <!-- 사전 준비 섹션 -->
-      <div style="font-size:14px;font-weight:800;color:var(--text-secondary);margin-top:6px;padding:0 4px">
-        🛠 사전 준비 (한 번만 하면 됨)
-      </div>
-
-      ${step('A', '📬', '메일 계정 등록',
-        '발송에 쓸 이메일 계정을 등록합니다. 이 계정으로 실제 광고 메일이 나갑니다.',
-        `${bullet([
-          '<b>사이드바 → "📬 메일 계정"</b> 클릭',
-          '오른쪽 위 <b>[+ 새 계정 등록]</b> 버튼 → 모달 열림',
-          '4개 섹션 순서대로 입력: ① 서비스 선택 ② 로그인 ③ 별칭 & 발신자 ④ 발송자 프로필',
-        ])}`,
-        '가장 많이 쓰는 <b>이카운트 (ECOUNT)</b> 는 사전 설정 필수. 아래 서비스별 설정법 참고하세요.',
-        '이 계정에 등록한 <b>이름/직함/회사/주소/전화/웹사이트</b> 는 발송 시 메일 서명으로 자동 붙습니다. 본문에 서명 안 쓰셔도 됩니다.'
-      )}
-
-      <!-- 메일 계정 등록 · 서비스별 상세 -->
-      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:20px 22px">
-        <div style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:14px">🔧 서비스별 상세 설정</div>
-
-        <!-- 등록 모달 UI 목업 -->
-        <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:16px;margin-bottom:16px">
-          <div style="font-size:11px;color:#64748b;margin-bottom:8px">👀 실제 등록 모달은 이렇게 생겼어요</div>
-          <div style="background:white;border-radius:10px;padding:14px;border:1px solid #e2e8f0;font-size:12px;color:#0f172a">
-            <div style="background:linear-gradient(135deg,#fef9c3 0%,#fde68a 100%);padding:10px 12px;border-radius:6px;margin-bottom:10px">
-              <b>📮 메일 계정 로그인</b><br>
-              <span style="font-size:11px;color:#78350f">회사 메일 계정으로 로그인하면 그 계정으로 광고 메일이 발송됩니다.</span>
-            </div>
-            <div style="padding:6px 8px;background:#eef2ff;border-radius:4px;color:#4338ca;font-weight:700;margin-bottom:4px">① 서비스 선택 ▾</div>
-            <div style="padding:8px;border:1px dashed #cbd5e1;border-radius:4px;margin-bottom:8px;color:#64748b;font-size:11px">📬 이카운트 (ECOUNT) 등등</div>
-            <div style="padding:6px 8px;background:#eef2ff;border-radius:4px;color:#4338ca;font-weight:700;margin-bottom:4px">② 로그인 정보</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-              <div style="padding:6px 8px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:11px">📧 이메일 (SMTP)</div>
-              <div style="padding:6px 8px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:11px">🔑 비밀번호</div>
-            </div>
-            <div style="padding:6px 8px;background:#eef2ff;border-radius:4px;color:#4338ca;font-weight:700;margin-bottom:4px">③ 별칭 & 발신자 표시</div>
-            <div style="padding:6px 8px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:11px;margin-bottom:8px">📝 이 계정의 별칭 (예: PR팀 · 영업)</div>
-            <div style="padding:6px 8px;background:#eef2ff;border-radius:4px;color:#4338ca;font-weight:700;margin-bottom:4px">④ 발송자 프로필 (템플릿 자동)</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px">🎯 내 직함</div>
-              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px">📞 내 전화</div>
-              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px">🏢 내 회사</div>
-              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px">🏛 주소</div>
-              <div style="padding:5px 7px;background:#f1f5f9;border-radius:4px;color:#94a3b8;font-size:10px;grid-column:1/-1">🌐 웹사이트</div>
-            </div>
-            <div style="margin-top:12px;text-align:right">
-              <span style="padding:6px 14px;background:#4338ca;color:white;border-radius:6px;font-weight:700;font-size:11px">🚀 내 계정 등록하기</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 서비스별 상세 (아코디언 스타일) -->
-        <div style="display:flex;flex-direction:column;gap:10px">
-          <!-- ECOUNT -->
-          <div style="border:1px solid #fbbf24;border-radius:10px;padding:14px 16px;background:linear-gradient(135deg,#fef9c3 0%,#fef3c7 100%)">
-            <div style="font-size:14px;font-weight:800;color:#78350f;margin-bottom:8px">🇰🇷 이카운트 (ECOUNT) · 가장 많이 사용 · 사전 설정 필수!</div>
-            <div style="font-size:12px;color:#78350f;line-height:1.8">
-              <b>1단계 · 이카운트 웹메일 로그인</b> → 우측 <b>[개인기능설정]</b> → <b>[외부연동설정]</b><br>
-              <b>2단계</b>: "메일 클라이언트 사용" → <b>사용</b> 으로 변경 (필수)<br>
-              <b>3단계</b>: "해외 로그인 차단" → <b>사용안함</b> 으로 변경 (필수 · Vercel 은 해외 IP)<br>
-              <b>4단계 · 이 프로그램에서 등록</b>:
-              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
-                이메일: your@yogico.kr<br>
-                비밀번호: (웹메일 로그인 비밀번호)<br>
-                SMTP: <b>wsmtp.ecount.com</b>:465 SSL (자동 채워짐)
-              </div>
-              <div style="margin-top:6px;padding:8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:11px">
-                ⚠ 위 2·3단계 안 하면 <b>"SMTP 인증 실패"</b> 로 등록 안 됨. 이카운트 지원 잦은 오류.
-              </div>
-            </div>
-          </div>
-
-          <!-- Gmail -->
-          <div style="border:1px solid #93c5fd;border-radius:10px;padding:14px 16px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)">
-            <div style="font-size:14px;font-weight:800;color:#1e40af;margin-bottom:8px">🌐 Gmail · 앱 비밀번호 필수 (2단계 인증)</div>
-            <div style="font-size:12px;color:#1e3a8a;line-height:1.8">
-              <b>1단계</b>: Google 계정 → 보안 → <b>2단계 인증 활성화</b> (안 되어있으면 앱 비밀번호 못 만듦)<br>
-              <b>2단계</b>: <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#2563eb">Google 앱 비밀번호</a> 페이지에서 <b>"메일" 앱 비밀번호 생성</b> → 16자리 코드 발급<br>
-              <b>3단계 · 이 프로그램에서 등록</b>:
-              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
-                이메일: your@gmail.com<br>
-                비밀번호: <b>16자리 앱 비밀번호</b> (Gmail 로그인 비번 아님!)<br>
-                SMTP: <b>smtp.gmail.com</b>:465 SSL (자동)
-              </div>
-              <div style="margin-top:6px;padding:8px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;color:#991b1b;font-size:11px">
-                ⚠ Gmail 로그인 비밀번호 넣으면 안 됨! 반드시 <b>앱 비밀번호 (App Password)</b>.
-              </div>
-            </div>
-          </div>
-
-          <!-- 네이버 -->
-          <div style="border:1px solid #86efac;border-radius:10px;padding:14px 16px;background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%)">
-            <div style="font-size:14px;font-weight:800;color:#166534;margin-bottom:8px">🇰🇷 네이버 메일 · IMAP/SMTP 활성화 필요</div>
-            <div style="font-size:12px;color:#14532d;line-height:1.8">
-              <b>1단계</b>: 네이버 메일 로그인 → <b>환경설정</b> → <b>POP3/IMAP 설정</b><br>
-              <b>2단계</b>: "IMAP/SMTP 사용함" → <b>사용함</b> 체크 → 저장<br>
-              <b>3단계 · 이 프로그램에서 등록</b>:
-              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
-                이메일: your@naver.com<br>
-                비밀번호: 네이버 계정 비밀번호 (별도 앱 비밀번호 X)<br>
-                SMTP: <b>smtp.naver.com</b>:465 SSL (자동)
-              </div>
-              <div style="margin-top:6px;padding:8px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;color:#78350f;font-size:11px">
-                💡 2단계 인증 켜져있으면 → 네이버도 앱 비밀번호 생성 필요 (내 정보 → 보안 → 앱 비밀번호).
-              </div>
-            </div>
-          </div>
-
-          <!-- Outlook -->
-          <div style="border:1px solid #a78bfa;border-radius:10px;padding:14px 16px;background:linear-gradient(135deg,#f3e8ff 0%,#e9d5ff 100%)">
-            <div style="font-size:14px;font-weight:800;color:#6b21a8;margin-bottom:8px">🌐 Outlook (Office365 · Hotmail)</div>
-            <div style="font-size:12px;color:#581c87;line-height:1.8">
-              <b>1단계</b>: Microsoft 계정 → 보안 → <b>2단계 인증 켜기</b><br>
-              <b>2단계</b>: <b>앱 암호 생성</b> → 새로 만들기 → "메일" 이름으로<br>
-              <b>3단계 · 이 프로그램에서 등록</b>:
-              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
-                이메일: your@outlook.com<br>
-                비밀번호: 앱 암호<br>
-                SMTP: <b>smtp.office365.com</b>:587 STARTTLS (자동)
-              </div>
-            </div>
-          </div>
-
-          <!-- 자체 SMTP -->
-          <div style="border:1px solid #cbd5e1;border-radius:10px;padding:14px 16px;background:#f8fafc">
-            <div style="font-size:14px;font-weight:800;color:#334155;margin-bottom:8px">⚙ 자체 회사 SMTP · 직접 입력</div>
-            <div style="font-size:12px;color:#475569;line-height:1.8">
-              위 프리셋에 없으면 <b>[⚙️ SMTP 서버 상세]</b> 섹션 펼쳐서 직접 입력:
-              <div style="margin-top:6px;padding:8px;background:white;border-radius:6px;font-family:monospace;font-size:11px;color:#0f172a">
-                SMTP 호스트: mail.yourcompany.com<br>
-                포트: 465 (SSL) 또는 587 (STARTTLS)<br>
-                보안: SSL 또는 STARTTLS<br>
-                이메일 / 비밀번호: 각자
-              </div>
-            </div>
-          </div>
+      <!-- 안전장치 -->
+      <div style="margin-top:18px;background:var(--bg-surface);border:1px solid var(--border-default);
+                  border-radius:14px;padding:20px 22px">
+        <h3 style="margin:0 0 12px;font-size:15.5px;font-weight:800;color:var(--text-primary)">
+          🛡 잘못 나가지 않게 막아둔 것들
+        </h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:11px">
+          ${[
+            ['골라야만 나갑니다', '검증 완료에서 발송 리스트로 옮긴 곳에만 메일이 갑니다.'],
+            ['같은 곳에 최대 3회', '첫 메일 + 재발송 2번. 그 이상은 자동으로 막힙니다.'],
+            ['48시간 간격', '마지막 발송 후 이틀이 지나지 않으면 다시 나가지 않습니다.'],
+            ['답장 오면 즉시 중단', '답장이 온 업체에는 광고 메일이 더 나가지 않습니다.'],
+            ['하루 20통', '한꺼번에 쏟지 않습니다. 남은 것은 다음 날로 넘어갑니다.'],
+            ['메일 주소 없으면 제외', '보낼 수 없는 곳은 발송 리스트로 옮겨지지 않습니다.'],
+          ].map(([t, d]) => `
+            <div style="background:var(--bg-surface-alt);border:1px solid var(--border-subtle);
+                        border-radius:10px;padding:12px 14px">
+              <div style="font-size:12.5px;font-weight:800;color:var(--text-primary);margin-bottom:4px">${t}</div>
+              <div style="font-size:12px;color:var(--text-tertiary);line-height:1.65">${d}</div>
+            </div>`).join('')}
         </div>
       </div>
 
-      ${step('B', '📝', '메일 양식 작성',
-        '발송할 메일의 제목·본문을 미리 저장합니다. 회사명 자리만 자동으로 채워지는 형식.',
-        `${bullet([
-          '<b>사이드바 → "📝 메일 양식"</b> 클릭',
-          '<b>제목</b>·<b>본문</b> 입력창에 영문으로 작성',
-          '회사명 넣을 자리엔 <code style="background:#eef2ff;padding:1px 5px;border-radius:4px;color:#4338ca">[회사명]</code> 이라고 씁니다',
-          '오른쪽 위 <b>[💾 저장]</b> 버튼',
-        ])}`,
-        '제목 예: <code>K-beauty partnership inquiry — [회사명]</code> → 발송 시 각 회사명으로 자동 치환됩니다. 서명은 계정에서 자동으로 붙이니 본문에 안 넣어도 됨.',
-        '리치 텍스트 툴바로 <b>굵게 · 밑줄 · 목록 · 정렬</b> 다 됩니다. 툴바 오른쪽 <b>[➕ [회사명]]</b> 버튼 누르면 자동 삽입.'
-      )}
+      <!-- 지금 테스트 중 -->
+      <div id="guideLockBox" style="margin-top:14px"></div>
 
-      <!-- 실사용 흐름 섹션 -->
-      <div style="font-size:14px;font-weight:800;color:var(--text-secondary);margin-top:14px;padding:0 4px">
-        🔄 실제 흐름 (반복적으로 하는 것)
+      <!-- 자주 묻는 것 -->
+      <div style="margin-top:14px;background:var(--bg-surface);border:1px solid var(--border-default);
+                  border-radius:14px;padding:20px 22px">
+        <h3 style="margin:0 0 12px;font-size:15.5px;font-weight:800;color:var(--text-primary)">
+          ❓ 자주 묻는 것
+        </h3>
+        ${[
+          ['보내기를 눌렀는데 왜 바로 안 나가나요?',
+           '예약으로 깔리기 때문입니다. 하루 20통씩 나눠서 나갑니다. [📅 예약 발송] 탭에서 언제 누구에게 나갈지 볼 수 있습니다.'],
+          ['업체가 목록에서 사라졌어요.',
+           '답장이 오면 [💬 답장 받음] 으로 자동으로 옮겨갑니다. 지워진 것이 아니라 다음 단계로 넘어간 것입니다.'],
+          ['같은 곳에 또 보내고 싶은데 안 됩니다.',
+           '한 곳에 최대 3번까지만 나갑니다. 마지막 발송 후 48시간도 지나야 합니다. 스팸으로 걸리지 않기 위한 제한입니다.'],
+          ['메일 문구를 바꾸고 싶어요.',
+           '[📝 메일 양식] 에서 고쳐 저장하면 다음 발송부터 적용됩니다. 이번 한 번만 다르게 보내려면 발송 화면에서 직접 고치면 됩니다.'],
+          ['받은 메일함 숫자가 이상합니다.',
+           '[📬 메일 계정] 의 대표 계정 기준으로 셉니다. 대표 계정을 바꾸면 그 계정 메일함으로 바뀝니다.'],
+        ].map(([q, a]) => `
+          <div style="padding:11px 0;border-top:1px solid var(--border-subtle)">
+            <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:4px">Q. ${q}</div>
+            <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.75">${a}</div>
+          </div>`).join('')}
       </div>
+    </div>`;
 
-      ${step(1, '📥', '가져오기 (Import)',
-        '엑셀/CSV 로 리드 데이터를 대량 등록합니다. 이 프로그램의 시작점.',
-        `${bullet([
-          '<b>사이드바 → "📥 가져오기 (Import)"</b> 클릭 (기본 페이지)',
-          '상단 <b>[⬆ Import]</b> 버튼 → CSV 파일 선택',
-          '자동으로 필드 매핑 → 등록 완료',
-        ])}`,
-        '등록된 리드는 자동으로 <b>검증 대기</b> 상태로 들어갑니다. 잠시 후 왼쪽 <b>"🔍 검증 대기"</b> 뱃지에 숫자가 뜹니다.',
-        '헤더 필수 필드: Company · Country · Email · WebsiteContact. 이미 등록된 리드 (Company+Country 중복) 는 자동 스킵.'
-      )}
-
-      ${step(2, '🔍', '검증 대기 → AI 검증',
-        'AI 가 각 리드를 확인해서 K-beauty B2B 관련성 있는 진짜 바이어인지 판정.',
-        `${bullet([
-          '<b>사이드바 → "🔍 검증 대기"</b> 클릭 (뱃지 숫자 뜬 곳)',
-          '상단 히어로 <b>[🧠 AI 검증 실행]</b> 버튼',
-          '확인창 → 예 → Claude Haiku 가 청크 단위로 검증 (약 $2/1000건)',
-        ])}`,
-        '판정 결과 3가지: <b>beauty-buyer (통과)</b> → 발송 대기 자동 이동 · <b>not-buyer</b> → 보관/실패 · <b>maybe</b> → 발송 대기 (관대 정책). 한국 기업은 자동 제외.',
-        '한 번 검증한 리드는 자동으로 <b>검증 대기</b>에서 사라지고 <b>발송 대기</b>로 이동. 여기서 아무 것도 안 남으면 다음 단계로.'
-      )}
-
-      ${step(3, '✅', '발송 대기 → 이메일 크롤링 (선택)',
-        '메일 주소가 비어있는 리드가 있으면 웹사이트를 크롤해서 이메일 자동 수집.',
-        `${bullet([
-          '<b>사이드바 → "✅ 발송 대기"</b> 클릭',
-          '히어로 카드에 <b>[🔍 메일 크롤링 실행 (N건)]</b> 초록 버튼',
-          '자동으로 각 사이트 방문 → contact/about 페이지에서 이메일 추출',
-        ])}`,
-        '이메일 찾으면 자동으로 리드에 저장. <b>partnerships@ · business@ · sales@</b> 같이 B2B 우선순위 높은 것부터. 크롤 못 찾은 리드는 검증실패로 이동 옵션 있음.',
-        '이미 이메일 있는 리드는 크롤 건너뜁니다. 크롤 완료 후 다음 히어로 카드가 뜹니다.'
-      )}
-
-      ${step(4, '📧', '발송 대기 → 첫 메일 발송',
-        '검증 통과 + 이메일 있는 리드에게 첫 광고 메일 발송.',
-        `${bullet([
-          '<b>발송 대기 페이지</b> 안에서 등급 breakdown 확인 (🥇 A급 / 🥈 B급 / 🥉 C급)',
-          '히어로 하단 노란 카드 <b>[🥇 A등급 발송함으로 이동 (N)]</b> 또는 <b>[🥈 B등급 발송함으로 이동 (N)]</b> 클릭',
-          '컴포즈 모달 열림 → 수신자 자동 선택 → 최종 확인 → <b>[✉ N명 지금 발송]</b>',
-        ])}`,
-        '발송 성공한 리드는 자동으로 <b>메일 발송함</b> stage 로 이동. <b>발송 대기에서는 자동으로 사라짐</b>. 왼쪽 사이드바 뱃지 실시간 갱신.',
-        '🥇 A등급 = Sephora · Watsons · Boots 같은 대형 리테일러 · 최우선 · 🥈 B등급 = 일반 B2B · 🥉 C등급 = 이메일/사이트 부족 (자동 제외됨).<br>등급 카드 클릭하면 그 등급 리드만 목록에서 볼 수도 있음.'
-      )}
-
-      <!-- 발송 대기 페이지 UI 목업 -->
-      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
-        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">👀 발송 대기 페이지 하단은 이렇게 생겼어요</div>
-        <div style="background:linear-gradient(135deg,#fef9c3 0%,#fef3c7 100%);border:1px solid #fcd34d;border-radius:10px;padding:14px">
-          <div style="font-size:12px;font-weight:800;color:#854d0e;margin-bottom:8px">⚡ 원클릭 등급별 발송함으로 이동</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div style="padding:14px;background:linear-gradient(135deg,#fbbf24 0%,#f59e0b 100%);color:white;border-radius:10px;font-weight:800;font-size:13px;text-align:center">🥇 A등급 발송함으로 이동 (139)</div>
-            <div style="padding:14px;background:linear-gradient(135deg,#60a5fa 0%,#3b82f6 100%);color:white;border-radius:10px;font-weight:800;font-size:13px;text-align:center">🥈 B등급 발송함으로 이동 (2,334)</div>
-          </div>
-          <div style="margin-top:8px;font-size:10px;color:#78350f;text-align:center">
-            클릭 → 컴포즈 모달 (대상 자동 선택) → 확인 → 발송 → <b>발송함으로 자동 이동</b>
-          </div>
+  // 발송 잠금 상태는 서버에서 받아 채운다 — 설명서에 고정 문구로 박아두면
+  // 잠금을 푼 뒤에도 "테스트 중" 이라고 남아 거짓말이 된다.
+  loadOutboundStatus().then((lock) => {
+    const box = document.getElementById('guideLockBox');
+    if (!box) return;
+    box.innerHTML = lock && lock.locked ? `
+      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:14px;padding:18px 22px">
+        <div style="font-size:14.5px;font-weight:800;color:#78350f;margin-bottom:6px">
+          🔒 지금은 테스트 중입니다
         </div>
-      </div>
-
-      ${step(5, '📨', '메일 발송함 → 재발송 / 예약 발송',
-        '이미 첫 메일 보낸 리드 · 답장 안 오면 재발송 · 시각 정해서 예약도 가능.',
-        `${bullet([
-          '<b>사이드바 → "📨 메일 발송함"</b> 클릭',
-          '히어로 두 카드: <b>📤 단체 즉시 발송</b> / <b>📅 단체 예약 발송</b>',
-          '즉시: 클릭 → 컴포즈 → 발송 · 예약: 클릭 → 시각 선택 → <b>[📅 N명 예약 발송]</b>',
-        ])}`,
-        '예약은 <b>Vercel Cron</b> 이 5분마다 확인해서 시각 도래하면 자동 발송. 로컬 개발 환경에선 <b>[⚡즉시 발송]</b> 버튼으로 수동 트리거.',
-        '<b>과도 발송 자동 차단</b>: 리드당 최대 3회 · 마지막 발송 후 48h 안 지나면 자동 스킵. 각 리드 행에 <b>[✉ N회차]</b> 배지로 발송 횟수 표시.'
-      )}
-
-      <!-- 메일 발송함 UI 목업 -->
-      <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
-        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">👀 메일 발송함 페이지 히어로는 이렇게 생겼어요</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <div style="padding:10px 14px;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd;border-radius:10px;color:#1e3a8a;font-size:12px">
-            📨 발송함 리드 <b>N건</b> · 이메일 유효 <b>N건</b> · 📊 리드당 최대 3회 · 최소 간격 48h
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div style="padding:14px;background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border:1px solid #93c5fd;border-radius:10px">
-              <div style="font-size:12px;font-weight:800;color:#1e40af">📤 단체 즉시 발송</div>
-              <div style="font-size:10px;color:#1e3a8a;margin-bottom:8px">지금 바로 · 회사명 자동 치환</div>
-              <div style="padding:8px;background:#2563eb;color:white;border-radius:6px;font-weight:700;font-size:12px;text-align:center">📤 지금 발송 (N)</div>
-            </div>
-            <div style="padding:14px;background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1px solid #fcd34d;border-radius:10px">
-              <div style="font-size:12px;font-weight:800;color:#92400e">📅 단체 예약 발송</div>
-              <div style="font-size:10px;color:#78350f;margin-bottom:8px">시각 정해서 자동 (Cron 5분 주기)</div>
-              <div style="padding:8px;background:#d97706;color:white;border-radius:6px;font-weight:700;font-size:12px;text-align:center">📅 예약 발송 (N)</div>
-            </div>
-          </div>
+        <div style="font-size:12.5px;color:#78350f;line-height:1.75">
+          실제 업체로는 메일이 <b>나가지 않습니다</b>.
+          ${(lock.testRecipients || []).length
+            ? `테스트 주소 <b style="font-family:monospace">${(lock.testRecipients || []).map(escapeHtml).join(', ')}</b> 로만 실제 발송됩니다.`
+            : ''}
+          나머지는 버튼을 눌러도 "발송 잠금 중" 으로 기록만 남습니다.<br>
+          화면을 미리 익혀 두셔도 <b>사고가 나지 않습니다.</b>
         </div>
-      </div>
-
-      ${step(6, '📅', '예약 발송 관리 (선택)',
-        '예약 걸어놓은 메일들 확인 · 취소 · 즉시 발송으로 앞당기기.',
-        `${bullet([
-          '<b>사이드바 → "📅 예약 발송 관리"</b> 클릭',
-          '상단 chip 필터: ⏳대기 / ✅완료 / ❌실패 / 🚫취소 / 📋전체',
-          '각 행에 <b>[⚡즉시]</b> <b>[🚫취소]</b> 버튼 (대기중일 때만)',
-        ])}`,
-        '실패한 예약은 왜 실패했는지 사유 표시 (예: "발송 횟수 초과 3/3" · "SMTP 인증 실패" 등).',
-        null
-      )}
-
-      ${step(7, '💬🤝⭐', '답장 받음 → 대화 → 파트너',
-        '상대방이 답장 보내오면 stage 를 수동으로 옮겨서 진행 상황 추적.',
-        `${bullet([
-          '<b>메일 발송함</b> 페이지 리드 행의 <b>stage 셀렉트</b> 클릭 → "💬 답장 받음" 선택',
-          '실제 협상 시작하면 "🤝 대화 진행 중" · 계약 확정하면 "⭐ 파트너십 확정"',
-          '각 stage 는 왼쪽 사이드바에서 필터 · 뱃지로 현재 몇 건인지 확인 가능',
-        ])}`,
-        '<b>답장 자동 감지</b> 는 개발 중 (외부 도구 <b>📮 B2B 메일 관리</b> 와 연동 예정). 지금은 수동으로 stage 옮겨주세요.',
-        '<b>⭐ 파트너십 확정</b> 된 리드는 자동으로 발송 대상에서 제외되므로 재발송/스팸 방지됨.'
-      )}
-
-      <!-- 마무리 -->
-      <div style="padding:16px 20px;background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);border:1px solid #86efac;border-radius:12px;color:#14532d;margin-top:8px">
-        <div style="font-size:14px;font-weight:800;margin-bottom:6px">🎉 이게 전부입니다!</div>
-        <div style="font-size:12px;line-height:1.7">
-          매일/매주 반복 흐름: <b>Import → AI검증 → 크롤 → 등급별 발송함 이동 → (며칠 뒤) 재발송/예약 → 답장 오면 stage 이동 → 파트너</b>.
-          <br>왼쪽 뱃지 숫자만 보고도 어디까지 진행됐는지 한눈에 확인 가능합니다.
+      </div>` : `
+      <div style="background:#dcfce7;border:1px solid #86efac;border-radius:14px;padding:18px 22px">
+        <div style="font-size:14.5px;font-weight:800;color:#166534;margin-bottom:6px">
+          📤 발송이 열려 있습니다
         </div>
-      </div>
-
-      <!-- 자주 묻는 질문 -->
-      <div style="padding:18px 20px;background:var(--surface-1);border:1px solid var(--border);border-radius:12px">
-        <div style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:12px">❓ 자주 묻는 질문</div>
-        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text-secondary);line-height:1.7">
-          <div><b>Q. 실제로 메일이 안 나가요.</b><br>A. <code>.env.local</code> 의 <code>MAIL_DRY_RUN=1</code> 이면 로그만 찍고 실제 발송 안 됨. <code>MAIL_DRY_RUN=0</code> 으로 바꾸고 서버 재시작.</div>
-          <div><b>Q. 예약 걸었는데 시간 됐는데 안 나가요.</b><br>A. 로컬 개발 환경에선 Vercel Cron 이 안 돕니다. <b>Vercel 배포 후</b> 자동 실행. 로컬 테스트는 <b>[⚡즉시]</b> 버튼으로.</div>
-          <div><b>Q. 같은 리드에 여러 번 실수로 보낼까 걱정.</b><br>A. <b>리드당 최대 3회 · 최근 발송 후 48h 안 지나면 자동 차단</b>. 각 리드 행의 <b>[✉ N회차]</b> 배지로 몇 번 보냈는지 실시간 확인.</div>
-          <div><b>Q. A/B/C 등급이 뭔가요?</b><br>A. 이메일 있고 사이트 살아있고 대형 리테일러 = <b>A</b> · 이메일+사이트 = <b>B</b> · 부족 = <b>C</b>. C 는 자동으로 검증실패로 옮겨져 발송 대상 아님.</div>
-          <div><b>Q. 회사명이 메일에 안 들어가요.</b><br>A. 메일 양식 본문에 <code>[회사명]</code> 이라고 넣으셨는지 확인. 이 마커만 자동 치환됨.</div>
+        <div style="font-size:12.5px;color:#166534;line-height:1.75">
+          예약 시각이 되면 실제 업체로 메일이 나갑니다.
+          하루 최대 ${(lock && lock.dailyCap) || 20}통까지입니다.
         </div>
-      </div>
-    </div>
-  `;
+      </div>`;
+  }).catch(() => {});
 }
 
-// ══════════════════════════════════════════════════════════════
-// 📅 예약 발송 관리 페이지
-// ══════════════════════════════════════════════════════════════
+function outboxPreviewVars(lead) {
+  const out = {};
+  for (const v of (state.email.variables || [])) {
+    out[v.key] = (lead && lead[v.key]) || v.example || '';
+  }
+  out.SenderName = '요기보';
+  out.SenderCompany = 'Yogico';
+  out.SenderEmail = _mailerEnvCache?.from || 'partnerships@yogico.kr';
+  return out;
+}
+function outboxSubstitute(src, vars) {
+  return (src || '').replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g,
+    (_, k) => vars[k] != null && vars[k] !== '' ? String(vars[k]) : `{{${k}}}`);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   발송 관리 — 보낼 메일 → 예약 발송 → 발송 완료
+
+   메일이 지나가는 순서대로 목록 셋으로 나눈다.
+     ✉️ 보낼 메일   — 발송 리스트(queued)로 옮겨둔 곳. 여기서 묶음 발송/예약.
+     📅 예약 발송   — 예약을 잡아둔 것. 시각이 되면 자동으로 아래로 내려간다.
+     ✅ 발송 완료   — 실제로 나간 것. 답장이 오면 [답장 받음]으로 빠진다.
+   ═══════════════════════════════════════════════════════════════ */
+var _outboxTab = 'ready';             // ready / scheduled / sent
+var _outboxReadyIds = [];             // [보낼 메일] 이 지금 화면에 띄운 대상 (모달과 공유)
+var _outboundStatusCache = null;      // { locked, message, dailyCap, intervalMs, testRecipients }
+
+// 보낼 메일 탭의 양식 — 화면 안에서 바로 고치고 미리 본다
+var _outboxCompose = {
+  templateId: null,
+  mailAccountId: null,
+  subject: '',
+  body: '',
+  previewLeadId: null,
+  dirty: false,        // 사용자가 문구를 직접 고쳤으면 양식 값으로 덮지 않는다
+  // ── 나눠 보내기 ──
+  // 100곳을 한 번에 쏘면 수신 서버가 대량 발송으로 본다. 같은 도메인으로
+  // 실거래 메일도 나가기 때문에 평판이 깎이면 그쪽까지 스팸함으로 간다.
+  batchSize: 30,
+  intervalMinutes: 10,
+  startNow: true,
+  startAt: '',         // startNow=false 일 때 쓰는 datetime-local 값
+  // ── 자동 재발송 ──
+  followUp: true,
+  followUpDays: 7,
+};
+
+/** 아웃바운드 잠금 상태 — 버튼을 눌러보기 전에 화면에서 알 수 있어야 한다 */
+async function loadOutboundStatus(force) {
+  if (!force && _outboundStatusCache) return _outboundStatusCache;
+  try {
+    const d = await safeJsonFetch('/api/mail/outbound-status');
+    if (d && d.success) { _outboundStatusCache = d; return d; }
+  } catch (e) { console.warn('outbound-status', e); }
+  // 못 받아왔으면 잠긴 것으로 본다 — 모르는 채로 보내는 쪽이 더 위험하다
+  _outboundStatusCache = { locked: true, message: '발송 가능 여부를 확인하지 못했습니다.', dailyCap: 0, intervalMs: 0 };
+  return _outboundStatusCache;
+}
+
 var _schedStatusFilter = 'pending';   // pending / sent / failed / canceled / all
 
 async function fetchScheduledMails(status) {
@@ -7558,6 +8287,1186 @@ async function fetchScheduledMails(status) {
   const data = await res.json();
   if (!data.success) throw new Error(data.error || 'load failed');
   return data.items || [];
+}
+
+async function renderOutboxPage() {
+  els.content.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-tertiary)">로드 중...</div>`;
+
+  const [lock, schedData] = await Promise.all([
+    loadOutboundStatus(),
+    safeJsonFetch('/api/mail/schedule?status=all&limit=500').catch(() => null),
+    loadStageCounts().catch(() => null),   // 발송 완료 탭의 "답장 와서 넘어간 곳"
+  ]);
+  if (!state.email.templates.length) await loadEmailTemplates().catch(() => {});
+  if (!(_mailAccounts || []).length) await loadMailAccounts().catch(() => {});
+  await refreshMailerEnv().catch(() => {});
+
+  const all = (schedData && schedData.items) || [];
+  const pending  = all.filter((i) => i.status === 'pending');
+  const sentSched = all.filter((i) => i.status === 'sent');
+  const failed   = all.filter((i) => i.status === 'failed');
+  const canceled = all.filter((i) => i.status === 'canceled');
+
+  // 이 화면은 baseLeads 에 기대면 안 된다.
+  // 사이드바 진입 처리는 pipeline-verifying / pipeline-import 일 때만 loadLeads()
+  // 를 부른다. 그래서 발송 관리로 바로 들어오면 baseLeads 가 비어 있고, 옮겨둔
+  // 곳이 있는데도 화면이 통째로 비어 보였다. 필요한 단계만 직접 가져온다.
+  const [queuedRes, contactedRes] = await Promise.all([
+    safeJsonFetch('/api/leads?stage=queued&limit=2000').catch(() => null),
+    safeJsonFetch('/api/leads?stage=contacted&limit=2000').catch(() => null),
+  ]);
+  const queuedLeads = ((queuedRes && queuedRes.data) || []).map((l) => ({ ...l, id: l.leadId }));
+  const sentLeads = ((contactedRes && contactedRes.data) || []).map((l) => ({ ...l, id: l.leadId }));
+
+  // 상세 팝업(openEditModal)은 baseLeads 에서 찾는다 — 여기서 가져온 것도 보이게 합친다
+  const known = new Set(baseLeads.map((l) => l.id));
+  const extra = [...queuedLeads, ...sentLeads].filter((l) => !known.has(l.id));
+  if (extra.length) baseLeads = baseLeads.concat(extra);
+
+  // 예약을 이미 잡아둔 곳은 '보낼 메일'에서 빼야 두 번 잡지 않는다
+  const scheduledLeadIds = new Set(pending.map((i) => i.leadId));
+  const hasEmail = (l) => l && l.Email && !/^Not found/i.test(l.Email) && /@/.test(l.Email);
+  // 보낼 메일 = 사람이 [발송 리스트로 옮기기] 를 눌러 queued 로 올린 것만.
+  // 검증만 끝난 것(verified)까지 여기 넣으면 고르는 단계가 없어진다.
+  const ready = queuedLeads.filter((l) =>
+    !l.deleted && hasEmail(l) && !scheduledLeadIds.has(l.leadId));
+
+  _outboxReadyIds = ready.map((l) => l.leadId);
+  outboxSyncCompose(ready);
+
+  // 탭은 "몇 곳인지" 와 "그게 어느 업체인지" 를 같이 알려야 한다.
+  // 목록이 아래에 있어도 스크롤해야 보이니, 탭에서 바로 열 수 있게 한다.
+  const tab = (key, icon, label, n, tone) => {
+    const on = _outboxTab === key;
+    return `<div class="outbox-tab" data-tab="${key}"
+      style="flex:1;min-width:172px;padding:11px 14px;border-radius:10px;cursor:pointer;
+             border:1px solid ${on ? tone : 'var(--border-default)'};
+             background:${on ? tone + '14' : 'var(--bg-surface)'};
+             box-shadow:${on ? 'inset 0 0 0 1px ' + tone : 'none'}">
+      <div style="font-size:11.5px;font-weight:700;color:${on ? tone : 'var(--text-tertiary)'}">${icon} ${label}</div>
+      <div style="display:flex;align-items:baseline;gap:5px;margin-top:1px">
+        <span style="font-size:20px;font-weight:800;color:var(--text-primary);line-height:1.2">${n.toLocaleString()}</span>
+        <span style="font-size:12px;font-weight:700;color:var(--text-tertiary)">곳</span>
+      </div>
+      ${n ? `<button type="button" class="outbox-peek" data-peek="${key}"
+        title="어느 업체인지 목록으로 봅니다"
+        style="margin-top:6px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
+               border:1px solid ${tone}55;background:${tone}12;color:${tone};cursor:pointer">
+        🔍 업체 보기
+      </button>` : `<div style="margin-top:6px;font-size:11px;color:var(--text-quaternary)">해당 없음</div>`}
+    </div>`;
+  };
+
+  els.content.innerHTML = `
+    <div style="max-width:1180px;margin:0 auto">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button id="outboxHowBtn" type="button"
+          title="메일이 어떤 순서로 나가는지 봅니다"
+          style="font-size:12px;font-weight:700;padding:6px 13px;border-radius:99px;cursor:pointer;
+                 background:var(--brand-soft,#eef2ff);color:var(--brand-text,#4338ca);
+                 border:1px solid var(--brand,#c7d2fe)">
+          ❓ 발송 로직 — 메일이 나가는 순서
+        </button>
+      </div>
+      ${outboxLockBannerHtml(lock)}
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
+        ${tab('ready',     '✉️', '보낼 메일',  ready.length,      '#2563eb')}
+        ${tab('scheduled', '📅', '예약 발송',  pending.length,    '#b45309')}
+        ${tab('sent',      '✅', '발송 완료',  sentSched.length + sentLeads.length, '#166534')}
+      </div>
+
+      <div id="outboxBody"></div>
+    </div>`;
+
+  const body = document.getElementById('outboxBody');
+  if (_outboxTab === 'ready')     body.innerHTML = outboxReadyHtml(ready, lock);
+  if (_outboxTab === 'scheduled') body.innerHTML = outboxScheduledHtml(pending, failed, canceled);
+  if (_outboxTab === 'sent')      body.innerHTML = outboxSentHtml(sentSched, sentLeads);
+
+  document.querySelectorAll('.outbox-tab').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      if (e.target.closest('.outbox-peek')) return;   // 목록 보기는 탭 전환이 아니다
+      _outboxTab = b.dataset.tab;
+      renderOutboxPage();
+    }));
+
+  document.querySelectorAll('.outbox-peek').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const k = b.dataset.peek;
+      if (k === 'ready') openOutboxPeek('보낼 메일', ready, { kind: 'lead' });
+      if (k === 'scheduled') openOutboxPeek('예약 발송', pending, { kind: 'schedule' });
+      if (k === 'sent') openOutboxPeek('발송 완료', sentLeads, { kind: 'lead', sent: true });
+    }));
+
+  outboxBindComposeInputs(ready);
+  document.getElementById('outboxGoVerified')?.addEventListener('click', () =>
+    document.querySelector('.nav-item[data-view="pipeline-verified"]')?.click());
+
+  document.getElementById('outboxSendBtn')?.addEventListener('click', () => runOutboxCampaign(ready, lock));
+  document.getElementById('outboxHowBtn')?.addEventListener('click', () => openSendLogicModal(lock));
+  document.getElementById('obGoTemplates')?.addEventListener('click', () => {
+    state.email.mode = 'list';
+    document.querySelector('.nav-item[data-view="tool-b2b-email"]')?.click();
+  });
+
+  document.querySelectorAll('.outbox-sched-cancel').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirm('이 예약을 취소합니다. 이 회사에는 메일이 나가지 않습니다.')) return;
+      try {
+        await safeJsonFetch(`/api/mail/schedule/${b.dataset.schedId}`, { method: 'DELETE' });
+        renderOutboxPage();
+      } catch (e) { alert(`취소 실패: ${e.message || e}`); }
+    }));
+
+  // baseLeads 는 id 를 leadId 로 맞춰 두므로 그대로 상세 팝업을 연다
+  document.querySelectorAll('.outbox-lead-open').forEach((el) =>
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.outbox-unqueue')) return;   // 빼기는 상세 열기가 아니다
+      openEditModal(el.dataset.leadId);
+    }));
+
+  // 발송 리스트에서 빼기 — 잘못 올렸거나 이미 컨택된 곳을 되돌린다.
+  // 이 화면에는 단계 이동 버튼이 없어서, 한 번 올리면 뺄 방법이 없었다.
+  document.querySelectorAll('.outbox-unqueue').forEach((b) =>
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = b.dataset.leadId;
+      const lead = ready.find((l) => l.leadId === id);
+      const name = (lead && lead.Company) || id;
+      if (!confirm(`"${name}" 을(를) 발송 리스트에서 뺍니다.
+
+[✅ 검증 완료] 로 되돌아가고, 메일은 나가지 않습니다.
+진행할까요?`)) return;
+      b.disabled = true; b.textContent = '⏳';
+      try {
+        const r = await safeJsonFetch('/api/leads/queue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leadIds: [id], undo: true }),
+        });
+        if (!r?.success) throw new Error(r?.error || '되돌리기 실패');
+        invalidateServerPage();
+        loadStageCounts(true);
+        renderOutboxPage();
+      } catch (err) {
+        alert('되돌리기 실패: ' + (err.message || 'unknown'));
+        b.disabled = false; b.textContent = '↩ 빼기';
+      }
+    }));
+}
+
+/** 발송 잠금 배너 — 지금 메일이 나가는 상태인지 화면 맨 위에서 못 박는다 */
+function outboxLockBannerHtml(lock) {
+  if (!lock || !lock.locked) {
+    return `
+      <div style="padding:12px 16px;background:#dcfce7;border:1px solid #86efac;border-radius:11px;
+                  display:flex;align-items:center;gap:11px">
+        <span style="font-size:19px">📤</span>
+        <div style="flex:1;font-size:13px;color:#166534;line-height:1.55">
+          <b>발송이 열려 있습니다.</b> 예약 시각이 되면 메일이 실제로 나갑니다.
+          ${lock?.dailyCap ? `<span style="color:#15803d"> · 하루 최대 ${lock.dailyCap}통 · ${Math.round((lock.intervalMs || 0) / 1000)}초 간격</span>` : ''}
+        </div>
+      </div>`;
+  }
+  const tests = lock.testRecipients || [];
+  return `
+    <div style="padding:13px 16px;background:#fef3c7;border:1px solid #fcd34d;border-radius:11px;
+                display:flex;align-items:flex-start;gap:11px">
+      <span style="font-size:19px">🔒</span>
+      <div style="flex:1;font-size:13px;color:#78350f;line-height:1.65">
+        <b style="font-size:14px">지금은 실제 업체로 메일이 나가지 않습니다 (테스트 중)</b>
+        <div style="margin-top:3px">
+          ${tests.length
+            ? `테스트 주소 <b style="font-family:monospace">${tests.map(escapeHtml).join(', ')}</b> 로만 실제 발송됩니다.
+               나머지 업체는 눌러도 나가지 않고 "발송 잠금 중"으로 기록됩니다.`
+            : '예약을 잡아두는 것까지는 됩니다. 잠금이 풀리기 전에는 예약 시각이 지나도 발송되지 않습니다.'}
+        </div>
+      </div>
+    </div>`;
+}
+
+/**
+ * 탭에서 바로 여는 업체 목록 팝업.
+ *
+ * 목록은 화면 아래에도 있지만, 스크롤해야 보이니 "지금 몇 곳인지"만 읽고
+ * 어느 업체인지는 모르고 지나가기 쉽다. 탭 숫자 옆에서 바로 열 수 있게 한다.
+ */
+function openOutboxPeek(title, items, opts) {
+  document.getElementById('outboxPeekRoot')?.remove();
+  const kind = (opts && opts.kind) || 'lead';
+  const showSent = !!(opts && opts.sent);
+
+  const rowsHtml = items.map((it) => {
+    // 예약 항목은 lead 가 안에 들어 있다
+    const l = kind === 'schedule' ? (it.lead || {}) : it;
+    const leadId = kind === 'schedule' ? it.leadId : it.leadId;
+    const email = kind === 'schedule' ? (it.to || l.Email || '') : (l.Email || '');
+    const when = kind === 'schedule'
+      ? new Date(it.scheduledFor).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : (l.lastEmailSentAt ? new Date(l.lastEmailSentAt).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '');
+    const sentN = Array.isArray(l.emailHistory)
+      ? l.emailHistory.filter((h) => h && h.status === 'sent').length : 0;
+
+    return `
+      <tr class="peek-row" data-lead-id="${escapeAttr(leadId || '')}"
+          style="border-top:1px solid var(--border-subtle);cursor:pointer"
+          title="클릭하면 이 업체의 상세 정보가 열립니다">
+        <td style="padding:9px 14px;max-width:280px">
+          <div style="font-weight:700;color:var(--text-primary);overflow:hidden;
+                      text-overflow:ellipsis;white-space:nowrap">${escapeHtml(l.Company || email || leadId || '(이름 없음)')}</div>
+          ${(l.TypeKo || l.Type) ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;
+               overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(truncate(l.TypeKo || l.Type, 54))}</div>` : ''}
+        </td>
+        <td style="padding:9px 10px;white-space:nowrap;color:var(--text-secondary);font-size:12px">${escapeHtml(l.Country || '—')}</td>
+        <td style="padding:9px 10px;font-family:monospace;font-size:11.5px;color:var(--text-tertiary);
+                   max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+            title="${escapeAttr(email)}">${escapeHtml(email || '—')}</td>
+        <td style="padding:9px 14px;white-space:nowrap;text-align:right;font-size:11.5px;color:var(--text-tertiary)">
+          ${kind === 'schedule'
+            ? `${escapeHtml(when)} 예정`
+            : (showSent
+                ? `${sentN ? `메일 ${sentN}회` : ''}${when ? ` · ${when}` : ''}`
+                : (sentN ? `이미 ${sentN}회 보냄` : '아직 안 보냄'))}
+        </td>
+      </tr>`;
+  }).join('');
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="outboxPeekRoot" style="position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.5);
+         display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="background:var(--surface-1);border-radius:16px;max-width:820px;width:100%;
+                  max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="padding:17px 22px;border-bottom:1px solid var(--border);display:flex;
+                    align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:var(--text-primary)">
+              ${escapeHtml(title)} · ${items.length.toLocaleString()}곳
+            </div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px">
+              ${kind === 'schedule'
+                ? '예약된 순서대로 나갑니다. 회사를 누르면 상세가 열립니다.'
+                : '회사를 누르면 상세 정보가 열립니다.'}
+            </div>
+          </div>
+          <button id="outboxPeekClose" type="button"
+            style="border:none;background:none;font-size:22px;line-height:1;cursor:pointer;
+                   color:var(--text-tertiary);padding:2px 6px">×</button>
+        </div>
+        <div style="overflow:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+            <thead>
+              <tr style="background:var(--surface-2);color:var(--text-secondary);text-align:left;
+                         position:sticky;top:0">
+                <th style="padding:9px 14px;font-weight:700">회사 · 업종</th>
+                <th style="padding:9px 10px;font-weight:700;width:110px">국가</th>
+                <th style="padding:9px 10px;font-weight:700;width:220px">이메일</th>
+                <th style="padding:9px 14px;font-weight:700;width:150px;text-align:right">
+                  ${kind === 'schedule' ? '발송 예정' : '발송 이력'}
+                </th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+        <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;
+                    justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:11.5px;color:var(--text-tertiary)">
+            이 목록은 아래 화면에도 그대로 있습니다.
+          </span>
+          <button id="outboxPeekOk" type="button" class="button primary"
+            style="font-size:13px;padding:9px 20px">닫기</button>
+        </div>
+      </div>
+    </div>`);
+
+  const root = document.getElementById('outboxPeekRoot');
+  const close = () => { root?.remove(); syncBodyScrollLock?.(); };
+  document.getElementById('outboxPeekClose')?.addEventListener('click', close);
+  document.getElementById('outboxPeekOk')?.addEventListener('click', close);
+  root?.addEventListener('click', (e) => { if (e.target === root) close(); });
+  root?.querySelectorAll('.peek-row').forEach((tr) => {
+    tr.addEventListener('click', () => {
+      const id = tr.dataset.leadId;
+      if (!id) return;
+      close();
+      openEditModal(id);
+    });
+  });
+  syncBodyScrollLock?.();
+}
+
+/**
+ * 발송 로직 설명 팝업 — 클라이언트에게 "메일이 어떤 순서로 나가는가"를 보여준다.
+ *
+ * 화면만 봐서는 눌렀을 때 무슨 일이 생기는지 알 수 없다. 특히 예약으로 깔린다는
+ * 것, 답장이 오면 자동으로 빠진다는 것, 같은 곳에 3번까지만 나간다는 것은
+ * 어디에도 적혀 있지 않으면 "왜 안 나가지" / "왜 또 나갔지" 로 이어진다.
+ */
+function openSendLogicModal(lock) {
+  document.getElementById('sendLogicModalRoot')?.remove();
+
+  const step = (n, title, body, tone) => `
+    <div style="display:flex;gap:12px;padding:13px 0;border-top:1px solid var(--border-subtle)">
+      <div style="flex-shrink:0;width:26px;height:26px;border-radius:50%;display:flex;
+                  align-items:center;justify-content:center;font-size:12.5px;font-weight:800;
+                  background:${tone || '#eef2ff'};color:${tone ? '#78350f' : '#4338ca'}">${n}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:800;color:var(--text-primary);margin-bottom:3px">${title}</div>
+        <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.75">${body}</div>
+      </div>
+    </div>`;
+
+  const tests = (lock && lock.testRecipients) || [];
+
+  const html = `
+    <div id="sendLogicModalRoot" style="position:fixed;inset:0;z-index:9998;
+         background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="background:var(--surface-1);border-radius:16px;max-width:660px;width:100%;
+                  max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;
+                    align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-size:16px;font-weight:800;color:var(--text-primary)">📨 메일이 나가는 순서</div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px">
+              버튼을 눌렀을 때 실제로 무슨 일이 일어나는지
+            </div>
+          </div>
+          <button id="sendLogicClose" type="button"
+            style="border:none;background:none;font-size:22px;line-height:1;cursor:pointer;
+                   color:var(--text-tertiary);padding:2px 6px">×</button>
+        </div>
+
+        <div style="padding:6px 22px 18px;overflow-y:auto">
+          ${step(1, '검증 완료에서 보낼 곳을 고릅니다',
+            '체크한 뒤 <b>[📋 발송 리스트로 옮기기]</b> 를 누릅니다. ' +
+            '옮기지 않은 곳에는 메일이 나가지 않습니다.')}
+
+          ${step(2, '보낼 메일에서 문구를 정합니다',
+            '양식은 하나만 씁니다. <b>회사명 같은 부분만 각 회사 것으로 바뀌어</b> 나갑니다.<br>' +
+            '오른쪽에서 회사를 바꿔 가며 실제로 갈 모습을 미리 볼 수 있습니다. ' +
+            '보내는 주소도 여기서 고릅니다.')}
+
+          ${step(3, '한 번에 쏟지 않고 나눠 보냅니다',
+            '<b>하루 ' + (lock?.dailyCap || 20) + '통까지</b>, 한 통과 다음 통 사이 ' +
+            '<b>' + Math.round((lock?.intervalMs || 8000) / 1000) + '초</b>를 쉬면서 내보냅니다. ' +
+            '남은 것은 다음 날로 넘어갑니다.<br>' +
+            '<span style="color:var(--text-tertiary)">한꺼번에 수백 통을 보내면 받는 쪽 메일서버가 ' +
+            '광고성 대량 발송으로 보고 스팸함으로 넘깁니다. 그러면 같은 주소로 나가는 ' +
+            '실제 거래 메일까지 함께 스팸 취급을 받습니다.</span>')}
+
+          ${step(4, '예약 발송에 쌓입니다',
+            '누른 즉시 나가는 것이 아니라 <b>예약</b>으로 깔립니다. ' +
+            '어느 회사에 며칠 나갈지 [📅 예약 발송] 탭에서 볼 수 있고, ' +
+            '나가기 전이면 <b>취소</b>할 수 있습니다.')}
+
+          ${step(5, '매일 정해진 시각에 나갑니다',
+            '예약된 메일은 <b>매일 오전 9시</b>에 하루 치만큼 나갑니다. ' +
+            '나간 것은 [✅ 발송 완료] 탭에 <b>며칠에 · 몇 번째로</b> 보냈는지 남고, ' +
+            '답이 없는 곳은 <b>무응답 N일</b> 로 표시됩니다.')}
+
+          ${step(6, '답장이 오면 자동으로 빠집니다',
+            '상대가 답장을 보내면 그 회사는 <b>[💬 답장 받음]</b> 으로 자동으로 옮겨가고 ' +
+            '발송 관리에서 사라집니다. <b>더 이상 광고 메일이 나가지 않습니다.</b>')}
+
+          ${step(7, '답이 없으면 7일 뒤 한 번 더',
+            '<b>같은 곳에 최대 3번까지</b>만 나갑니다 (첫 메일 + 재발송 2번).<br>' +
+            '중간에 답장이 오면 그 자리에서 멈춥니다.')}
+
+          <div style="margin-top:16px;padding:13px 15px;background:var(--bg-surface-alt);
+                      border:1px solid var(--border-default);border-radius:10px">
+            <div style="font-size:12.5px;font-weight:800;color:var(--text-primary);margin-bottom:6px">
+              🛡 안전장치
+            </div>
+            <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.8">
+              · 같은 곳에 <b>최대 3회</b><br>
+              · 마지막 발송 후 <b>48시간</b> 안에는 다시 나가지 않음<br>
+              · 하루 총 <b>${(lock && lock.dailyCap) || 20}통</b>을 넘지 않음<br>
+              · 메일 주소가 없는 곳은 발송 리스트로 옮겨지지 않음<br>
+              · 이미 예약이 걸린 곳은 중복으로 잡히지 않음
+            </div>
+          </div>
+
+          ${lock && lock.locked ? `
+            <div style="margin-top:11px;padding:13px 15px;background:#fef3c7;
+                        border:1px solid #fcd34d;border-radius:10px">
+              <div style="font-size:12.5px;font-weight:800;color:#78350f;margin-bottom:5px">
+                🔒 지금은 테스트 중입니다
+              </div>
+              <div style="font-size:12.5px;color:#78350f;line-height:1.8">
+                실제 업체로는 메일이 <b>나가지 않습니다</b>.
+                ${tests.length ? `테스트 주소 <b style="font-family:monospace">${tests.map(escapeHtml).join(', ')}</b> 로만 실제 발송됩니다.` : ''}<br>
+                나머지는 눌러도 "발송 잠금 중" 으로 기록만 남습니다.
+              </div>
+            </div>` : ''}
+        </div>
+
+        <div style="padding:13px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
+          <button id="sendLogicOk" type="button" class="button primary"
+            style="font-size:13px;padding:9px 20px">알겠습니다</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.insertAdjacentHTML('beforeend', html);
+  const root = document.getElementById('sendLogicModalRoot');
+  const close = () => { root?.remove(); syncBodyScrollLock?.(); };
+  document.getElementById('sendLogicClose')?.addEventListener('click', close);
+  document.getElementById('sendLogicOk')?.addEventListener('click', close);
+  root?.addEventListener('click', (e) => { if (e.target === root) close(); });
+  syncBodyScrollLock?.();
+}
+
+/**
+ * 발송 실행 — 예약 큐에 깔아 두고, 크론이 시각이 된 것부터 내보낸다.
+ *
+ * "지금 보내기"도 즉시 루프를 돌리지 않고 지금 시각 예약으로 만든다.
+ * 한 요청에서 수백 통을 연속 발송하면 서버리스 타임아웃에 걸리고, 어디까지
+ * 나갔는지도 알 수 없게 된다. 예약으로 두면 한 통씩 상태가 남는다.
+ */
+async function runOutboxCampaign(ready, lock) {
+  if (!ready.length) return;
+  if (!_outboxCompose.templateId) {
+    alert('메일 양식을 먼저 고르세요.\n[📝 메일 양식]에서 만들 수 있습니다.');
+    return;
+  }
+  const n = ready.length;
+  const size = _outboxCompose.batchSize || n;
+  const gap = _outboxCompose.intervalMinutes || 10;
+  const batches = Math.max(1, Math.ceil(n / size));
+  const acc = (_mailAccounts || []).find((a) => a._id === _outboxCompose.mailAccountId);
+
+  const startAt = _outboxCompose.startNow ? null : _outboxCompose.startAt;
+  if (!_outboxCompose.startNow) {
+    if (!startAt) { alert('시작 시각을 골라 주세요.'); return; }
+    if (new Date(startAt).getTime() < Date.now()) { alert('지난 시각으로는 보낼 수 없습니다.'); return; }
+  }
+
+  const lines = [
+    `${n.toLocaleString()}곳에 메일을 보냅니다.`,
+    '',
+    `보내는 주소  ${acc ? acc.smtpUser : '(기본 계정)'}`,
+    `내보내기     ${_outboxCompose.startNow ? '지금부터' : new Date(startAt).toLocaleString('ko-KR')} · ${size}곳씩 ${gap}분 간격 (${batches}번)`,
+    _outboxCompose.followUp
+      ? `자동 재발송  답 없으면 ${_outboxCompose.followUpDays}일 뒤 다시 (최대 3회 · 답장 오면 중단)`
+      : '자동 재발송  안 함',
+  ];
+  if (lock?.locked) {
+    const t = (lock.testRecipients || []).join(', ');
+    lines.push('', `🔒 지금은 발송 잠금 중입니다 — 실제로 나가는 것은 ${t || '없음'} 뿐이고`,
+      '   나머지는 "발송 잠금 중"으로 기록됩니다.');
+  }
+  lines.push('', '진행할까요?');
+  if (!confirm(lines.join('\n'))) return;
+
+  const btn = document.getElementById('outboxSendBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 예약을 깔고 있습니다...'; }
+  try {
+    const r = await safeJsonFetch('/api/mail/campaign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        leadIds: ready.map((l) => l.leadId),
+        templateId: _outboxCompose.templateId,
+        mailAccountId: _outboxCompose.mailAccountId || undefined,
+        startAt: startAt ? new Date(startAt).toISOString() : undefined,
+        batchSize: size,
+        intervalMinutes: gap,
+        followUp: _outboxCompose.followUp,
+        followUpDays: _outboxCompose.followUpDays,
+      }),
+    });
+    if (!r?.success) throw new Error(r?.error || '예약 생성 실패');
+
+    alert(
+      `✅ ${r.scheduled.toLocaleString()}곳 예약 완료\n\n` +
+      `${new Date(r.startAt).toLocaleString('ko-KR')} 부터\n` +
+      `${r.batchSize}곳씩 ${r.intervalMinutes}분 간격 · 총 ${r.batches}번\n` +
+      `마지막 묶음 ${new Date(r.lastAt).toLocaleString('ko-KR')}\n` +
+      (r.skipped?.length ? `\n제외 ${r.skipped.length}곳 (메일 없음·이미 예약·발송 한도)\n` : '') +
+      `\n[📅 예약 발송] 탭에서 확인·취소할 수 있습니다.`,
+    );
+    _outboxTab = 'scheduled';
+    invalidateServerPage();
+    await loadLeads({ force: true });
+    renderOutboxPage();
+  } catch (e) {
+    alert('발송 예약 실패: ' + (e.message || 'unknown'));
+    if (btn) { btn.disabled = false; btn.textContent = `✉️ ${n.toLocaleString()}곳에 보내기`; }
+  }
+}
+
+/** 양식·계정·미리보기 대상이 비어 있거나 사라졌으면 채워 넣는다 */
+function outboxSyncCompose(ready) {
+  const tpls = state.email.templates || [];
+  const cur = tpls.find((t) => t._id === _outboxCompose.templateId);
+  if (!cur && tpls.length) {
+    const t = tpls.find((x) => x.purpose === 'intro' && x.language === 'en') || tpls[0];
+    _outboxCompose.templateId = t._id;
+    _outboxCompose.subject = t.subject || '';
+    _outboxCompose.body = t.body || '';
+    _outboxCompose.dirty = false;
+  }
+  if (!_outboxCompose.mailAccountId && (_mailAccounts || []).length) {
+    // 대량 발송은 테스트 계정 우선 — 대표 주소로 쏘면 진행 중인 거래 메일까지 물린다
+    const a = _mailAccounts.find((x) => x.isTestSender)
+      || _mailAccounts.find((x) => x.isDefault) || _mailAccounts[0];
+    _outboxCompose.mailAccountId = a._id;
+  }
+  if (!ready.some((l) => l.leadId === _outboxCompose.previewLeadId)) {
+    _outboxCompose.previewLeadId = ready[0]?.leadId || null;
+  }
+}
+
+/**
+ * 입력 바인딩 — 제목·본문은 화면을 다시 그리지 않고 미리보기만 갱신한다.
+ * 한 글자마다 renderOutboxPage() 를 부르면 커서가 튀어 글을 쓸 수 없다.
+ */
+function outboxBindComposeInputs(ready) {
+  const tplSel = document.getElementById('obTpl');
+  const accSel = document.getElementById('obAcc');
+  const subjEl = document.getElementById('obSubject');
+  const bodyEl = document.getElementById('obBody');
+  const prevSel = document.getElementById('obPreviewLead');
+
+  tplSel?.addEventListener('change', () => {
+    const t = (state.email.templates || []).find((x) => x._id === tplSel.value);
+    if (!t) return;
+    if (_outboxCompose.dirty &&
+        !confirm('고쳐 쓴 문구가 있습니다. 양식을 바꾸면 지금 문구는 사라집니다. 바꿀까요?')) {
+      tplSel.value = _outboxCompose.templateId;
+      return;
+    }
+    _outboxCompose.templateId = t._id;
+    _outboxCompose.subject = t.subject || '';
+    _outboxCompose.body = t.body || '';
+    _outboxCompose.dirty = false;
+    renderOutboxPage();
+  });
+  accSel?.addEventListener('change', () => { _outboxCompose.mailAccountId = accSel.value; });
+  prevSel?.addEventListener('change', () => {
+    _outboxCompose.previewLeadId = prevSel.value;
+    outboxRefreshPreview(ready);
+  });
+  subjEl?.addEventListener('input', () => {
+    _outboxCompose.subject = subjEl.value; _outboxCompose.dirty = true; outboxRefreshPreview(ready);
+  });
+  bodyEl?.addEventListener('input', () => {
+    _outboxCompose.body = bodyEl.value; _outboxCompose.dirty = true; outboxRefreshPreview(ready);
+  });
+
+  // ── 내보내는 방식 ──
+  const split   = document.getElementById('obSplit');
+  const bSize   = document.getElementById('obBatchSize');
+  const bInt    = document.getElementById('obInterval');
+  const fUp     = document.getElementById('obFollowUp');
+  const fDays   = document.getElementById('obFollowDays');
+  const sNow    = document.getElementById('obStartNow');
+  const sLater  = document.getElementById('obStartLater');
+  const sAt     = document.getElementById('obStartAt');
+
+  const syncPlan = () => {
+    const n = ready.length;
+    const on = split ? split.checked : true;
+    const size = on ? Math.max(1, Number(bSize?.value) || 30) : n;
+    const gap = Math.max(1, Number(bInt?.value) || 10);
+    _outboxCompose.batchSize = size;
+    _outboxCompose.intervalMinutes = gap;
+    _outboxCompose.followUp = !!fUp?.checked;
+    _outboxCompose.followUpDays = Math.max(1, Number(fDays?.value) || 7);
+    _outboxCompose.startNow = !!sNow?.checked;
+    _outboxCompose.startAt = sAt?.value || '';
+    if (bSize) bSize.disabled = !on;
+    if (bInt) bInt.disabled = !on;
+    if (sAt) { sAt.disabled = _outboxCompose.startNow; sAt.style.opacity = _outboxCompose.startNow ? '.45' : '1'; }
+    if (fDays) fDays.disabled = !_outboxCompose.followUp;
+
+    const batches = Math.max(1, Math.ceil(n / size));
+    const mins = (batches - 1) * gap;
+    const hint = document.getElementById('obSplitHint');
+    if (hint) {
+      // 실제 발송 속도는 서버의 하루 상한이 정한다 (lib/outbound-lock.ts).
+      // 여기 값은 "예약을 며칠에 걸쳐 깔지"를 정하는 것이라, 하루 상한을
+      // 같이 보여주지 않으면 "10분 뒤면 다 나가겠네"로 잘못 읽힌다.
+      const cap = (_outboundStatusCache && _outboundStatusCache.dailyCap) || 20;
+      const days = Math.ceil(n / cap);
+      hint.textContent = on
+        ? `${n.toLocaleString()}곳 → ${batches}번에 나눠 예약됩니다.`
+          + ` 실제 발송은 하루 ${cap}통씩이라 전부 나가는 데 약 ${days}일 걸립니다`
+        : `${n.toLocaleString()}곳을 한 번에 예약합니다 — 그래도 발송은 하루 ${cap}통씩 나갑니다`;
+      hint.style.color = on ? 'var(--text-tertiary)' : '#b45309';
+    }
+    const plan = document.getElementById('obPlanHint');
+    if (plan) {
+      const start = _outboxCompose.startNow ? '지금부터' : `${new Date(_outboxCompose.startAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}부터`;
+      plan.textContent = `${start} ${on ? `${size}곳씩 ${gap}분 간격` : '한 번에'}`
+        + (_outboxCompose.followUp ? ` · 답 없으면 ${_outboxCompose.followUpDays}일 뒤 다시 (최대 3회)` : '');
+    }
+  };
+  [split, bSize, bInt, fUp, fDays, sNow, sLater, sAt].forEach((el) =>
+    el?.addEventListener('change', syncPlan));
+  [bSize, bInt, fDays].forEach((el) => el?.addEventListener('input', syncPlan));
+  syncPlan();
+}
+
+/** 미리보기 세 칸만 다시 칠한다 (입력 중 포커스를 잃지 않게) */
+function outboxRefreshPreview(ready) {
+  const lead = ready.find((l) => l.leadId === _outboxCompose.previewLeadId) || ready[0];
+  const vars = outboxPreviewVars(lead);
+  const to = document.getElementById('obPvTo');
+  const sj = document.getElementById('obPvSubject');
+  const bd = document.getElementById('obPvBody');
+  if (to) to.textContent = (lead && lead.Email) || '—';
+  if (sj) sj.textContent = outboxSubstitute(_outboxCompose.subject, vars) || '(제목 없음)';
+  if (bd) {
+    const t = outboxSubstitute(_outboxCompose.body, vars);
+    bd.innerHTML = t.includes('<') ? t : escapeHtml(t).split('\n').join('<br>');
+  }
+}
+
+/**
+ * ✉️ 보낼 메일 — 양식을 화면 안에 둔다.
+ *
+ * 예전에는 버튼을 눌러 모달을 띄워야 문구가 보였다. 그래서 "지금 무슨 내용이
+ * 나가는지" 를 확인하려면 매번 모달을 열어야 했고, 회사마다 무엇이 바뀌는지도
+ * 눈에 띄지 않았다. 문구와 미리보기를 목록과 같은 화면에 붙여 둔다.
+ */
+function outboxReadyHtml(ready, lock) {
+  if (!ready.length) {
+    return `
+      <div style="padding:44px 28px;text-align:center;background:var(--surface-1);
+                  border:1px dashed var(--border);border-radius:12px;color:var(--text-tertiary)">
+        <div style="font-size:34px;margin-bottom:8px">✉️</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text-secondary)">보낼 메일이 없습니다</div>
+        <div style="font-size:12.5px;margin-top:5px;line-height:1.6">
+          [✅ 검증 완료]에서 보낼 곳을 골라 <b>[발송 리스트로 옮기기]</b> 를 누르면 여기에 모입니다.
+        </div>
+        <button id="outboxGoVerified" type="button" class="button primary"
+          style="margin-top:13px;font-size:13px;padding:9px 16px">✅ 검증 완료에서 고르기</button>
+      </div>`;
+  }
+
+  const tpls = state.email.templates || [];
+  const tpl = tpls.find((t) => t._id === _outboxCompose.templateId) || tpls[0] || null;
+  const preview = ready.find((l) => l.leadId === _outboxCompose.previewLeadId) || ready[0];
+  const vars = outboxPreviewVars(preview);
+  const subj = outboxSubstitute(_outboxCompose.subject, vars);
+  const body = outboxSubstitute(_outboxCompose.body, vars);
+  const acc = (_mailAccounts || []).find((a) => a._id === _outboxCompose.mailAccountId)
+    || (_mailAccounts || [])[0] || null;
+
+  // 어떤 자리가 회사마다 달라지는지 — 이게 '묶음 발송'의 핵심이라 눈에 띄어야 한다
+  const usedVars = [...new Set(
+    `${_outboxCompose.subject} ${_outboxCompose.body}`.match(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g) || [],
+  )].map((m) => m.replace(/[{}\s]/g, ''));
+
+  const byCountry = new Map();
+  ready.forEach((l) => byCountry.set(l.Country || '-', (byCountry.get(l.Country || '-') || 0) + 1));
+  const topCountries = [...byCountry.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+  return `
+    <div style="border:1px solid #bfdbfe;border-radius:12px;overflow:hidden;margin-bottom:14px">
+      <div style="padding:13px 17px;background:#eff6ff;border-bottom:1px solid #bfdbfe">
+        <div style="font-size:14px;font-weight:800;color:#1e3a8a">
+          📦 ${ready.length.toLocaleString()}곳에 같은 메일을 한 번에
+        </div>
+        <div style="font-size:12.5px;color:#1e40af;line-height:1.6;margin-top:3px">
+          문구는 하나만 씁니다. <b>${usedVars.length ? usedVars.map((v) => `{{${escapeHtml(v)}}}`).join(' · ') : '{{Company}}'}</b>
+          자리만 회사마다 바뀝니다.
+        </div>
+      </div>
+
+      <div style="padding:14px 17px;background:var(--bg-surface);display:grid;
+                  grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:16px">
+        <!-- 왼쪽: 쓰는 곳 -->
+        <div style="min-width:0">
+          <div style="display:flex;gap:8px;margin-bottom:9px;flex-wrap:wrap">
+            <label style="flex:1;min-width:130px">
+              <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">양식</span>
+              <select id="obTpl" style="width:100%;margin-top:3px;padding:7px 9px;font-size:12.5px;
+                border:1px solid var(--border-default);border-radius:7px;
+                background:var(--bg-surface);color:var(--text-primary)">
+                ${tpls.length
+                  ? tpls.map((t) => {
+                      const p = (typeof TEMPLATE_PURPOSE_KO !== 'undefined' && TEMPLATE_PURPOSE_KO[t.purpose]) || null;
+                      return `<option value="${escapeAttr(t._id)}" ${t._id === (tpl && tpl._id) ? 'selected' : ''}>${escapeHtml(t.name)}${p ? ` · ${p.label}` : ''}</option>`;
+                    }).join('')
+                  : '<option value="">(등록된 양식 없음)</option>'}
+              </select>
+            </label>
+            <label style="flex:1;min-width:130px">
+              <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">보내는 계정</span>
+              <select id="obAcc" style="width:100%;margin-top:3px;padding:7px 9px;font-size:12.5px;
+                border:1px solid var(--border-default);border-radius:7px;
+                background:var(--bg-surface);color:var(--text-primary)">
+                ${(_mailAccounts || []).map((a) => `<option value="${escapeAttr(a._id)}" ${a._id === (acc && acc._id) ? 'selected' : ''}>${escapeHtml(a.smtpUser)}${a.isTestSender ? ' (테스트)' : ''}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+
+          <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">제목</span>
+          <input id="obSubject" type="text" value="${escapeAttr(_outboxCompose.subject)}"
+            style="width:100%;margin:3px 0 9px;padding:8px 10px;font-size:13px;
+                   border:1px solid var(--border-default);border-radius:7px;
+                   background:var(--bg-surface);color:var(--text-primary)">
+
+          <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">본문</span>
+          <textarea id="obBody" rows="11"
+            style="width:100%;margin-top:3px;padding:9px 11px;font-size:12.5px;line-height:1.65;
+                   border:1px solid var(--border-default);border-radius:7px;resize:vertical;
+                   background:var(--bg-surface);color:var(--text-primary);font-family:inherit"
+          >${escapeHtml(_outboxCompose.body)}</textarea>
+          <div style="font-size:11px;color:var(--text-quaternary);margin-top:4px">
+            고친 문구는 <b>이번 발송에만</b> 쓰입니다. 양식 자체를 바꾸거나 새로 만들려면
+            <button type="button" id="obGoTemplates"
+              style="border:none;background:none;padding:0;font-size:11px;font-weight:700;
+                     color:var(--brand-text,#4338ca);cursor:pointer;text-decoration:underline">[📝 메일 양식]</button>
+            에서 저장하세요.
+          </div>
+        </div>
+
+        <!-- 오른쪽: 실제로 나갈 모습 -->
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;flex-wrap:wrap">
+            <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">이 회사에게는 이렇게 갑니다</span>
+            <select id="obPreviewLead" style="flex:1;min-width:150px;padding:5px 8px;font-size:12px;
+              border:1px solid var(--border-default);border-radius:7px;
+              background:var(--bg-surface);color:var(--text-primary)">
+              ${ready.slice(0, 300).map((l) => `<option value="${escapeAttr(l.leadId)}" ${l.leadId === (preview && preview.leadId) ? 'selected' : ''}>${escapeHtml(l.Company || l.Email || l.leadId)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="border:1px solid var(--border-default);border-radius:9px;overflow:hidden;
+                      background:var(--surface-1)">
+            <div style="padding:8px 12px;border-bottom:1px solid var(--border-subtle);
+                        font-size:11.5px;color:var(--text-tertiary)">
+              받는 사람 <b id="obPvTo" style="color:var(--text-secondary);font-family:monospace">${escapeHtml((preview && preview.Email) || '—')}</b>
+            </div>
+            <div id="obPvSubject" style="padding:9px 12px;border-bottom:1px solid var(--border-subtle);
+                        font-size:13px;font-weight:700;color:var(--text-primary);word-break:break-word">
+              ${escapeHtml(subj) || '(제목 없음)'}
+            </div>
+            <div id="obPvBody" style="padding:11px 13px;font-size:12.5px;line-height:1.7;color:var(--text-secondary);
+                        max-height:290px;overflow:auto;word-break:break-word">
+              ${body.includes('<') ? body : escapeHtml(body).split('\n').join('<br>')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 어떻게 내보낼지 — 한 번에 쏟지 않기 위한 설정 -->
+      <div style="padding:13px 17px;border-top:1px solid var(--border-default);background:var(--bg-surface)">
+        <div style="font-size:12px;font-weight:800;color:var(--text-secondary);margin-bottom:9px">
+          어떻게 내보낼까요
+        </div>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+          <label style="display:flex;gap:7px;align-items:flex-start;cursor:pointer;flex:1;min-width:260px">
+            <input type="checkbox" id="obSplit" ${_outboxCompose.batchSize > 0 ? 'checked' : ''} style="margin-top:2px">
+            <span style="font-size:12.5px;color:var(--text-secondary);line-height:1.6">
+              <b style="color:var(--text-primary)">나눠 보내기</b>
+              <input type="number" id="obBatchSize" min="1" max="200" value="${_outboxCompose.batchSize}"
+                style="width:58px;margin:0 3px;padding:3px 6px;font-size:12.5px;text-align:right;
+                       border:1px solid var(--border-default);border-radius:6px;
+                       background:var(--bg-surface);color:var(--text-primary)">곳씩
+              <input type="number" id="obInterval" min="1" max="1440" value="${_outboxCompose.intervalMinutes}"
+                style="width:52px;margin:0 3px;padding:3px 6px;font-size:12.5px;text-align:right;
+                       border:1px solid var(--border-default);border-radius:6px;
+                       background:var(--bg-surface);color:var(--text-primary)">분 간격
+              <span id="obSplitHint" style="display:block;color:var(--text-tertiary);font-size:11.5px;margin-top:3px"></span>
+            </span>
+          </label>
+
+          <label style="display:flex;gap:7px;align-items:flex-start;cursor:pointer;flex:1;min-width:260px">
+            <input type="checkbox" id="obFollowUp" ${_outboxCompose.followUp ? 'checked' : ''} style="margin-top:2px">
+            <span style="font-size:12.5px;color:var(--text-secondary);line-height:1.6">
+              <b style="color:var(--text-primary)">답장 없으면 자동으로 다시 보내기</b>
+              <input type="number" id="obFollowDays" min="1" max="60" value="${_outboxCompose.followUpDays}"
+                style="width:52px;margin:0 3px;padding:3px 6px;font-size:12.5px;text-align:right;
+                       border:1px solid var(--border-default);border-radius:6px;
+                       background:var(--bg-surface);color:var(--text-primary)">일 뒤
+              <span style="display:block;color:var(--text-tertiary);font-size:11.5px;margin-top:3px">
+                같은 곳에 최대 3회까지 · <b>답장이 오면 그 자리에서 멈춥니다</b>
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div style="margin-top:11px;display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:12.5px;color:var(--text-secondary)">시작</span>
+          <label style="display:inline-flex;gap:5px;align-items:center;font-size:12.5px;cursor:pointer">
+            <input type="radio" name="obStart" id="obStartNow" ${_outboxCompose.startNow ? 'checked' : ''}> 지금부터
+          </label>
+          <label style="display:inline-flex;gap:5px;align-items:center;font-size:12.5px;cursor:pointer">
+            <input type="radio" name="obStart" id="obStartLater" ${_outboxCompose.startNow ? '' : 'checked'}> 시각 지정
+          </label>
+          <input type="datetime-local" id="obStartAt" value="${escapeAttr(_outboxCompose.startAt || defaultScheduleTime())}"
+            ${_outboxCompose.startNow ? 'disabled' : ''}
+            style="padding:5px 8px;font-size:12.5px;border:1px solid var(--border-default);border-radius:7px;
+                   background:var(--bg-surface);color:var(--text-primary);${_outboxCompose.startNow ? 'opacity:.45' : ''}">
+        </div>
+      </div>
+
+      <div style="padding:12px 17px;border-top:1px solid var(--border-default);
+                  display:flex;gap:9px;flex-wrap:wrap;align-items:center;background:var(--bg-surface-alt)">
+        <button id="outboxSendBtn" type="button" class="button primary"
+          style="font-size:14px;font-weight:700;padding:11px 22px">
+          ✉️ ${ready.length.toLocaleString()}곳에 보내기${lock?.locked ? ' 🔒' : ''}
+        </button>
+        <span id="obPlanHint" style="font-size:12px;color:var(--text-tertiary)"></span>
+      </div>
+    </div>
+
+    <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:7px">
+      받는 곳 ${ready.length.toLocaleString()}곳 · ${topCountries.map(([c, n]) => `${escapeHtml(c)} ${n}`).join(' · ')}${byCountry.size > 6 ? ` 외 ${byCountry.size - 6}개국` : ''}
+    </div>
+    ${outboxLeadTableHtml(ready.slice(0, 200), ready.length)}`;
+}
+
+/** 📅 예약 발송 — 언제 · 어디로. 실패한 것도 사유와 함께 여기 남긴다 */
+function outboxScheduledHtml(pending, failed, canceled) {
+  const byDay = new Map();
+  for (const it of pending) {
+    const key = new Date(it.scheduledFor).toISOString().slice(0, 10);
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(it);
+  }
+  const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const today = new Date().toISOString().slice(0, 10);
+  const dayLabel = (k) => {
+    const d = new Date(k + 'T00:00:00');
+    const diff = Math.round((d - new Date(today + 'T00:00:00')) / 86400000);
+    const base = d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+    if (diff === 0) return `${base} · 오늘`;
+    if (diff === 1) return `${base} · 내일`;
+    if (diff > 1) return `${base} · ${diff}일 뒤`;
+    return `${base} · ⚠️ 지난 날짜`;
+  };
+
+  const pendingBlock = !pending.length ? `
+    <div style="padding:40px 28px;text-align:center;background:var(--surface-1);
+                border:1px dashed var(--border);border-radius:12px;color:var(--text-tertiary)">
+      <div style="font-size:34px;margin-bottom:8px">📅</div>
+      <div style="font-size:14px;font-weight:700;color:var(--text-secondary)">예약된 발송이 없습니다</div>
+      <div style="font-size:12.5px;margin-top:5px">[✉️ 보낼 메일]에서 <b>예약 잡기</b>를 누르면 여기로 옵니다.</div>
+    </div>` : `
+    <div style="border:1px solid #fcd34d;border-radius:12px;overflow:hidden">
+      <div style="padding:11px 16px;background:#fffbeb;border-bottom:1px solid #fde68a;
+                  font-size:12.5px;color:#78350f;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <b>대기 중 ${pending.length.toLocaleString()}건</b>
+        <span>${days.length}개 날짜</span>
+        <span style="margin-left:auto;font-size:11px">시각이 되면 자동으로 [발송 완료]로 넘어갑니다 · 취소는 회사 옆 ✕</span>
+      </div>
+      ${days.map(([key, list]) => `
+        <div style="padding:11px 16px;border-bottom:1px solid var(--border-subtle)">
+          <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:6px">
+            <b style="font-size:13px;color:var(--text-primary)">${escapeHtml(dayLabel(key))}</b>
+            <span style="font-size:11.5px;color:var(--text-tertiary)">${list.length}곳</span>
+            <span style="font-size:11px;color:var(--text-quaternary)">
+              ${new Date(list[0].scheduledFor).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 발송
+            </span>
+          </div>
+          <!-- 회사명만 칩으로 늘어놓으면 "이 업체 맞나"를 못 가린다.
+               국가·이메일까지 같이 보여야 나가기 전에 뺄 수 있다. -->
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+              <tbody>
+                ${list.map((it) => {
+                  const L = it.lead || {};
+                  return `
+                  <tr style="border-top:1px solid var(--border-subtle)">
+                    <td class="outbox-lead-open" data-lead-id="${escapeAttr(it.leadId)}"
+                        style="padding:7px 10px;cursor:pointer;max-width:320px"
+                        title="클릭하면 이 업체의 상세 정보가 열립니다">
+                      <div style="font-weight:700;color:var(--text-primary);overflow:hidden;
+                                  text-overflow:ellipsis;white-space:nowrap">
+                        ${escapeHtml(L.Company || it.to || it.leadId)}
+                      </div>
+                      ${(L.TypeKo || L.Type) ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:1px;
+                           overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(truncate(L.TypeKo || L.Type, 58))}</div>` : ''}
+                    </td>
+                    <td style="padding:7px 10px;white-space:nowrap;color:var(--text-secondary);width:110px">${escapeHtml(L.Country || '—')}</td>
+                    <td style="padding:7px 10px;font-family:monospace;font-size:11.5px;color:var(--text-tertiary);
+                               max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                        title="${escapeAttr(it.to || '')}">${escapeHtml(it.to || '')}</td>
+                    <td style="padding:7px 10px;white-space:nowrap;width:64px;text-align:right">
+                      ${it.attemptNo && it.attemptNo > 1
+                        ? `<span style="padding:1px 6px;background:#fef3c7;color:#92400e;border-radius:99px;
+                                        font-size:10px;font-weight:800">${it.attemptNo}번째</span>` : ''}
+                    </td>
+                    <td style="padding:7px 12px;white-space:nowrap;width:52px;text-align:right">
+                      <button type="button" class="outbox-sched-cancel" data-sched-id="${escapeAttr(it._id)}"
+                        title="이 예약을 취소합니다 — 이 회사에는 나가지 않습니다"
+                        style="border:1px solid var(--border-default);background:var(--bg-surface);
+                               color:var(--text-tertiary);cursor:pointer;font-size:11px;
+                               line-height:1;padding:4px 8px;border-radius:7px">취소</button>
+                    </td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`).join('')}
+    </div>`;
+
+  // 실패는 조용히 묻히면 안 된다 — "왜 안 나갔나"가 여기에만 남는다
+  const failedBlock = !failed.length ? '' : `
+    <div style="margin-top:14px;border:1px solid #fecaca;border-radius:12px;overflow:hidden">
+      <div style="padding:11px 16px;background:#fef2f2;border-bottom:1px solid #fecaca;font-size:12.5px;color:#991b1b">
+        <b>⚠️ 나가지 못한 예약 ${failed.length}건</b> — 사유를 확인하고 다시 예약해 주세요
+      </div>
+      ${failed.map((it) => `
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border-subtle);font-size:12.5px">
+          <b style="color:var(--text-primary)">${escapeHtml((it.lead && it.lead.Company) || it.to || it.leadId)}</b>
+          <span style="color:var(--text-tertiary);margin-left:7px">
+            ${new Date(it.scheduledFor).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} 예정이었음
+          </span>
+          <div style="margin-top:3px;color:#b91c1c">${escapeHtml(it.lastError || '사유 기록 없음')}</div>
+        </div>`).join('')}
+    </div>`;
+
+  const canceledBlock = !canceled.length ? '' : `
+    <div style="margin-top:12px;font-size:12px;color:var(--text-tertiary)">
+      🚫 취소된 예약 ${canceled.length}건 — ${canceled.map((it) =>
+        escapeHtml((it.lead && it.lead.Company) || it.to || it.leadId)).join(' · ')}
+    </div>`;
+
+  return pendingBlock + failedBlock + canceledBlock;
+}
+
+/**
+ * ✅ 발송 완료 — "며칠에 나갔나" 와 "몇 번 보냈는데 답이 없나" 를 같이 본다.
+ *
+ * 통수만 세어 두면 팔로우업 판단을 못 한다. 광고 메일을 두 번 세 번 보내고도
+ * 답이 없는 곳을 골라내야 다음에 뭘 할지 정할 수 있어서, 나간 날짜로 묶고
+ * 회사마다 보낸 횟수와 답장 여부를 같은 줄에 붙여 둔다.
+ */
+function outboxSentHtml(sentSched, sentLeads) {
+  // 회사별로 모은다 — 발송 이력이 있으면 그걸 쓰고, 없으면 마지막 발송 시각만이라도
+  const rows = sentLeads.map((l) => {
+    const hist = (l.emailHistory || []).filter((h) => h && h.status === 'sent');
+    const sentAts = hist.map((h) => h.sentAt).filter(Boolean).sort();
+    const last = sentAts[sentAts.length - 1] || l.lastEmailSentAt || '';
+    return {
+      leadId: l.leadId,
+      company: l.Company || '(이름 없음)',
+      email: l.Email || '',
+      country: l.Country || '',
+      count: hist.length || (l.lastEmailSentAt ? 1 : 0),
+      first: sentAts[0] || l.lastEmailSentAt || '',
+      last,
+      replied: !!l.inboundCount,
+      // 마지막으로 보낸 뒤 며칠째 답이 없는지 — 팔로우업 판단의 실제 기준
+      waited: last ? Math.max(0, Math.floor((Date.now() - new Date(last).getTime()) / 86400000)) : 0,
+    };
+  }).filter((r) => r.last);
+
+  if (!rows.length && !sentSched.length) {
+    return `
+      <div style="padding:44px 28px;text-align:center;background:var(--surface-1);
+                  border:1px dashed var(--border);border-radius:12px;color:var(--text-tertiary)">
+        <div style="font-size:34px;margin-bottom:8px">✅</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text-secondary)">아직 나간 메일이 없습니다</div>
+        <div style="font-size:12.5px;margin-top:5px">예약한 메일이 나가면 여기에 쌓입니다.</div>
+      </div>`;
+  }
+
+  // 마지막으로 나간 날 기준으로 묶는다 — "이날 나간 것들은 어떻게 됐나"를 본다
+  const byDay = new Map();
+  for (const r of rows) {
+    const key = String(r.last).slice(0, 10);
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(r);
+  }
+  const days = [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]));  // 최근 날짜부터
+  const dayLabel = (k) => {
+    const d = new Date(k + 'T00:00:00');
+    if (isNaN(d.getTime())) return k;
+    const diff = Math.round((new Date().setHours(0, 0, 0, 0) - d.getTime()) / 86400000);
+    const base = d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+    if (diff === 0) return `${base} · 오늘`;
+    if (diff === 1) return `${base} · 어제`;
+    return `${base} · ${diff}일 전`;
+  };
+
+  const nudged = rows.filter((r) => !r.replied && r.count >= 2);
+  const maxed  = rows.filter((r) => !r.replied && r.count >= 3);
+  // 답장이 오면 리드가 'replied' 로 올라가 이 목록에서 빠진다(lib/mail/ingest.ts).
+  // 그래서 여기 남아 있다는 것 자체가 "아직 답이 없다"는 뜻이다. 어디로 갔는지는
+  // 알려줘야 사라진 것을 잃어버린 것으로 오해하지 않는다.
+  // 이 화면은 contacted/queued 만 가져오므로 baseLeads 로는 셀 수 없다.
+  // 단계별 합계는 사이드바 배지와 같은 API 를 쓴다.
+  const sc = _stageCountsCache?.stages || {};
+  const movedToReplied = (sc.replied || 0) + (sc.negotiating || 0) + (sc.partner || 0);
+
+  const summary = `
+    <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:9px">
+      ${[
+        ['보내고 답 기다리는 곳', rows.length, 'var(--text-primary)', 'var(--border-default)'],
+        ['2번 보냈는데 무응답', nudged.length, '#b45309', '#fcd34d'],
+        ['3번 다 씀 · 무응답', maxed.length, '#b91c1c', '#fecaca'],
+        ['답장 와서 넘어간 곳', movedToReplied, '#166534', '#86efac'],
+      ].map(([label, n, color, border]) => `
+        <div style="flex:1;min-width:132px;padding:10px 13px;border:1px solid ${border};
+                    border-radius:10px;background:var(--bg-surface)">
+          <div style="font-size:11px;color:var(--text-tertiary);font-weight:700">${label}</div>
+          <div style="font-size:19px;font-weight:800;color:${color};line-height:1.2">${n.toLocaleString()}</div>
+        </div>`).join('')}
+    </div>
+    <div style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:13px;line-height:1.6">
+      답장이 오면 그 회사는 <b>[💬 답장 받음]</b> 으로 자동으로 옮겨가고 이 목록에서 빠집니다.
+      여기 남아 있는 곳은 아직 답이 없는 곳입니다.
+    </div>`;
+
+  const countBadge = (n) => {
+    const tone = n >= 3 ? ['#fee2e2', '#991b1b'] : n >= 2 ? ['#fef3c7', '#92400e'] : ['#e0e7ff', '#3730a3'];
+    return `<span style="padding:1px 7px;background:${tone[0]};color:${tone[1]};border-radius:99px;
+                        font-size:10.5px;font-weight:800;white-space:nowrap">${n}번째</span>`;
+  };
+  const fmtT = (v) => v ? new Date(v).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  const dayBlocks = days.map(([key, list]) => {
+    list.sort((a, b) => Number(a.replied) - Number(b.replied) || b.count - a.count);
+    const dayNoReply = list.filter((r) => !r.replied).length;
+    return `
+      <div style="border:1px solid var(--border-default);border-radius:11px;overflow:hidden;margin-bottom:11px">
+        <div style="padding:10px 15px;background:var(--bg-surface-alt);border-bottom:1px solid var(--border-default);
+                    display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <b style="font-size:13px;color:var(--text-primary)">${escapeHtml(dayLabel(key))}</b>
+          <span style="font-size:11.5px;color:var(--text-tertiary)">${list.length}곳 발송</span>
+          ${dayNoReply ? `<span style="font-size:11.5px;color:#b45309">무응답 ${dayNoReply}곳</span>` : ''}
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+            <tbody>
+              ${list.map((r) => `
+                <tr class="outbox-lead-open" data-lead-id="${escapeAttr(r.leadId)}"
+                    style="border-top:1px solid var(--border-subtle);cursor:pointer">
+                  <td style="padding:8px 15px;max-width:250px;overflow:hidden;text-overflow:ellipsis;
+                             white-space:nowrap" title="${escapeAttr(r.company)}">
+                    ${escapeHtml(r.company)}
+                  </td>
+                  <td style="padding:8px 10px;white-space:nowrap;color:var(--text-tertiary)">${escapeHtml(r.country)}</td>
+                  <td style="padding:8px 10px;white-space:nowrap">${countBadge(r.count)}</td>
+                  <td style="padding:8px 10px;white-space:nowrap;color:var(--text-quaternary);font-size:11.5px">
+                    ${r.count > 1 && r.first ? `첫 발송 ${String(r.first).slice(5, 10).replace('-', '/')} · ` : ''}${fmtT(r.last)}
+                  </td>
+                  <td style="padding:8px 15px;white-space:nowrap;text-align:right">
+                    ${r.replied
+                      ? '<span style="color:#166534;font-weight:700">✅ 답장 옴</span>'
+                      : r.count >= 3
+                        ? `<span style="color:#b91c1c;font-weight:700">무응답 ${r.waited}일 · 더 못 보냄</span>`
+                        : `<span style="color:#b45309">무응답 ${r.waited}일</span>`}
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
+
+  // 예약으로 나간 건은 위 표에 이미 회사로 잡히지만, 예약분만 따로 세어 준다
+  const schedNote = !sentSched.length ? '' : `
+    <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:11px">
+      📅 이 중 예약으로 나간 건 ${sentSched.length}건입니다.
+    </div>`;
+
+  return summary + schedNote + dayBlocks;
+}
+
+/** 발송함에서 쓰는 가벼운 리드 표 — 클릭하면 기존 상세 팝업이 열린다 */
+/** 이 업체에 지금까지 몇 번 나갔는가 — 발송함 어디서나 같은 모양으로 */
+function outboxSendCountBadge(lead, opts) {
+  const n = (lead && Array.isArray(lead.emailHistory))
+    ? lead.emailHistory.filter((h) => h && h.status === 'sent').length : 0;
+  const next = opts && opts.next;   // 다음에 몇 번째로 나갈지 (아직 안 보낸 화면용)
+  if (!n && !next) {
+    return `<span style="padding:1px 7px;background:var(--bg-surface-alt);color:var(--text-tertiary);
+      border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap">아직 안 보냄</span>`;
+  }
+  if (!n && next) {
+    return `<span style="padding:1px 7px;background:#e0e7ff;color:#3730a3;border-radius:99px;
+      font-size:10px;font-weight:800;white-space:nowrap">1회차 예정</span>`;
+  }
+  const tone = n >= 3 ? ['#fee2e2', '#991b1b'] : n >= 2 ? ['#fef3c7', '#92400e'] : ['#e0e7ff', '#3730a3'];
+  return `<span title="같은 곳에 최대 3회까지 나갑니다"
+    style="padding:1px 7px;background:${tone[0]};color:${tone[1]};border-radius:99px;
+    font-size:10px;font-weight:800;white-space:nowrap">메일 ${n}회 발송</span>`;
+}
+
+/**
+ * 발송함 공용 업체 표 — "누구에게 보내는가"를 실제로 읽을 수 있게.
+ *
+ * 회사명만 늘어놓으면 목록을 봐도 판단이 안 된다. 업종·국가·홈페이지까지 있어야
+ * "이 업체 맞나" 를 그 자리에서 가릴 수 있다. 행을 누르면 상세 팝업이 열린다.
+ */
+function outboxLeadTableHtml(leads, total, showSent) {
+  const fmtD = (v) => v ? new Date(v).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '—';
+  const site = (u) => {
+    const v = String(u || '').trim();
+    if (!v) return '<span style="color:var(--text-quaternary)">—</span>';
+    const href = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+    const short = v.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+    return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener"
+      onclick="event.stopPropagation()"
+      style="color:var(--brand-text,#4338ca);text-decoration:none">${escapeHtml(truncate(short, 30))} ↗</a>`;
+  };
+  return `
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead>
+            <tr style="background:var(--surface-2);color:var(--text-secondary);text-align:left">
+              <th style="padding:9px 14px;font-weight:700">회사 · 업종</th>
+              <th style="padding:9px 12px;font-weight:700;width:110px">국가</th>
+              <th style="padding:9px 12px;font-weight:700;width:210px">이메일</th>
+              <th style="padding:9px 12px;font-weight:700;width:190px">홈페이지</th>
+              <th style="padding:9px 12px;font-weight:700;width:104px">발송</th>
+              ${showSent
+                ? '<th style="padding:9px 12px;font-weight:700;width:90px">보낸 날</th><th style="padding:9px 14px;font-weight:700;width:80px">답장</th>'
+                : '<th style="padding:9px 14px;font-weight:700;width:96px;text-align:right">제외</th>'}
+            </tr>
+          </thead>
+          <tbody>
+            ${leads.map((l) => `
+              <tr class="outbox-lead-open" data-lead-id="${escapeAttr(l.leadId)}"
+                  style="border-top:1px solid var(--border-subtle);cursor:pointer"
+                  title="클릭하면 이 업체의 상세 정보가 열립니다">
+                <td style="padding:8px 14px;max-width:340px">
+                  <div style="font-weight:700;color:var(--text-primary);overflow:hidden;
+                              text-overflow:ellipsis;white-space:nowrap">${escapeHtml(l.Company || '(이름 없음)')}</div>
+                  ${(l.TypeKo || l.Type) ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;
+                       overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                       title="${escapeAttr(l.TypeKo || l.Type)}">${escapeHtml(truncate(l.TypeKo || l.Type, 62))}</div>` : ''}
+                </td>
+                <td style="padding:8px 12px;white-space:nowrap;color:var(--text-secondary)">${escapeHtml(l.Country || '—')}</td>
+                <td style="padding:8px 12px;font-family:monospace;font-size:11.5px;color:var(--text-secondary);
+                           max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                    title="${escapeAttr(l.Email || '')}">${escapeHtml(l.Email || '—')}</td>
+                <td style="padding:8px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px">${site(l.WebsiteContact)}</td>
+                <td style="padding:8px 12px;white-space:nowrap">${outboxSendCountBadge(l, { next: !showSent })}</td>
+                ${showSent ? `
+                  <td style="padding:8px 12px;white-space:nowrap;color:var(--text-tertiary)">${fmtD(l.lastEmailSentAt)}</td>
+                  <td style="padding:8px 14px;white-space:nowrap">${l.inboundCount
+                    ? '<span style="color:#166534;font-weight:700">✅ 옴</span>'
+                    : '<span style="color:var(--text-quaternary)">—</span>'}</td>`
+                : `
+                  <td style="padding:8px 14px;white-space:nowrap;text-align:right">
+                    <button type="button" class="outbox-unqueue" data-lead-id="${escapeAttr(l.leadId)}"
+                      title="발송 리스트에서 빼고 [검증 완료]로 되돌립니다. 메일은 나가지 않습니다."
+                      style="font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;
+                             border:1px solid var(--border-default);background:var(--bg-surface);
+                             color:var(--text-secondary);cursor:pointer">↩ 빼기</button>
+                  </td>`}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${total > leads.length ? `
+        <div style="padding:9px 14px;font-size:11.5px;color:var(--text-tertiary);border-top:1px solid var(--border-subtle)">
+          ${leads.length.toLocaleString()}곳만 표시 · 전체 ${total.toLocaleString()}곳
+        </div>` : ''}
+    </div>`;
 }
 
 async function renderScheduledMailsPage() {
@@ -7625,7 +9534,7 @@ async function renderScheduledMailsPage() {
       ${items.length === 0 ? `
         <div style="padding:48px;text-align:center;background:var(--surface-1);border:1px dashed var(--border);border-radius:12px;color:var(--text-tertiary);font-size:14px">
           📭 이 상태의 예약이 없습니다.<br>
-          <span style="font-size:12px">"메일 발송함" 페이지의 <b>📅 예약 발송</b> 카드로 등록하세요.</span>
+          <span style="font-size:12px">"발송 관리" 페이지의 <b>📅 예약 발송</b> 카드로 등록하세요.</span>
         </div>
       ` : `
         <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;overflow:hidden">
@@ -7730,18 +9639,7 @@ async function renderMailAccountsTool() {
   const list = await loadMailAccounts(true);
 
   els.content.innerHTML = `
-    <!-- 이카운트 웹메일 강조 배너 -->
-    <div style="background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1px solid #fcd34d;border-radius:12px;padding:16px 20px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <span style="font-size:22px">📮</span>
-        <strong style="font-size:15px;color:#92400e">이카운트 웹메일 로그인 (또는 Gmail/네이버 등)</strong>
-      </div>
-      <p style="margin:0;font-size:12px;color:#78350f;line-height:1.6">
-        회사 메일 계정을 등록하면 <b>그 계정으로 B2B 광고 메일 발송</b>이 가능합니다.
-        비밀번호는 서버 AES-256-GCM 암호화 저장 · 발송 시에만 복호화.
-        <br>여러 계정 (PR팀·영업팀·개인) 등록 → 발송 시 어느 계정으로 보낼지 선택.
-      </p>
-    </div>
+    ${mailAccountPrimaryPanelHtml(list)}
 
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h3 style="margin:0;font-size:14px;font-weight:700">등록된 계정 (${list.length})</h3>
@@ -7790,9 +9688,103 @@ async function renderMailAccountsTool() {
   document.getElementById('addMailAccountBtn')?.addEventListener('click', () => openMailAccountModal());
   document.getElementById('addFirstAccountBtn')?.addEventListener('click', () => openMailAccountModal());
   document.querySelectorAll('.acc-verify-btn').forEach(b => b.addEventListener('click', () => verifyMailAccount(b.dataset.accId)));
-  document.querySelectorAll('.acc-default-btn').forEach(b => b.addEventListener('click', () => setDefaultMailAccount(b.dataset.accId)));
   document.querySelectorAll('.acc-edit-btn').forEach(b => b.addEventListener('click', () => openMailAccountModal(b.dataset.accId)));
   document.querySelectorAll('.acc-delete-btn').forEach(b => b.addEventListener('click', () => deleteMailAccount(b.dataset.accId)));
+
+  // ── 대표 계정 지정 ──
+  // 고르기만 해서는 바뀌지 않는다. 메일함이 통째로 바뀌는 일이라 한 번 더 누르게 한다.
+  const sel = document.getElementById('primaryAccSelect');
+  const applyBtn = document.getElementById('primaryAccApply');
+  if (sel && applyBtn) {
+    const cur = list.find(a => a.isDefault)?._id || '';
+    const sync = () => {
+      const changed = sel.value && sel.value !== cur;
+      applyBtn.disabled = !changed;
+      applyBtn.style.opacity = changed ? '1' : '.45';
+      applyBtn.style.cursor = changed ? 'pointer' : 'default';
+      applyBtn.textContent = changed ? '이 계정으로 지정' : '지정됨';
+    };
+    sel.addEventListener('change', sync);
+    applyBtn.addEventListener('click', () => {
+      if (applyBtn.disabled) return;
+      setDefaultMailAccount(sel.value);
+    });
+    sync();
+  }
+}
+
+/**
+ * 대표 계정 지정 패널 — 이 화면 맨 위.
+ *
+ * 예전에는 계정 카드마다 '이 계정으로 전환' 버튼이 붙어 있었다. 버튼이 목록 속에
+ * 흩어져 있으니 "지금 대표가 누구인가"를 한눈에 읽기 어려웠다. 지정은 한 곳에서만
+ * 하고, 카드에는 결과(대표 배지)만 남긴다.
+ */
+function mailAccountPrimaryPanelHtml(list) {
+  if (!list.length) {
+    return `
+      <div style="background:var(--brand-soft,#eef2ff);border:1px solid var(--brand,#c7d2fe);
+                  border-radius:12px;padding:15px 20px;margin-bottom:16px">
+        <div style="font-size:13px;color:var(--text-secondary);line-height:1.7">
+          계정을 등록하면 그중 하나를 <b>대표 계정</b>으로 지정할 수 있습니다.
+          대표 계정으로 지정된 주소가 곧 메일함이 됩니다.
+        </div>
+      </div>`;
+  }
+
+  const cur = list.find(a => a.isDefault) || null;
+  const options = list.map(a => `
+    <option value="${escapeAttr(a._id)}" ${a.isDefault ? 'selected' : ''} ${a.isActive === false ? 'disabled' : ''}>
+      ${escapeHtml(a.accountName)} — ${escapeHtml(a.smtpUser)}${a.isActive === false ? ' (비활성)' : ''}
+    </option>`).join('');
+
+  return `
+    <div style="background:var(--brand-soft,#eef2ff);border:1px solid var(--brand,#c7d2fe);
+                border-radius:12px;padding:16px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:4px">
+        <span style="font-size:20px">👤</span>
+        <strong style="font-size:14.5px;color:var(--brand-text,#4338ca)">대표 계정 지정</strong>
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.6">
+        여기서 지정한 계정이 <b>메일함이 됩니다.</b> 지정하면 아래 화면이 모두 그 계정 것으로 바뀝니다.
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:11px">
+        <select id="primaryAccSelect"
+          style="flex:1;min-width:240px;padding:9px 12px;font-size:13px;font-weight:600;
+                 border:1px solid var(--border-default);border-radius:9px;
+                 background:var(--bg-surface);color:var(--text-primary)">
+          ${options}
+        </select>
+        <button id="primaryAccApply" type="button" class="button primary"
+          style="font-size:13px;padding:9px 18px;white-space:nowrap">이 계정으로 지정</button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--bg-surface);
+                  border:1px solid var(--border-default);border-radius:9px;margin-bottom:11px">
+        <span style="font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--text-tertiary);
+                     text-transform:uppercase;white-space:nowrap">현재 대표</span>
+        <span style="font-size:13.5px;font-weight:700;color:var(--text-primary);
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${cur ? escapeHtml(cur.smtpUser) : '<span style="color:#b45309;font-weight:600">지정된 계정이 없습니다</span>'}
+        </span>
+      </div>
+
+      <div style="font-size:12px;color:var(--text-secondary);line-height:1.8">
+        <b>지정하면 이렇게 바뀝니다</b>
+        <br>· <b>받은 메일함</b> — 그 계정에 온 메일만 보입니다
+        <br>· <b>회신 필요 · 기한 관리</b> — 그 계정 메일만 셉니다
+        <br>· <b>거래처 폴더</b> — 그 계정 메일함의 폴더로 다시 그려집니다
+        <br>· <b>답장</b> — 받은 메일에 답할 때 그 주소로 나갑니다
+        <br><span style="color:var(--text-tertiary)">메일이 지워지는 것은 아닙니다. 대표를 되돌리면 그대로 보입니다.</span>
+      </div>
+
+      <p style="margin:11px 0 0;padding-top:10px;border-top:1px solid var(--border-default);
+                font-size:11.5px;color:var(--text-tertiary);line-height:1.6">
+        비밀번호는 서버에 AES-256-GCM 으로 암호화해 저장하고 발송할 때만 복호화합니다.
+        이카운트 외에 Gmail · Outlook · 네이버도 같은 화면에서 등록할 수 있습니다.
+      </p>
+    </div>`;
 }
 
 function mailAccountCardHtml(acc) {
@@ -7804,7 +9796,7 @@ function mailAccountCardHtml(acc) {
         <div style="min-width:0;flex:1">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
             <strong style="font-size:15px">${escapeHtml(acc.accountName)}</strong>
-            ${acc.isDefault ? '<span style="padding:2px 8px;background:#dbeafe;color:#1e40af;border-radius:99px;font-size:10px;font-weight:700">✔ 기본</span>' : ''}
+            ${acc.isDefault ? '<span title="대표 계정입니다 — 지금 메일함이 이 계정 것입니다" style="padding:2px 8px;background:#dbeafe;color:#1e40af;border-radius:99px;font-size:10px;font-weight:700">👤 대표 계정</span>' : ''}
             ${!acc.isActive ? '<span style="padding:2px 8px;background:#f3f4f6;color:#6b7280;border-radius:99px;font-size:10px">비활성</span>' : ''}
           </div>
           <div style="font-size:13px;color:var(--text-secondary);font-family:monospace">
@@ -7821,7 +9813,6 @@ function mailAccountCardHtml(acc) {
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
           <button class="acc-verify-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px" title="지금 SMTP 연결 재검증">🔄 검증</button>
-          ${!acc.isDefault ? `<button class="acc-default-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px" title="기본 계정으로 설정">기본</button>` : ''}
           <button class="acc-edit-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px">✏ 수정</button>
           <button class="acc-delete-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px;color:#dc2626">🗑</button>
         </div>
@@ -7845,7 +9836,20 @@ async function verifyMailAccount(id) {
   }
 }
 
+/**
+ * 대표 계정을 바꾼다 — 저장만 하고 끝내면 안 된다.
+ *
+ * 메일함은 _inboxState.accountId 로 그려지고, 한 번이라도 탭을 눌렀으면
+ * accountPicked 가 켜져서 대표 계정을 다시 따라가지 않는다. 그래서 대표를 바꿔도
+ * 화면은 전에 보던 계정에 머물러 있었다. 여기서 그 고정을 풀고 새 대표로 옮긴다.
+ * 폴더·페이지·휴지통도 이전 계정 기준이라 같이 초기화한다.
+ *
+ * accountId 는 MailAccount._id 문자열과 같은 값이다(lib/mail/accounts.ts summarize).
+ */
 async function setDefaultMailAccount(id) {
+  const btn = document.getElementById('primaryAccApply');
+  const prev = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 지정 중'; }
   try {
     const res = await fetch(`/api/mail-accounts/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -7853,9 +9857,31 @@ async function setDefaultMailAccount(id) {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
+
+    // 메일함을 새 대표 계정으로 옮긴다
+    if (typeof _inboxState !== 'undefined') {
+      _inboxState.accountId = String(id);
+      _inboxState.accountPicked = false;  // 대표를 다시 따라가도록 고정 해제
+      _inboxState.page = 1;
+      _inboxState.group = '';             // 폴더는 계정마다 다르다
+      _inboxState.trashed = false;
+    }
+    // 계정별로 다른 값들이라 캐시를 통째로 버린다
+    _mailAccountsCache = null;
+    _mailGroupsCache = null;
+    _mailCountsCache = null;
+
     await loadMailAccounts(true);
+    await loadInboxAccounts(true);
+    loadMailCounts(true);               // 사이드바 배지도 새 계정 기준으로
+
+    const acc = (_mailAccounts || []).find(a => String(a._id) === String(id));
     renderMailAccountsTool();
-  } catch (e) { alert('기본 설정 실패: ' + (e.message || 'unknown')); }
+    if (acc) alert(`✅ 대표 계정을 ${acc.smtpUser} 로 지정했습니다.\n메일함이 이 계정 것으로 바뀝니다.`);
+  } catch (e) {
+    alert('대표 계정 지정 실패: ' + (e.message || 'unknown'));
+    if (btn) { btn.disabled = false; btn.textContent = prev || '이 계정으로 지정'; }
+  }
 }
 
 async function deleteMailAccount(id) {
@@ -8074,10 +10100,22 @@ function openMailAccountModal(editId) {
               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
           </div>
 
-          <label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer">
-            <input type="checkbox" id="macIsDefault" ${acc?.isDefault ? 'checked' : ''}>
-            <span>기본 발송 계정으로 설정</span>
-          </label>
+          <!-- 대표 지정은 계정 관리 화면 맨 위 한 곳에서만 한다.
+               여기서도 바꿀 수 있게 두면 "어디서 바꿨는지" 가 흩어지고,
+               이 경로로 바꿨을 때 메일함이 따라오지 않아 화면이 어긋난다.
+               다만 첫 등록 때는 대표를 정해줘야 해서 신규일 때만 남긴다. -->
+          ${isEdit ? `
+            <div style="font-size:12px;color:var(--text-tertiary);background:var(--surface-2,#f8fafc);
+                        border:1px solid var(--border-default);border-radius:8px;padding:9px 12px;line-height:1.6">
+              👤 <b>대표 계정 지정</b>은 이 창이 아니라 <b>계정 목록 맨 위</b>에서 바꿉니다.
+              ${acc?.isDefault ? '<br>이 계정이 현재 대표 계정입니다.' : ''}
+            </div>
+          ` : `
+            <label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);cursor:pointer">
+              <input type="checkbox" id="macIsDefault">
+              <span>이 계정을 대표 계정으로 지정 (메일함이 이 계정 것이 됩니다)</span>
+            </label>
+          `}
         </div>
 
         <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
@@ -8115,7 +10153,7 @@ function openMailAccountModal(editId) {
       stepsEl.innerHTML = guide.steps.map(s => `<li>${escapeHtml(s)}</li>`).join('');
       guideEl.style.display = 'block';
     } else if (guideEl) {
-      guideEl.style.display = 'none';
+      guideEl.style.display = 'none'; syncBodyScrollLock();
     }
   };
   document.getElementById('macPreset')?.addEventListener('change', (e) => applyPreset(e.target.value));
@@ -8136,8 +10174,10 @@ function openMailAccountModal(editId) {
       senderCompany: document.getElementById('macSenderCompany')?.value.trim() || '',
       senderAddress: document.getElementById('macSenderAddress')?.value.trim() || '',
       senderWebsite: document.getElementById('macSenderWebsite')?.value.trim() || '',
-      isDefault: document.getElementById('macIsDefault').checked,
+      // 수정 창에는 체크박스가 없다(대표 지정은 목록 맨 위에서만) — 없으면 건드리지 않는다
+      isDefault: document.getElementById('macIsDefault')?.checked || undefined,
     };
+    if (payload.isDefault === undefined) delete payload.isDefault;
     const pass = document.getElementById('macPass').value;
     if (pass) payload.smtpPass = pass;
 
@@ -8154,6 +10194,22 @@ function openMailAccountModal(editId) {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'save failed');
       closeModal();
+
+      // 새 계정을 대표로 지정했으면 메일함도 그 계정으로 옮긴다
+      const newId = data.account?._id;
+      if (payload.isDefault && newId && typeof _inboxState !== 'undefined') {
+        _inboxState.accountId = String(newId);
+        _inboxState.accountPicked = false;
+        _inboxState.page = 1;
+        _inboxState.group = '';
+        _inboxState.trashed = false;
+        _mailAccountsCache = null;
+        _mailGroupsCache = null;
+        _mailCountsCache = null;
+        await loadInboxAccounts(true);
+        loadMailCounts(true);
+      }
+
       await loadMailAccounts(true);
       renderMailAccountsTool();
     } catch (e) {
@@ -8465,7 +10521,7 @@ async function renderRecommendedBuyers() {
       const stage = e.target.value;
       const company = e.target.dataset.company;
       if (!stage || !company) return;
-      const stageLabelMap = { verifying:'검증 대기', verified:'검증 완료', contacted:'이메일 컨택', replied:'응답 옴', negotiating:'협상 중', partner:'파트너' };
+      const stageLabelMap = { verifying:'검증 대기', verified:'검증 완료', queued:'발송 리스트', contacted:'발송 완료', replied:'응답 옴', negotiating:'협상 중', partner:'파트너' };
       const ok = confirm(`"${company}" 을(를) ${stageLabelMap[stage] || stage} 로 추가하시겠습니까?`);
       if (!ok) {
         e.target.value = '';
@@ -8555,7 +10611,7 @@ function recommendedCardHtml(b) {
 
 async function importRecommended(companies, stage) {
   startTopProgress();
-  const stageLabelMap = { verifying:'검증대기', verified:'검증완료', contacted:'이메일 컨택', replied:'응답 옴', negotiating:'협상 중', partner:'파트너' };
+  const stageLabelMap = { verifying:'검증대기', verified:'검증완료', queued:'발송 리스트', contacted:'발송 완료', replied:'응답 옴', negotiating:'협상 중', partner:'파트너' };
   const stageLabel = stage ? ` (${stageLabelMap[stage] || stage} 로)` : '';
   showGlobalBlocker(`${companies.length}건${stageLabel} 추가 중...`);
   try {
@@ -8789,31 +10845,91 @@ function addLead() {
   const form = document.getElementById('addLeadForm');
   if (form) form.reset();
   modal.style.display = 'flex';
+  lockBodyScroll();
 }
 
 function initAddLeadModal() {}
 
 function initEditModal() {}
 
+// 상세 모달의 입력칸 채우기. 처음 열 때(캐시)와 상세를 받아온 뒤 두 번 불린다.
+// id 가 곧 DB 필드명이라 배열만 돌면 된다 (없는 칸은 건너뛴다).
+function fillEditModalFields(lead) {
+  const fields = ["status", "owner", "lastContact", "nextFollowUp", "notes",
+    "Company", "Country", "Priority", "Type", "BuyerContact", "Title",
+    "Email", "Phone", "WebsiteContact", "LinkedInCompany", "BrandsChannels",
+    "Evidence", "Approach", "Sources"];
+  fields.forEach((f) => {
+    const el = document.getElementById('el-' + f);
+    if (!el) return;
+    // 근거·업종은 한국어본이 있으면 그것을 보여준다 (원문은 DB 에 그대로 남아 있다)
+    if (f === 'Evidence') el.value = lead.EvidenceKo || lead.Evidence || "";
+    else if (f === 'Type') el.value = lead.TypeKo || lead.Type || "";
+    else el.value = lead[f] || "";
+  });
+  // 헤더 요약도 같이 — 상세를 받아오면 업종이 뒤늦게 채워진다
+  const meta = document.getElementById('el-meta');
+  if (meta) meta.textContent = (lead.Country || "") + " · " + (lead.TypeKo || lead.Type || "Lead");
+
+  // AI 판정 사유 — 이미 한국어로 저장돼 있다. 번역이 필요 없다.
+  const box = document.getElementById('el-aiReasonBox');
+  if (box) {
+    const v = lead.verification || {};
+    const reason = String(v.aiReasoning || '').trim();
+    if (!reason) { box.style.display = 'none'; box.innerHTML = ''; }
+    else {
+      const VERDICT = {
+        'beauty-buyer': { label: '진성 바이어', bg: '#dcfce7', fg: '#166534' },
+        'maybe':        { label: '모호 — 사람 판단 필요', bg: '#fef3c7', fg: '#92400e' },
+        'not-buyer':    { label: '무관', bg: '#fee2e2', fg: '#991b1b' },
+      };
+      const vd = VERDICT[v.aiVerdict] || { label: v.aiVerdict || '판정 없음', bg: '#f1f5f9', fg: '#475569' };
+      box.style.display = '';
+      box.innerHTML = `
+        <div style="padding:11px 13px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+            <span style="font-size:10.5px;font-weight:800;color:#4338ca;letter-spacing:.4px">AI 판정</span>
+            <span style="padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700;
+                         background:${vd.bg};color:${vd.fg}">${escapeHtml(vd.label)}</span>
+          </div>
+          <div style="font-size:12.5px;line-height:1.65;color:#312e81;white-space:pre-wrap">${escapeHtml(reason)}</div>
+        </div>`;
+    }
+  }
+}
+
 function openEditModal(id) {
-  const lead = getLeads().find(l => l.id === id);
+  // 보관함·기존 데이터에서 연 리드는 baseLeads 에 없다 (곁방 캐시에서 찾는다)
+  const lead = findLeadForPopup(id);
   if (!lead) return;
   state.selectedId = id;
   render(); // Update row selection state
-  
+
   const modal = document.getElementById('editLeadModal');
   if (!modal) return;
+
+  // 목록 API 는 5천 건을 한 번에 내리느라 프로젝션으로 칸을 줄인다.
+  // 업종·근거·출처·브랜드는 거기 안 들어 있어서, 캐시만 읽으면 DB 에 값이
+  // 있는데도 빈칸으로 보인다 (실제로 그렇게 보이던 버그가 있었다).
+  // 모달을 띄운 뒤 이 리드만 따로 받아 빈칸을 채운다.
+  if (lead._id) {
+    safeJsonFetch(`/api/leads/${lead._id}`)
+      .then((r) => {
+        if (!r?.lead) return;
+        // 열려 있는 리드가 그새 바뀌었으면 덮지 않는다
+        if (state.selectedId !== id) return;
+        Object.assign(lead, r.lead);       // 캐시도 채워둔다 (두 번째 열 때는 즉시 표시)
+        fillEditModalFields(lead);
+      })
+      .catch((e) => console.warn('lead-detail', e));
+  }
 
   document.getElementById('el-title').textContent = lead.Company;
   document.getElementById('el-badge').textContent = lead.Priority || "No priority";
   document.getElementById('el-badge').className = "badge " + badgeClass(lead.Priority);
   document.getElementById('el-meta').textContent = (lead.Country || "") + " · " + (lead.Type || "Lead");
   
-  const fields = ["status", "owner", "lastContact", "nextFollowUp", "notes", "Company", "Country", "Priority", "Type", "BuyerContact", "Title", "Email", "Phone", "WebsiteContact", "LinkedInCompany", "BrandsChannels", "Evidence", "Approach", "Sources"];
-  fields.forEach(f => {
-    const el = document.getElementById('el-' + f);
-    if (el) el.value = lead[f] || "";
-  });
+  fillEditModalFields(lead);
 
   const webBtn = document.getElementById('el-website');
   if (webBtn) {
@@ -8844,6 +10960,7 @@ function openEditModal(id) {
   if (verifyPanel) verifyPanel.innerHTML = verifyDetailsHtml(lead);
 
   modal.style.display = 'flex';
+  lockBodyScroll();
 }
 
 function initSettingsModal() {
@@ -8948,6 +11065,123 @@ async function deleteAllFailedLeads() {
   render();
 }
 
+/**
+ * 검증 완료에 남아 있는 곳을 전부 발송 리스트로.
+ *
+ * 흐름상 아닌 곳은 이미 [검증 실패]로 빼놓은 뒤라, 남은 것은 다 보낼 곳이다.
+ * 그래도 수백 건이 한 번에 움직이므로 정확한 수를 세어 보여주고 확인을 받는다.
+ * 화면에서 검색·국가로 좁혀 놨으면 그 범위만 옮긴다 — 12건을 보면서 눌렀는데
+ * 418건이 옮겨지면 무엇이 옮겨졌는지 알 수 없다.
+ */
+async function moveAllToQueue() {
+  const btn = document.getElementById('moveAllToQueueBtn');
+  const q = (state.query || '').trim();
+  const country = state.country && state.country !== 'All' ? state.country : '';
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 세는 중...'; }
+  let info;
+  try {
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    if (country) p.set('country', country);
+    info = await safeJsonFetch(`/api/leads/queue?${p}`);
+    if (!info?.success) throw new Error(info?.error || '조회 실패');
+  } catch (e) {
+    alert('건수 확인 실패: ' + (e.message || 'unknown'));
+    if (btn) { btn.disabled = false; btn.textContent = '⇢ 남은 전체 옮기기'; }
+    return;
+  }
+
+  if (!info.movable) {
+    alert('옮길 수 있는 곳이 없습니다.\n(메일 주소가 있는 곳만 옮겨집니다)');
+    if (btn) { btn.disabled = false; btn.textContent = '⇢ 남은 전체 옮기기'; }
+    return;
+  }
+
+  const scope = q || country
+    ? `지금 화면 조건(${[q && `검색 "${q}"`, country && country].filter(Boolean).join(' · ')})에 맞는 `
+    : '검증 완료에 남아 있는 ';
+  const ok = confirm(
+    `${scope}${info.movable.toLocaleString()}곳을 발송 리스트로 옮깁니다.\n\n` +
+    (info.noEmail ? `메일 주소가 없는 ${info.noEmail.toLocaleString()}곳은 제외됩니다.\n` : '') +
+    `\n옮긴 곳은 [발송 관리 → 보낼 메일]에서 보내거나 예약할 수 있습니다.\n` +
+    `메일이 지금 나가지는 않습니다.\n\n진행할까요?`,
+  );
+  if (!ok) { if (btn) { btn.disabled = false; btn.textContent = '⇢ 남은 전체 옮기기'; } return; }
+
+  if (btn) btn.textContent = '⏳ 옮기는 중...';
+  try {
+    const r = await safeJsonFetch('/api/leads/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true, q: q || undefined, country: country || undefined }),
+    });
+    if (!r?.success) throw new Error(r?.error || '이동 실패');
+    state.selectedLeadIds = new Set();
+    invalidateServerPage();
+    loadStageCounts(true);
+    await loadLeads({ force: true });
+    alert(
+      `📋 ${r.moved.toLocaleString()}곳을 발송 리스트로 옮겼습니다.\n\n` +
+      `발송 리스트 총 ${r.queuedTotal.toLocaleString()}곳\n` +
+      `검증 완료에 남은 곳 ${r.verifiedTotal.toLocaleString()}곳`,
+    );
+    render();
+  } catch (e) {
+    alert('이동 실패: ' + (e.message || 'unknown'));
+    if (btn) { btn.disabled = false; btn.textContent = '⇢ 남은 전체 옮기기'; }
+  }
+}
+
+/**
+ * 고른 곳을 발송 리스트(queued)로 옮긴다 — 검증 완료 화면의 주된 행동.
+ *
+ * 여기서 옮긴 것만 [발송 관리 → 보낼 메일]에 뜬다. 검증만 끝난 것을 전부
+ * 발송 대상으로 잡으면 "이제 보내도 된다"고 정하는 단계가 사라진다.
+ */
+async function moveSelectedToQueue() {
+  const ids = [...state.selectedLeadIds];
+  if (!ids.length) return;
+
+  // 메일 없는 곳은 옮겨도 못 보낸다 — 미리 알려주고 숫자에서 뺀다
+  const picked = ids.map((id) => baseLeads.find((l) => l.id === id)).filter(Boolean);
+  const noEmail = picked.filter((l) =>
+    !l.Email || /^Not found/i.test(l.Email) || !/@/.test(l.Email)).length;
+  const sendable = picked.length - noEmail;
+  if (!sendable) {
+    alert('고른 곳에 보낼 수 있는 메일 주소가 없습니다.');
+    return;
+  }
+  if (!confirm(
+    `${sendable}곳을 발송 리스트로 옮깁니다.\n` +
+    (noEmail ? `(메일 주소가 없는 ${noEmail}곳은 제외됩니다)\n` : '') +
+    `\n옮긴 곳은 [발송 관리 → 보낼 메일]에서 보내거나 예약할 수 있습니다.\n진행할까요?`,
+  )) return;
+
+  const btn = document.getElementById('moveToQueueBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 옮기는 중...'; }
+  try {
+    const r = await safeJsonFetch('/api/leads/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadIds: ids }),
+    });
+    if (!r?.success) throw new Error(r?.error || '이동 실패');
+    state.selectedLeadIds = new Set();
+    invalidateServerPage();
+    await loadLeads({ force: true });
+    alert(
+      `📋 ${r.moved}곳을 발송 리스트로 옮겼습니다.` +
+      (r.skipped ? `\n(${r.skipped}곳은 제외 — 메일 없음 또는 이미 옮겨진 곳)` : '') +
+      `\n\n발송 리스트 총 ${r.queuedTotal}곳`,
+    );
+    render();
+  } catch (e) {
+    alert('이동 실패: ' + (e.message || 'unknown'));
+    if (btn) { btn.disabled = false; btn.textContent = '📋 발송 리스트로 옮기기'; }
+  }
+}
+
 async function deleteSelectedLeads() {
   const ids = [...state.selectedLeadIds];
   if (!ids.length) return;
@@ -9017,6 +11251,7 @@ function openImportCsvModal() {
   if (!modal) return;
   resetImportModal();
   modal.style.display = 'flex';
+  lockBodyScroll();
   // 예제 양식 다운로드 버튼 바인딩 (매번 재바인딩 — 안전)
   const dlBtn = document.getElementById('downloadSampleCsvBtn');
   if (dlBtn) {
@@ -9080,9 +11315,9 @@ function resetImportModal() {
   const submitBtn = document.getElementById('importSubmitBtn');
   const fileInput = document.getElementById('importFileInput');
   if (step1) step1.style.display = '';
-  if (step2) step2.style.display = 'none';
-  if (progress) progress.style.display = 'none';
-  if (result) result.style.display = 'none';
+  if (step2) step2.style.display = 'none'; syncBodyScrollLock();
+  if (progress) progress.style.display = 'none'; syncBodyScrollLock();
+  if (result) result.style.display = 'none'; syncBodyScrollLock();
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '가져오기'; }
   if (fileInput) fileInput.value = '';
   // Reset radio
@@ -9311,7 +11546,7 @@ function showImportPreview(leads) {
   const step2 = document.getElementById('importStep2');
   const submitBtn = document.getElementById('importSubmitBtn');
 
-  if (step1) step1.style.display = 'none';
+  if (step1) step1.style.display = 'none'; syncBodyScrollLock();
   if (step2) step2.style.display = '';
   if (submitBtn) submitBtn.disabled = false;
 
@@ -9426,8 +11661,8 @@ async function openVerifyModal() {
   const progress = document.getElementById('verifyProgress');
   const result = document.getElementById('verifyResult');
   const startBtn = document.getElementById('verifyStartBtn');
-  if (progress) progress.style.display = 'none';
-  if (result) result.style.display = 'none';
+  if (progress) progress.style.display = 'none'; syncBodyScrollLock();
+  if (result) result.style.display = 'none'; syncBodyScrollLock();
   if (startBtn) { startBtn.disabled = false; startBtn.textContent = '검증 시작'; }
 
   // 카운트 표시
@@ -9459,8 +11694,8 @@ async function openVerifyModal() {
   const aiStartBtn = document.getElementById('verifyAIStartBtn');
   const aiProgress = document.getElementById('verifyAIProgress');
   const aiResult = document.getElementById('verifyAIResult');
-  if (aiProgress) aiProgress.style.display = 'none';
-  if (aiResult) aiResult.style.display = 'none';
+  if (aiProgress) aiProgress.style.display = 'none'; syncBodyScrollLock();
+  if (aiResult) aiResult.style.display = 'none'; syncBodyScrollLock();
   if (aiStartBtn) {
     aiStartBtn.disabled = aiTarget === 0;
     aiStartBtn.textContent = aiTarget === 0
@@ -9470,6 +11705,7 @@ async function openVerifyModal() {
   }
 
   modal.style.display = 'flex';
+  lockBodyScroll();
 }
 
 // AI 정밀 검증 — 의심 케이스만 Claude API 로 청크 호출
@@ -9494,7 +11730,7 @@ async function startAIVerification() {
   if (!ok) return;
 
   if (progress) progress.style.display = '';
-  if (result) result.style.display = 'none';
+  if (result) result.style.display = 'none'; syncBodyScrollLock();
   if (startBtn) { startBtn.disabled = true; startBtn.textContent = '진행 중...'; }
 
   const CHUNK = 20;
@@ -9571,7 +11807,7 @@ async function startVerification(scope) {
   const startBtn = document.getElementById('verifyStartBtn');
 
   if (progress) progress.style.display = '';
-  if (result) result.style.display = 'none';
+  if (result) result.style.display = 'none'; syncBodyScrollLock();
   if (startBtn) { startBtn.disabled = true; startBtn.textContent = '검증 중...'; }
 
   const onlyUnverified = scope !== 'all';
@@ -9659,7 +11895,7 @@ async function doImport(leads, duplicateAction) {
   const step2 = document.getElementById('importStep2');
 
   if (progress) progress.style.display = '';
-  if (step2) step2.style.display = 'none';
+  if (step2) step2.style.display = 'none'; syncBodyScrollLock();
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '가져오는 중...'; }
 
   // 전역 progress bar + 풀스크린 블로커 — 모달 안의 진행바와 별개로 화면 상단에서도 진행 중 표시
@@ -9749,7 +11985,7 @@ async function doImport(leads, duplicateAction) {
         result.appendChild(historyLink);
         document.getElementById('goToImportHistoryBtn')?.addEventListener('click', () => {
           // Close modal and navigate to import history view
-          document.getElementById('importCsvModal').style.display = 'none';
+          document.getElementById('importCsvModal').style.display = 'none'; syncBodyScrollLock();
           resetImportModal();
           state.view = 'importHistory';
           render();

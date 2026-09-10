@@ -1,0 +1,432 @@
+[
+ {
+  "id": "6aa0d3b28f83165dc75cea81",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "칫솔 단가 $1.20 · 4/13 대표 미팅 안내",
+  "summary": "오스템파마 김정규 과장이 대표 미팅 일정과 칫솔 단가를 전달했습니다. 미팅은 4월 13일(월) 14시, 장소는 마곡 오스템파마 사무실 또는 오스템임플란트 본사로 당일 확정 예정입니다. 칫솔은 Light·Double Wide·Ultra 세 제품 모두 개당 $1.20이며, 패키징은 12P만 가능하고 카톤박스당 108개(12P × 9박스)입니다.",
+  "keyPoints": [
+   "대표 미팅: 4/13(월) 14:00 · 마곡 (장소는 당일 확정)",
+   "칫솔 단가: Light·Double Wide·Ultra 모두 개당 $1.20",
+   "패키징 12P 고정 · 카톤박스당 108개 (12P × 9)"
+  ],
+  "intent": "미팅 일정 확인과 단가 조건 전달",
+  "needsReply": true,
+  "replyReason": "미팅 참석 확인과 단가 조건에 대한 회신이 필요합니다.",
+  "deadline": "2026-04-13", "deadlineText": "4.13(월) 14:00", "deadlineType": "meeting",
+  "urgency": "mid", "suggestedAction": "미팅 참석을 확정하고 칫솔 단가 조건 검토 결과를 회신"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea44",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 긴급 지원 요청 – Biodance 브랜드 논의 (Beautyselection)",
+  "translationBody": "Joyce 님께\n\n수정된 계약서를 공유해 주셔서 감사합니다.\n\n먼저 답신이 늦어 죄송합니다. Cosmoprof 이후 처리할 일이 밀려 있었습니다.\n\n부활절 휴가가 끝난 뒤, 4월 14일 이후에 서명한 계약서로 회신드리겠습니다.\n\n그 사이 설명이 필요한 부분이 있으면 언제든 말씀해 주세요.\n\n감사합니다.",
+  "topic": "서명 계약서 4월 14일 이후 회신 예정",
+  "summary": "My K Romania가 수정 계약서를 받았고, 부활절 휴가 이후인 4월 14일 이후에 서명본으로 회신하겠다고 알렸습니다. Cosmoprof 이후 업무가 밀려 답신이 늦어진 점을 사과했습니다.",
+  "keyPoints": [
+   "수정 계약서 수령 확인",
+   "서명본 회신 예정일: 4월 14일 이후",
+   "공은 상대에게 — 우리는 대기"
+  ],
+  "intent": "서명 일정 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "2026-04-14", "deadlineText": "after April 14th", "deadlineType": "contract",
+  "urgency": "low", "suggestedAction": "4월 14일 이후 서명본이 오지 않으면 팔로우업"
+ },
+ {
+  "id": "6aa0d3bd8f83165dc75ceaab",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\n오늘 로이·탈과의 미팅에 이어, 답변이 필요한 질문들을 첨부합니다.\n\n· 2.2(9)항 – POSM / 샘플 / 미니어처를 주문액의 10% 규모로. 공급사들이 이걸 지원할 수 있나요? 정확히 무엇을, 몇 %로?\n· 2.2(10)항 – 공급사들이 인정된 국가에 사업장을 보유하고 있다는 확인서를 줄 수 있나요? 못 준다면, 스칸디나비아 유통사에는 어떻게 판매했나요? 그쪽에 제공한 서류는 무엇인가요?\n· 3.5항 – 제품 유효기간. 공급 제품에 대해 그보다 짧지 않을 최소 유효기간 보장을 공급사로부터 받을 수 있나요?\n· 4.2항 – 가격. 정말로 1년간 유효한 가격표가 있나요? 역년 기준인가요? 추가로 (이하 계속)",
+  "topic": "계약 조항별 실사 질문 — POSM·사업장 확인서·유효기간·가격표",
+  "summary": "Schestowitz가 법무 미팅 후 계약 조항별로 공급사에 확인해야 할 질문들을 정리해 보냈습니다. POSM/샘플 지원 규모(주문액 10%), 공급사의 인정 국가 사업장 확인서 발급 가능 여부, 제품 최소 유효기간 보장, 1년 유효 가격표의 실재 여부 등입니다. 계약 실사 단계의 핵심 질문들입니다.",
+  "keyPoints": [
+   "2.2(9)항 — POSM·샘플·미니어처 지원 가능 여부와 비율(주문액 10% 기준)",
+   "2.2(10)항 — 인정 국가 사업장 보유 확인서 발급 가능 여부",
+   "3.5항 — 제품 최소 유효기간 보장",
+   "4.2항 — 1년 유효 가격표 실재 여부·역년 기준 여부",
+   "본문 일부 생략 — 원문에 질문이 더 있음"
+  ],
+  "intent": "공급사 확인 후 계약 조항별 답변",
+  "needsReply": true,
+  "replyReason": "조항별 확인 질문이 여러 건이고, 답이 없으면 계약 실사가 진행되지 않습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "각 브랜드 공급사에 조항별 질문을 확인해 항목별로 정리해 회신"
+ },
+ {
+  "id": "6aa0d3bd8f83165dc75ceaac",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\n네, 독점권을 받으려면 저희가 무엇을 해야 하는지 듣고 싶습니다. ABIB 는 어떻게 되고 있나요? 어느 단계인가요?\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "독점권 요건 문의 · ABIB 진행 상황 확인",
+  "summary": "Schestowitz의 Keren이 독점권 확보를 위해 자사가 무엇을 준비해야 하는지 물었고, ABIB 브랜드의 진행 단계도 확인 요청했습니다.",
+  "keyPoints": [
+   "독점권 확보 요건 문의 — 자사가 준비할 사항",
+   "ABIB 브랜드 진행 단계 확인 요청"
+  ],
+  "intent": "독점 요건 파악과 ABIB 진행 상황 확인",
+  "needsReply": true,
+  "replyReason": "독점 요건과 ABIB 진행 상황 두 가지 질문이 답변 대기 중입니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "브랜드별 독점 부여 조건(최소 물량·마케팅 투자 등)을 정리하고 ABIB 진행 상황을 회신"
+ },
+ {
+  "id": "6aa0d3bd8f83165dc75ceaad",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\n다음 브랜드들의 HERO PRODUCTS 가격표도 받고 싶습니다: Laneige, Aestura, Illiyoon\n\n메디큐브 가격표를 더 좋은 조건으로 찾으시면 알려 주시면 감사하겠습니다.\n\n좋은 주말 보내세요.\n\nKeren Meir / Schestowitz",
+  "topic": "Laneige·Aestura·Illiyoon 가격표 요청 · 메디큐브 단가 개선 요청",
+  "summary": "Schestowitz가 Laneige, Aestura, Illiyoon 세 브랜드의 HERO PRODUCTS 가격표를 요청했습니다. 메디큐브는 더 나은 가격 조건을 찾으면 알려달라고 했습니다.",
+  "keyPoints": [
+   "가격표 요청 브랜드: Laneige, Aestura, Illiyoon (HERO PRODUCTS)",
+   "메디큐브 — 더 좋은 단가 조건 탐색 요청"
+  ],
+  "intent": "브랜드별 가격표 확보와 메디큐브 단가 개선",
+  "needsReply": true,
+  "replyReason": "세 브랜드 가격표를 명시적으로 요청받았습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "Laneige·Aestura·Illiyoon HERO PRODUCT 가격표를 확보해 송부하고 메디큐브 대안 소싱처 확인"
+ },
+ {
+  "id": "6aa0d3b28f83165dc75cea82",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "여의도 봄꽃축제 — X배너 시안·부스 위치·양치키트 도착 확인",
+  "summary": "오스템파마 김정규 과장이 여의도 봄꽃축제 준비 건으로 세 가지를 요청했습니다. X배너 시안이 나오면 공유해 달라는 것, 리플렛은 자체 제작 중이며 4월 3일(금) 축제 첫날 요기보 부스를 방문하겠으니 정확한 위치를 알려달라는 것, 그리고 샘플로 보낸 양치키트 300세트가 잘 도착했는지 확인해 달라는 것입니다.",
+  "keyPoints": [
+   "X배너 제작 진행 — 시안 공유 요청",
+   "4/3(금) 축제 첫날 요기보 부스 방문 예정 — 정확한 위치 요청",
+   "양치키트 300세트 발송 — 도착 확인 요청"
+  ],
+  "intent": "축제 부스 준비 사항 확인",
+  "needsReply": true,
+  "replyReason": "시안 공유·부스 위치·샘플 도착 확인 세 가지 모두 우리 회신이 필요합니다.",
+  "deadline": "2026-04-03", "deadlineText": "4/3(금) 축제 시작", "deadlineType": "event",
+  "urgency": "mid", "suggestedAction": "X배너 시안과 부스 위치를 공유하고 양치키트 300세트 수령을 확인해 회신"
+ },
+ {
+  "id": "6aa0d3b38f83165dc75cea83",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "봄꽃축제용 로고·제품 사진 전달",
+  "summary": "오스템파마 김정규 과장이 요청받은 회사 로고와 제품 브랜드 뷰센 로고, 제품 사진을 전달했습니다. 치약은 28·S·C 3종을 100세트씩 발송했고, 대표 제품인 C 치약으로 구성된 양치키트 사진을 함께 보냈습니다.",
+  "keyPoints": [
+   "오스템파마 로고 + 뷰센 브랜드 로고 전달",
+   "치약 28·S·C 3종 각 100세트 발송 (총 300세트)",
+   "대표 제품 C 치약 구성 양치키트 사진 전달"
+  ],
+  "intent": "축제 홍보물 제작용 자료 제공",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "event",
+  "urgency": "low", "suggestedAction": "전달받은 로고·사진으로 홍보물 제작 진행"
+ },
+ {
+  "id": "6aa0d3b38f83165dc75cea85",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "치약 최종 단가 확정 — 10만개 기준 ₩3,200 / ₩3,300",
+  "summary": "오스템파마가 이틀간 회의를 거쳐 최종 단가를 산정했습니다. 10만개 이상 ₩3,200, 10만개 미만 ₩3,300입니다. 앞서 제시한 ₩3,250/₩3,400에서 각각 내린 값입니다. Dangaard 및 이탈리아 현지와의 논의가 잘 진행되기를 기대한다며, 최종 논의가 끝나면 초도물량과 Dangaard 측 발주 계획을 알려달라고 요청했습니다.",
+  "keyPoints": [
+   "최종 단가: 10만개 이상 ₩3,200 · 10만개 미만 ₩3,300",
+   "직전 제시가(₩3,250/₩3,400) 대비 인하",
+   "초도물량과 Dangaard 발주 계획 회신 요청",
+   "이탈리아 현지 논의도 진행 중"
+  ],
+  "intent": "초도물량·발주 계획 확보 후 생산 준비",
+  "needsReply": true,
+  "replyReason": "초도물량과 발주 계획을 알려달라는 요청이 있고, 공급사가 생산 준비를 위해 기다리고 있습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "Dangaard 측 초도물량과 발주 계획을 확인해 오스템파마에 회신"
+ },
+ {
+  "id": "6aa0d3b38f83165dc75cea86",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "조정 단가 제시 — 수량별 차등 + FOC 3% 고정",
+  "summary": "오스템파마가 내부 논의 결과 단가를 조정해 제시했습니다. FOC(무상 제공) 자체가 가격 인하 효과가 있으므로 FOC는 3%로 고정하고, 발주 수량에 따라 단가를 차등 적용하는 방식입니다. 10만개 이상 ₩3,250, 10만개 미만 ₩3,400입니다.",
+  "keyPoints": [
+   "FOC 3% 고정 — 가격 인하 대신 무상 제공 유지",
+   "10만개 이상 ₩3,250 · 10만개 미만 ₩3,400",
+   "수량 연동 차등 단가 구조"
+  ],
+  "intent": "조정 단가 제시와 수용 여부 확인",
+  "needsReply": true,
+  "replyReason": "제시된 단가 구조에 대한 수용 여부를 회신해야 협상이 진행됩니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "mid", "suggestedAction": "Dangaard 측 목표 단가와 비교해 역제안 또는 수용 회신 (이후 ₩3,200/₩3,300 으로 재조정됨)"
+ },
+ {
+  "id": "6aa0d3b38f83165dc75cea87",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "봄꽃축제 샘플 발송 준비 확인",
+  "summary": "오스템파마 김정규 과장이 회신 내용대로 진행해 다음 주 중 배송되도록 준비하겠다고 확인한 짧은 회신입니다.",
+  "keyPoints": ["회신 내용대로 진행 확인", "다음 주 중 배송 준비"],
+  "intent": "진행 확인 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "다음주 중 배송", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "배송 일정 확인 후 축제 준비 일정에 반영"
+ },
+ {
+  "id": "6aa0d3bd8f83165dc75ceaae",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: MIXSOON - 업데이트",
+  "translationBody": "길라드 님께\n\n업데이트 감사합니다. 아쉬운 소식이네요.\n\n다른 브랜드로는 진전이 있기를 바랍니다.\n\n별도 메일로 보내주신 브랜드들을 자세히 검토하고, 가격표를 받고 싶은 곳이 있으면 알려드리겠습니다.\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "MIXSOON 무산 · 다른 브랜드 검토 예정",
+  "summary": "Schestowitz가 MIXSOON 건이 무산됐다는 소식에 아쉬움을 표하고, 별도로 받은 브랜드 목록을 검토해 가격표가 필요한 곳을 알려주겠다고 했습니다. 공은 상대에게 넘어간 상태입니다.",
+  "keyPoints": [
+   "MIXSOON 진행 무산",
+   "별도 전달한 브랜드 목록 검토 예정",
+   "검토 후 가격표 요청 예정 — 상대가 회신 예정"
+  ],
+  "intent": "대안 브랜드 검토 착수 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "브랜드 검토 결과가 오지 않으면 팔로우업"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea45",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 긴급 지원 요청 – Biodance 브랜드 논의 (Beautyselection)",
+  "translationBody": "David 님, 안녕하세요.\n\n네, 맞습니다. 죄송합니다.\n\nBiodance 건으로 제가 메일을 보낸 주소는 다음과 같습니다:\nhyunah.choi@beautyselection.co.kr, hanjun.kim@beautyselection.co.kr, contact_global@beautyselection.co.kr, jungbin.park@beautyselection.co.kr\n\n감사합니다.",
+  "topic": "Biodance 연락처 공유 — Beautyselection 담당자 4명",
+  "summary": "My K Romania의 Andreea가 Biodance 건으로 접촉한 Beautyselection 담당자 이메일 4개를 공유했습니다. 우리가 중간에서 연결을 돕기 위해 요청한 정보입니다.",
+  "keyPoints": [
+   "Beautyselection 접촉 주소 4개 공유",
+   "hyunah.choi / hanjun.kim / contact_global / jungbin.park",
+   "우리가 중개 지원할 수 있도록 제공된 정보"
+  ],
+  "intent": "Biodance 공급 협상 중개 요청",
+  "needsReply": true,
+  "replyReason": "연락처를 받은 목적이 중개 지원이므로, 접촉 결과를 알려줘야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "Beautyselection 측에 직접 연락해 Biodance 공급 조건을 확인하고 결과 회신"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea46",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 긴급 지원 요청 – Biodance 브랜드 논의 (Beautyselection)",
+  "translationBody": "David 님께\n\n아래에 저희 답변을 빨간색으로 표시했습니다.\n\n감사합니다.",
+  "topic": "Biodance 관련 질문에 답변 회신 (본문 내 빨간 글씨)",
+  "summary": "My K Romania가 우리 질문에 본문 안에 빨간색으로 답변을 달아 회신했습니다. 답변 내용은 원문의 인용 부분에 색으로 표시돼 있어 텍스트만으로는 구분되지 않습니다. 원문을 열어 확인해야 합니다.",
+  "keyPoints": [
+   "질문에 대한 답변이 본문 인용부에 색상으로 표시됨",
+   "⚠️ 색상 표시라 텍스트 추출로는 구분 불가 — 원문 확인 필요"
+  ],
+  "intent": "질문 답변 전달",
+  "needsReply": true,
+  "replyReason": "답변을 받았으므로 그에 따른 다음 조치가 필요합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "이카운트 웹메일에서 원문을 열어 빨간색 답변을 확인한 뒤 후속 조치"
+ },
+ {
+  "id": "6aa0d3bd8f83165dc75ceaaf",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\n여기서 대화를 이어가겠습니다. 제품 수입 절차를 빠르게 시작할 수 있도록 법률 계약서를 첨부합니다.\n\n검토하시고 의견이 있으면 알려 주세요.\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "수입 절차 착수를 위한 법률 계약서 송부",
+  "summary": "Schestowitz의 Keren이 제품 수입 절차를 빠르게 시작하기 위해 법률 계약서를 첨부해 보내며 검토 의견을 요청했습니다.",
+  "keyPoints": [
+   "법률 계약서 첨부 — 검토 의견 요청",
+   "목적: 제품 수입 절차 조기 착수"
+  ],
+  "intent": "계약서 검토 후 수입 절차 시작",
+  "needsReply": true,
+  "replyReason": "계약서 검토 의견을 직접 요청받았습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "계약서를 검토해 조항별 의견을 회신"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea47",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "긴급 지원 요청 – Biodance 브랜드 논의 (Beautyselection Co., Ltd.)",
+  "translationBody": "David 님께\n\n잘 지내시죠.\n\n앞서 논의한 대로 Cosmoprof Bologna 에서 뵙고 서로를 더 알아가며 향후 협업의 세부 사항을 논의하기를 기대하고 있습니다.\n\n다만 그 사이에 Biodance 브랜드와 관련해 급한 사안이 생겨 도움을 요청드립니다.\n\n아시다시피 저희는 현재 Biodance 제품을 StyleKorean(Siliconii)을 통해 구매하고 있는데, 저희 시장에서 이 브랜드 수요가 계속 늘고 있습니다.",
+  "topic": "Biodance 직거래 전환 지원 요청 (현재 StyleKorean 경유)",
+  "summary": "My K Romania가 Biodance 브랜드 관련 긴급 지원을 요청했습니다. 현재 StyleKorean(Siliconii)을 통해 구매 중인데 루마니아 시장 수요가 계속 늘고 있어, 브랜드 본사(Beautyselection)와 직접 거래로 전환하려는 것으로 보입니다. Cosmoprof Bologna 미팅 전에 해결하고 싶어 하는 사안입니다.",
+  "keyPoints": [
+   "현재 Biodance 는 StyleKorean(Siliconii) 경유 구매",
+   "루마니아 시장 수요 증가 중",
+   "브랜드 본사 직거래 전환을 위한 중개 요청",
+   "Cosmoprof Bologna 미팅 예정"
+  ],
+  "intent": "Biodance 본사와의 직거래 연결",
+  "needsReply": true,
+  "replyReason": "'긴급 지원 요청'으로 명시된 건이며, 중개 여부에 대한 답이 필요합니다.",
+  "deadline": "", "deadlineText": "urgent matter", "deadlineType": "other",
+  "urgency": "high", "suggestedAction": "Beautyselection 측에 루마니아 유통 건을 문의하고 직거래 가능 여부를 회신"
+ },
+ {
+  "id": "6aa0d3bd8f83165dc75ceab0",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 전화 통화 후속 건",
+  "translationBody": "길라드 님께\n\n통화에 이어, 회사 소개서와 MIXSOON 의 이스라엘 런칭 가능성에 관한 사업계획서를 첨부합니다.\n\n한국 공급사와 통화하실 때, 저희에게는 이스라엘 독점권 확보가 중요하다는 점을 강조해 주시기 바랍니다. 저희 의도는 현지 시장에서 브랜드를 제대로 키우고 장기적으로 체계적으로 만들어 가는 것이기 때문입니다.\n\n첨부한 계획서는 저희가 이스라엘에서 브랜드를 어떻게 키울지, 이 시장에서 어떤 잠재력을 보는지를 담고 있습니다. 물론 주문이나 구매 계획에 대한 확약은 아니며, 사업 방향과 진지함을 보여드리는 자료입니다.",
+  "topic": "MIXSOON 이스라엘 독점권 요청 · 사업계획서 송부",
+  "summary": "Schestowitz가 회사 소개서와 MIXSOON 이스라엘 런칭 사업계획서를 첨부했습니다. 한국 공급사와 통화할 때 이스라엘 독점권 확보가 중요하다는 점을 강조해 달라고 요청했습니다. 브랜드를 장기적으로 키우겠다는 의지를 보여주는 자료이며, 주문 확약은 아니라고 명확히 했습니다.",
+  "keyPoints": [
+   "회사 소개서 + MIXSOON 이스라엘 사업계획서 첨부",
+   "이스라엘 독점권 확보 요청 — 공급사에 전달 부탁",
+   "장기 브랜드 육성 의지 표명",
+   "주문·구매 확약은 아님을 명시"
+  ],
+  "intent": "MIXSOON 이스라엘 독점권 확보 지원",
+  "needsReply": true,
+  "replyReason": "공급사에 독점권 요청을 전달하고 결과를 알려줘야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "MIXSOON 공급사에 이스라엘 독점 가능성을 타진하고 결과를 회신 (결과적으로 무산됨)"
+ },
+ {
+  "id": "6aa0d3b38f83165dc75cea88",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "파렛트 포장 정보 · MOQ 600개 (초도) / 사양 변경 시 1만개",
+  "summary": "오스템파마 김정규 과장이 요청받은 파렛트 포장 정보를 정리해 전달했습니다. 칫솔·치약은 근사치이나 가글은 대량 출고 경험이 적어 보수적으로 계산했습니다. MOQ는 초도 기준 600개이며, 현지 기준으로 패키지 사양을 변경하려면 기본 MOQ가 10,000개라고 안내했습니다.",
+  "keyPoints": [
+   "초도 MOQ: 600개",
+   "⚠️ 현지 패키지 사양 변경 시 MOQ 10,000개로 상승",
+   "파렛트 포장 정보 — 칫솔·치약은 근사치, 가글은 보수적 계산"
+  ],
+  "intent": "포장·MOQ 정보 제공",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "현지 사양 변경 여부에 따라 MOQ 600 vs 10,000 을 바이어에게 명확히 안내"
+ },
+ {
+  "id": "6aa0d3b38f83165dc75cea89",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "바코드 확인 결과 · 가글 상품코드 오류 표시",
+  "summary": "오스템파마가 바코드 관련 확인 결과를 전달했습니다. 칫솔은 1P씩 바코드가 있고 색상과 무관하게 동일하며, 생산·출고부서와 확인한 내용입니다. 가글 상품코드가 잘못되어 있어 노란색으로 표시해 두었다고 알렸습니다.",
+  "keyPoints": [
+   "칫솔 바코드 — 1P 단위, 색상 무관 동일",
+   "⚠️ 가글 상품코드 오류 — 파일에 노란색 표시",
+   "생산·출고부서 확인 완료"
+  ],
+  "intent": "바코드 정보 제공과 오류 통지",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "가글 상품코드 오류를 반영해 자료를 수정"
+ },
+ {
+  "id": "6aa0d3b38f83165dc75cea8a",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "Dangaard 샘플 도착 확인 (UPS)",
+  "summary": "오스템파마가 Dangaard로 보낸 샘플이 UPS 조회 결과 전날 도착했다고 알렸습니다. 나머지 요청 사항은 파악되는 대로 회신하겠다고 했습니다.",
+  "keyPoints": [
+   "Dangaard 샘플 UPS 도착 확인 (전일)",
+   "나머지 요청 사항은 확인 후 회신 예정"
+  ],
+  "intent": "샘플 배송 완료 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "Dangaard 측에 샘플 수령 확인과 피드백 요청"
+ },
+ {
+  "id": "6aa0d3b38f83165dc75cea8b",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "파렛트 규격 회신 — 1100×1100 수출용 사용 중",
+  "summary": "오스템파마가 EAN 바코드 확인을 약속하고 파렛트 적재 정보를 상세히 회신했습니다. 요청받은 800×1200 규격은 진행 경험이 없고, 자사는 수출용 1100×1100을 사용합니다. 치약 카톤박스 기준 최대 56박스가 가능하나 통상 높이 1600~1800으로 포장하며, 최근 유럽향 해상운송은 1650 높이로 진행했습니다. 가글·치약 실측 정보도 함께 전달했습니다.",
+  "keyPoints": [
+   "⚠️ 요청 규격 800×1200 — 진행 경험 없음",
+   "자사 표준: 수출용 파렛트 1100×1100",
+   "치약 카톤 최대 56박스 · 통상 적재 높이 1600~1800",
+   "최근 유럽향 해상운송 실적: 1650 높이",
+   "EAN 바코드는 재확인 후 회신 예정"
+  ],
+  "intent": "파렛트 규격 차이 확인과 대응 방안 협의",
+  "needsReply": true,
+  "replyReason": "요청한 800×1200 규격과 실제 사용 규격이 달라, 바이어 요구 사항을 재확인해 조율해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "바이어에게 1100×1100 파렛트 수용 가능 여부를 확인해 오스템파마에 회신"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea48",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [My K Romania] Yogi Corporation, 전략적 K-뷰티 브랜드",
+  "translationBody": "David 님께\n\n메시지와 저녁 초대에 진심으로 감사드립니다. 세심한 배려에 감사하며 뵙기를 기대하고 있습니다.\n\n3월 26일 18:00 에 Cosmoprof 에서 짧게 만나고 19:30 에 저녁 식사를 하는 일정이 저희에게 아주 좋습니다. 제안해 주신 레스토랑에서 함께하겠습니다.\n\n숙박 관련해서는 제 어시스턴트가 이미 예약 정보를 보내드렸습니다.\n\n볼로냐에서 뵙기를 기대합니다.",
+  "topic": "Cosmoprof 미팅·저녁 일정 확정 (3/26 18:00, 19:30)",
+  "summary": "My K Romania가 Cosmoprof 볼로냐에서 3월 26일 18시 미팅 후 19시 30분 저녁 식사 일정을 확정했습니다. 숙박 예약 정보는 어시스턴트를 통해 이미 전달했다고 알렸습니다.",
+  "keyPoints": [
+   "3/26 18:00 Cosmoprof 미팅 확정",
+   "3/26 19:30 저녁 식사 — 제안 레스토랑에서",
+   "숙박 예약 정보 전달 완료"
+  ],
+  "intent": "일정 확정 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "2026-03-26", "deadlineText": "March 26 at 18:00, dinner 19:30", "deadlineType": "meeting",
+  "urgency": "low", "suggestedAction": "레스토랑 예약을 확정하고 미팅 자료를 준비"
+ },
+ {
+  "id": "6aa0d3be8f83165dc75ceab1",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 전화 통화 후속 건",
+  "translationBody": "길라드 님께\n\n아시아를 제외한 글로벌 랭킹을 받고 싶습니다.\n\n지역을 꼭 지정해서 요청해야 한다면, 유럽 랭킹으로 부탁드립니다.\n\n업데이트 기다리겠습니다.\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "브랜드 랭킹 자료 요청 — 아시아 제외 글로벌 또는 유럽",
+  "summary": "Schestowitz가 브랜드 판매 랭킹 자료를 요청했습니다. 아시아를 제외한 글로벌 랭킹을 원하며, 지역을 특정해야 한다면 유럽 랭킹으로 받고 싶다고 했습니다. 이스라엘 시장에서의 설득 자료로 쓰려는 것으로 보입니다.",
+  "keyPoints": [
+   "1순위: 아시아 제외 글로벌 랭킹",
+   "2순위: 유럽 랭킹",
+   "브랜드 설득·리테일 제안 자료 용도로 추정"
+  ],
+  "intent": "브랜드 랭킹 자료 확보",
+  "needsReply": true,
+  "replyReason": "자료 요청에 대한 회신을 기다리고 있다고 명시했습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "브랜드 측에 아시아 제외 글로벌(또는 유럽) 판매 랭킹 자료를 요청해 전달"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea49",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [My K Romania] Yogi Corporation, 전략적 K-뷰티 브랜드",
+  "translationBody": "David 님께\n\n메시지 감사합니다. Cosmoprof 볼로냐에 참석하신다니 매우 반갑고, 직접 만나는 자리를 마련해 주신 노고에 감사드립니다. 이훈 님도 뵙기를 기대합니다.\n\n참고로 저희는 전시 기간 동안 볼로냐의 다음 호텔에 머뭅니다:\nMitico Hotel & Natural Spa, Via Ferrarese 154, Bologna\n\n3월 25일 12:00 이후라면 언제든 시간이 됩니다. 일정에 맞으시면 알려 주세요.",
+  "topic": "Cosmoprof 미팅 가능 시간 제시 (3/25 12시 이후)",
+  "summary": "My K Romania가 Cosmoprof 참석을 반기며 숙박 호텔(Mitico Hotel, Via Ferrarese 154)을 알렸습니다. 3월 25일 12시 이후 언제든 미팅이 가능하다고 시간을 열어두고 우리 일정을 물었습니다.",
+  "keyPoints": [
+   "숙소: Mitico Hotel & Natural Spa, Via Ferrarese 154, Bologna",
+   "미팅 가능: 3월 25일 12:00 이후 전 시간",
+   "이훈 님 동석 기대"
+  ],
+  "intent": "미팅 시각 확정",
+  "needsReply": true,
+  "replyReason": "가능 시간대를 제시하고 우리 일정을 물었으므로 확정 회신이 필요합니다.",
+  "deadline": "2026-03-25", "deadlineText": "March 25th after 12:00 PM", "deadlineType": "meeting",
+  "urgency": "mid", "suggestedAction": "미팅 시각을 확정해 회신 (이후 3/26 18:00 으로 조정됨)"
+ },
+ {
+  "id": "6aa0d3be8f83165dc75ceab2",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\nAMUSE 관련 — 저희는 계획을 세우기 전에 반드시 가격표를 받아야 합니다.\n\n매입가와 권장소비자가 둘 다 필요합니다. 모든 브랜드와 이렇게 일합니다.\n\nMIXSOON 관련 — 현 상황을 감안하면 지연이 있겠지만, 최대한 빨리 진행되도록 노력하겠습니다.\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "AMUSE 가격표 요구 (매입가+권장소비자가) · MIXSOON 지연",
+  "summary": "Schestowitz가 AMUSE 브랜드는 가격표 없이는 계획을 세울 수 없다며, 매입가와 권장소비자가를 모두 요구했습니다. 모든 브랜드와 그렇게 일한다며 원칙임을 강조했습니다. MIXSOON은 상황상 지연이 있겠지만 최대한 빨리 진행하겠다고 했습니다.",
+  "keyPoints": [
+   "AMUSE — 매입가 + 권장소비자가(RRP) 둘 다 필요",
+   "가격표가 사업계획의 전제 조건이라는 원칙 강조",
+   "MIXSOON 은 지연 예상"
+  ],
+  "intent": "AMUSE 가격표 확보",
+  "needsReply": true,
+  "replyReason": "가격표 없이는 진행이 불가하다고 명시했고, 이것이 다음 단계의 전제입니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "AMUSE 매입가와 권장소비자가를 함께 정리해 송부"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea4a",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [My K Romania] Yogi Corporation, 전략적 K-뷰티 브랜드",
+  "translationBody": "David 님께\n\n잘 지내시죠.\n\n이번 달 이탈리아 볼로냐 Cosmoprof 에 참석하실 계획이신지 여쭙고 싶습니다. 직접 만나 협업 가능성을 더 자세히 논의할 좋은 기회가 될 것 같습니다.\n\n참석 계획이 없으시다면, 저희가 2박 숙박을 부담해 초대하고 싶습니다. 행사 기간 중 미팅을 잡을 수 있도록요.\n\n대면 논의가 매우 값진 자리가 될 것이라 생각합니다.",
+  "topic": "Cosmoprof 볼로냐 참석 문의 · 숙박 2박 제공 제안",
+  "summary": "My K Romania가 Cosmoprof 볼로냐 참석 여부를 물으며, 참석 계획이 없다면 2박 숙박을 부담해서라도 초대하고 싶다고 제안했습니다. 대면 논의에 상당한 의지를 보인 메일입니다.",
+  "keyPoints": [
+   "Cosmoprof 볼로냐 참석 여부 문의",
+   "미참석 시 2박 숙박 부담 제안 — 강한 미팅 의지",
+   "대면 협업 논의 희망"
+  ],
+  "intent": "Cosmoprof 대면 미팅 성사",
+  "needsReply": true,
+  "replyReason": "참석 여부를 묻는 직접 질문이며 숙박 제안까지 있어 회신이 필요합니다.",
+  "deadline": "", "deadlineText": "this month (Cosmoprof)", "deadlineType": "event",
+  "urgency": "high", "suggestedAction": "참석 여부를 회신하고 미팅 일정을 조율 (이후 3/26 확정)"
+ }
+]

@@ -27,6 +27,7 @@ export interface IInboundMail extends Document {
   leadMatchedBy?: 'in-reply-to' | 'references' | 'email-address' | 'manual' | null;
   group?: string;                 // 거래처명 (폴더/발신자/도메인/제목 학습 결과)
   groupBy?: string;               // 판정 근거: folder | sender:address | sender:domain | name:<매칭어> | manual
+  groupMovedAt?: Date;            // 사람이 직접 폴더를 옮긴 시각 (자동 재분류가 덮지 않게 하는 표시)
 
   // ── 방향 ──────────────────────────────────────────────
   // 'in'  = 상대가 우리에게 보낸 것 (답장 대상)
@@ -129,6 +130,7 @@ const InboundMailSchema = new Schema<IInboundMail>({
   leadMatchedBy: { type: Schema.Types.Mixed, default: null },
   group: { type: String, default: '' },
   groupBy: { type: String, default: '' },
+  groupMovedAt: { type: Date, default: null },   // 사람이 직접 옮긴 시각
 
   direction: { type: String, enum: ['in', 'out'], default: 'in' },
 

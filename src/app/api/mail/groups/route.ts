@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import { listGroups, learnSenderGroups, suggestGroupBySender, suggestGroupByName } from '@/lib/mail/groups';
+import {
+  listGroups, learnSenderGroups, suggestGroupBySender, suggestGroupByName,
+  autoAssignGroup, getOwnDomains,
+} from '@/lib/mail/groups';
 import { InboundMail } from '@/models/InboundMail';
 
 export const runtime = 'nodejs';
@@ -49,39 +52,75 @@ export async function POST(req: Request) {
     const { groups } = await listGroups();
     const knownGroups = groups.map((g) => g.group).filter(Boolean);
 
+    // 사람이 직접 옮긴 것(groupBy: 'manual')은 애초에 group 이 채워져 있어
+    // 이 조건에 안 걸린다. 혹시 미분류로 되돌린 경우까지 감안해 명시적으로 뺀다.
     const match: any = {
       group: { $in: [null, ''] },
+      groupBy: { $ne: 'manual' },
       direction: 'in',
       trashedAt: null,
     };
     if (body?.accountId && body.accountId !== 'all') match.accountId = body.accountId;
 
     const targets: any[] = await InboundMail.find(match, {
-      _id: 1, subject: 1, from: 1,
+      _id: 1, subject: 1, from: 1, classification: 1,
     }).limit(Number(body?.limit) || 2000).lean();
+
+    // 기본은 **학습으로 확실한 것만** 분류한다.
+    //
+    // 한때 남는 것을 전부 어딘가에 밀어 넣어 '미분류 0건' 을 만들었는데,
+    // 발신 도메인마다 폴더가 생겨 1통짜리 폴더가 7개 나왔다. 거래처 목록이
+    // 잡음으로 뒤덮여 진짜 거래처를 찾기가 더 어려워졌다.
+    // 애매한 것은 미분류로 남겨 두고 사람이 직접 옮기는 편이 낫다.
+    // (정말 필요하면 fallback: true 로 부를 수 있게 남겨 둔다)
+    const useFallback = body?.fallback === true;
+    const ownDomainSet = useFallback ? await getOwnDomains() : new Set<string>();
+
+    // 발신 도메인별 누적 통수 — 폴더를 팔 만큼 오간 곳인지 판단하는 근거.
+    // 이번에 분류할 것만이 아니라 **전체 수신 이력**을 세야 한다
+    // (한 통씩 여러 번 온 곳도 합치면 단골일 수 있다).
+    const domainCounts = new Map<string, number>();
+    if (useFallback) {
+      const rows: any[] = await InboundMail.aggregate([
+        { $match: { direction: { $ne: 'out' }, 'from.address': { $nin: [null, ''] } } },
+        { $group: { _id: { $toLower: { $arrayElemAt: [{ $split: ['$from.address', '@'] }, 1] } }, n: { $sum: 1 } } },
+      ]);
+      for (const r of rows) if (r._id) domainCounts.set(String(r._id), r.n);
+    }
 
     let bySender = 0;
     let byName = 0;
+    let byFallback = 0;
     const ops: any[] = [];
 
     for (const m of targets) {
       const s = suggestGroupBySender({ from: m.from }, learned);
       const n = s ? null : suggestGroupByName({ subject: m.subject }, knownGroups);
-      const hit = s || n;
-      if (!hit) continue;
-      if (s) bySender++; else byName++;
+      let hit: any = s || n;
+      let by: string;
+
+      if (hit) {
+        if (s) { bySender++; by = `sender:${(hit as any).by}`; }
+        else   { byName++;   by = `name:${(hit as any).matched}`; }
+      } else if (useFallback) {
+        // 처음 보는 발신자 — 자사/광고/발신도메인 순으로 배치한다
+        const auto = autoAssignGroup(
+          { from: m.from, classification: m.classification },
+          ownDomainSet,
+          domainCounts,
+        );
+        if (!auto) continue;
+        hit = auto;
+        byFallback++;
+        by = `auto:${auto.by}`;
+      } else {
+        continue;
+      }
 
       ops.push({
         updateOne: {
           filter: { _id: m._id },
-          update: {
-            $set: {
-              group: hit.group,
-              groupBy: (hit as any).by === 'name'
-                ? `name:${(hit as any).matched}`
-                : `sender:${(hit as any).by}`,
-            },
-          },
+          update: { $set: { group: hit.group, groupBy: by } },
         },
       });
     }
@@ -96,6 +135,7 @@ export async function POST(req: Request) {
       classified: ops.length,
       bySender,
       byName,
+      byFallback,
       learnedSenders: learned.size,
       knownGroups: knownGroups.length,
     });

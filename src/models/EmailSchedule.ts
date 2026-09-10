@@ -15,6 +15,14 @@ export interface IEmailSchedule extends Document {
   attempts: number;
   lastError?: string;
   batchId?: string;            // 예약 배치 ID (한 번에 여러 대상 예약 시 그룹핑)
+  // ── 자동 재발송(팔로우업) ──────────────────────────────
+  // 이 예약이 몇 번째 메일인가. 1 = 첫 발송, 2·3 = 답이 없어 다시 보내는 것.
+  // 발송 한도(MAX_SEND_COUNT_PER_LEAD=3)와 같은 축이라 여기 둔다.
+  attemptNo?: number;
+  // 답이 없으면 다음 메일을 자동으로 잡을지. 답장이 오면 리드가 replied 로
+  // 올라가고, 팔로우업 생성 단계에서 걸러진다.
+  followUp?: boolean;
+  followUpDays?: number;       // 몇 일 뒤에 다시 보낼지 (기본 7)
   createdBy?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -36,6 +44,9 @@ const EmailScheduleSchema = new Schema<IEmailSchedule>({
   attempts: { type: Number, default: 0 },
   lastError: { type: String, default: '' },
   batchId: { type: String, default: '' },
+  attemptNo: { type: Number, default: 1 },
+  followUp: { type: Boolean, default: false },
+  followUpDays: { type: Number, default: 7 },
   createdBy: { type: String, default: '' },
 }, { timestamps: true });
 

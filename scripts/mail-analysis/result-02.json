@@ -1,0 +1,417 @@
+[
+ {
+  "id": "6aa0d3bc8f83165dc75ceaa6",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: RE: 미팅 후속 건",
+  "translationBody": "좋습니다, 감사합니다 😊\n\n내일 뵙겠습니다.\n\nKeren Meir / Schestowitz",
+  "topic": "내일 미팅 확인",
+  "summary": "Schestowitz의 Keren이 내일 만나자는 짧은 확인 회신입니다. 별도 요청은 없습니다.",
+  "keyPoints": ["내일 미팅 확인만 담긴 짧은 회신"],
+  "intent": "미팅 확인",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "내일", "deadlineType": "meeting",
+  "urgency": "low", "suggestedAction": "별도 조치 불필요"
+ },
+ {
+  "id": "6aa0d39f8f83165dc75cea2c",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 유망 K-뷰티 브랜드 소개 - Cafune",
+  "translationBody": "David 님께\n\n브랜드 소개 감사합니다. 검토했고 좋아 보입니다.\n\n다만 저희가 곧 MOEV 를 시작할 예정이라, 두 번째 브랜드를 도입하기 전에 K-뷰티 헤어케어 카테고리가 어떤 성과를 내는지 먼저 보고 싶습니다.\n\n진행이 더 되면 반드시 알려드리겠습니다.\n\nOkan Can",
+  "topic": "Cafune 도입 보류 — MOEV 성과 먼저 확인",
+  "summary": "터키 Distribution Group이 Cafune 브랜드를 검토하고 좋게 평가했지만, 곧 시작하는 MOEV로 K-뷰티 헤어케어 카테고리 성과를 먼저 본 뒤 두 번째 브랜드를 결정하겠다고 했습니다. 거절이 아니라 순번 조정입니다.",
+  "keyPoints": [
+   "Cafune 브랜드 평가는 긍정적",
+   "MOEV 를 먼저 런칭 — 헤어케어 카테고리 성과 확인 후 판단",
+   "진행되면 먼저 연락하겠다는 약속"
+  ],
+  "intent": "도입 시점 연기 통보",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "MOEV 런칭 성과를 지켜본 뒤 Cafune 재제안 시점을 잡는다"
+ },
+ {
+  "id": "6aa0d3bc8f83165dc75ceaa7",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "데이비드 님께\n\n어제 미팅 정말 감사합니다.\n\n계약서 초안을 저희 법무팀에 전달했습니다.\n\nArencia 와의 미팅 건과 귀사의 초대에 대한 업데이트를 기다리고 있습니다.\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "계약서 법무 검토 착수 · Arencia 미팅 일정 대기",
+  "summary": "Schestowitz의 Keren이 계약서 초안을 법무팀에 넘겼다고 알리고, Arencia와의 미팅 건과 초대에 대한 업데이트를 기다리고 있다고 했습니다. 우리 쪽 회신이 진행을 막고 있는 상태입니다.",
+  "keyPoints": [
+   "계약서 초안 법무팀 검토 착수",
+   "Arencia 미팅 일정 업데이트 대기 중",
+   "우리 쪽 초대(zimun) 회신 대기"
+  ],
+  "intent": "Arencia 미팅 일정 확정",
+  "needsReply": true,
+  "replyReason": "Arencia 미팅 건에 대한 업데이트를 명시적으로 기다리고 있습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "meeting",
+  "urgency": "high", "suggestedAction": "Arencia 측과 미팅 가능일을 확인해 일정을 회신"
+ },
+ {
+  "id": "6aa0d39f8f83165dc75cea2d",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [Yogico] Osstem Pharma & Vussen 사업 개요 소개",
+  "translationBody": "David 님께\n\n감사합니다. 소포를 받는 대로 알려드리겠습니다.\n\nOkan Can",
+  "topic": "Vussen 샘플 수령 예정 통보",
+  "summary": "터키 Distribution Group의 Okan이 발송된 Vussen 샘플을 받는 대로 알려주겠다고 한 짧은 회신입니다. 우리 쪽 조치는 없습니다.",
+  "keyPoints": ["Vussen 샘플 발송 완료 · 수령 시 회신 예정"],
+  "intent": "수령 확인 예고",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "수령 연락이 없으면 배송 추적 확인"
+ },
+ {
+  "id": "6aa0d3bc8f83165dc75ceaa8",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\n저희 의견을 반영한 수정 계약서를 첨부합니다. 수정은 주로 두 가지 사안에 관한 것입니다.\n\n1. 규제 — 인허가 절차에 필요한 서류를 철저히 갖추는 부분입니다. 저희 부서의 요구사항이라 저희가 바꿀 수 있는 사항이 아닙니다.\n\n2. 결제 조건\n  · 공급사 결제 방식 — 물품이 아직 한국 공급사 창고에 있는 상태에서 잔금 70% 또는 90% 를 지급하라는 요구는 저희가 승인할 수 없는 지점입니다.\n    해외 공급사와 거래할 때의 통상 관행대로, 잔금은 물품이 공급사 관리에서 벗어나 포워더에게 넘어갔음을 확인하는 선적 서류(BOL) 제시를 조건으로 지급되어야 합니다.\n  · 수수료 지급 시점 (이하 계속)",
+  "topic": "계약 수정 요구 — 규제 서류와 잔금 지급 조건(BOL)",
+  "summary": "Schestowitz가 계약서에 두 가지 수정을 요구했습니다. 규제 서류 요건은 자사 부서 요구사항이라 변경 불가라고 못박았고, 결제 조건에서는 물품이 한국 창고에 있는 상태의 잔금 70~90% 선지급을 거부했습니다. 해외 거래 관행대로 선적 서류(BOL) 제시를 조건으로 잔금을 지급하겠다는 입장입니다. 수수료 지급 시점도 쟁점으로 언급됐습니다.",
+  "keyPoints": [
+   "규제 서류 요건 — 자사 부서 요구, 변경 불가",
+   "⚠️ 잔금 70~90% 선지급 거부 — 물품이 공급사 창고에 있는 동안은 불가",
+   "대안: BOL(선적 서류) 제시 조건부 잔금 지급",
+   "수수료 지급 시점도 쟁점"
+  ],
+  "intent": "결제 조건을 BOL 기준으로 변경",
+  "needsReply": true,
+  "replyReason": "결제 조건은 공급사와 재협의가 필요한 사안이고, 답이 없으면 계약이 진행되지 않습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "payment",
+  "urgency": "high", "suggestedAction": "공급사와 BOL 조건부 잔금 지급이 가능한지 협의한 뒤 수정안을 회신"
+ },
+ {
+  "id": "6aa0d39f8f83165dc75cea2e",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 유망 K-뷰티 브랜드 소개 - Toun28",
+  "translationBody": "David 님께\n\n메일 감사합니다.\n\n현재 이 제품 카테고리는 저희가 충분히 커버하고 있습니다. 다만 퍼스널케어나 헤어케어 쪽 제품이 있으시면 언제든 공유해 주세요.\n\n연락 기다리겠습니다.\n\nOkan Can",
+  "topic": "Toun28 거절 — 대신 퍼스널케어·헤어케어 요청",
+  "summary": "터키 Distribution Group이 Toun28은 해당 카테고리가 이미 충분하다며 사양했습니다. 다만 퍼스널케어나 헤어케어 제품이 있으면 공유해 달라고 요청했습니다. 거절이지만 다음 제안의 방향을 알려준 유용한 회신입니다.",
+  "keyPoints": [
+   "Toun28 — 해당 카테고리 이미 충분해 사양",
+   "요청 카테고리: 퍼스널케어, 헤어케어",
+   "다음 제안 방향을 명시해 준 셈"
+  ],
+  "intent": "퍼스널케어·헤어케어 브랜드 제안 요청",
+  "needsReply": true,
+  "replyReason": "원하는 카테고리를 특정해 제안을 요청했으므로, 해당 브랜드를 추려 회신할 여지가 있습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "퍼스널케어·헤어케어 K-뷰티 브랜드를 추려 제안서 송부"
+ },
+ {
+  "id": "6aa0d39f8f83165dc75cea2f",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [Yogico] Osstem Pharma & Vussen 사업 개요 소개",
+  "translationBody": "David 님께\n\n감사합니다. 인보이스는 문제없습니다. 진행해 주세요.\n\nOkan Can",
+  "topic": "샘플 선적 인보이스 승인",
+  "summary": "터키 Distribution Group이 샘플 선적용 CI(상업송장)를 확인하고 문제없다며 진행을 승인했습니다.",
+  "keyPoints": ["샘플 선적 인보이스(CI) 승인 — 발송 진행 가능"],
+  "intent": "선적 진행 승인",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "샘플 발송을 진행하고 송장 번호를 공유"
+ },
+ {
+  "id": "6aa0d3b28f83165dc75cea7a",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "Dangaard 계약 — 13개국 확대에 대한 오스템파마 우려",
+  "summary": "오스템파마 김정규 과장이 Dangaard 건 내부 논의 결과를 전했습니다. 처음 논의는 4개국이었는데 Normal 채널을 통한 13개국 진행으로 얘기가 커진 데 당황스럽다는 입장입니다. MOQ 충족으로 현지어 튜브·단상자 제작은 가능하지만 처음 논의한 4개국 한정이며, 13개국 개별 라벨링은 비효율적이고 수지타산이 맞지 않는다고 했습니다. 국가가 늘수록 가격이 무너질 우려도 제기했습니다.",
+  "keyPoints": [
+   "Dangaard 유통 채널 = Matas, Normal 로 파악",
+   "⚠️ 처음 논의 4개국 → 13개국으로 확대된 데 대한 당황",
+   "현지어 튜브+단상자 제작은 4개국 한정으로만 가능 (MOQ 충족)",
+   "13개국 개별 라벨링은 비효율·수지타산 불가",
+   "국가 확대 시 가격 붕괴와 판매 악영향 우려"
+  ],
+  "intent": "대상 국가 범위를 처음 논의한 4개국으로 되돌리는 협의",
+  "needsReply": true,
+  "replyReason": "공급사가 계약 범위에 명확한 이견을 제기했고, 조율하지 않으면 Dangaard 건이 틀어집니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "Dangaard 측에 4개국 우선 진행안을 제시하고 확대는 성과 후 단계적으로 협의"
+ },
+ {
+  "id": "6aa0d3a08f83165dc75cea30",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [Yogico] Osstem Pharma & Vussen 사업 개요 소개",
+  "translationBody": "David 님께\n\n저희가 내일 아침 호텔을 떠납니다. 오늘 안에 배송해 주실 수 있을까요?",
+  "topic": "샘플 당일 배송 요청 (내일 아침 출국)",
+  "summary": "터키 Distribution Group의 Okan이 내일 아침 호텔을 떠나므로 샘플을 오늘 안에 배송해 달라고 요청했습니다. 시간이 걸린 긴급 요청이었습니다.",
+  "keyPoints": [
+   "내일 아침 호텔 체크아웃 — 당일 배송 필요",
+   "놓치면 샘플을 가져갈 수 없음"
+  ],
+  "intent": "당일 내 샘플 배송",
+  "needsReply": true,
+  "replyReason": "당일 배송 가능 여부를 즉시 알려야 하는 시간 제약 요청입니다.",
+  "deadline": "", "deadlineText": "leaving the hotel tomorrow morning, deliver by today", "deadlineType": "other",
+  "urgency": "high", "suggestedAction": "퀵 배송으로 당일 전달하고 배송 상황을 실시간 공유 (이미 지난 건)"
+ },
+ {
+  "id": "6aa0d3a08f83165dc75cea31",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [Yogico] Osstem Pharma & Vussen 사업 개요 소개",
+  "translationBody": "David 님께\n\n총 3~4개 제품이면 됩니다. 레퍼런스별로 하나씩만 보내 주세요.\n\n오늘 중으로 저희 호텔로 배송해 주세요. 객실은 2020호입니다.\n\nSofitel Ambassador Seoul Hotel & Serviced Residences\n서울 송파구 잠실로 209\n\nOkan Can",
+  "topic": "샘플 배송지 안내 — 소피텔 앰배서더 2020호",
+  "summary": "터키 Distribution Group의 Okan이 샘플 배송지를 알려줬습니다. 레퍼런스별 1개씩 총 3~4개면 되고, 서울 잠실 소피텔 앰배서더 호텔 2020호로 당일 배송을 요청했습니다.",
+  "keyPoints": [
+   "필요 수량: 레퍼런스별 1개씩, 총 3~4개",
+   "배송지: 소피텔 앰배서더 서울 (잠실로 209) 2020호",
+   "당일 배송 요청"
+  ],
+  "intent": "샘플 당일 수령",
+  "needsReply": true,
+  "replyReason": "배송 가능 여부와 예상 도착 시각을 알려줘야 상대가 호텔에서 기다릴 수 있습니다.",
+  "deadline": "", "deadlineText": "during today", "deadlineType": "other",
+  "urgency": "high", "suggestedAction": "레퍼런스별 1개씩 준비해 호텔 2020호로 당일 배송 (이미 지난 건)"
+ },
+ {
+  "id": "6aa0d3a08f83165dc75cea32",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [Yogico] Osstem Pharma & Vussen 사업 개요 소개",
+  "translationBody": "David 님께\n\n메일 감사합니다.\n\nMarvis 를 언급해 주셔서 다행입니다. 현재 가격으로는 권장소비자가가 Marvis 보다 높아지기 때문입니다. 저희가 40% 할인을 요청한 이유가 이것입니다.\n\n또한 샘플을 좀 보내 주실 수 있을까요? 리테일러 프레젠테이션에 쓰려고 가져가고 싶습니다.\n\nOkan Can",
+  "topic": "40% 할인 요구 근거 — Marvis 대비 가격 경쟁력",
+  "summary": "터키 Distribution Group이 40% 할인을 요청한 근거를 설명했습니다. 현재 가격으로는 권장소비자가가 경쟁 브랜드 Marvis보다 높아져 시장에서 통하지 않는다는 것입니다. 함께 리테일러 프레젠테이션용 샘플도 요청했습니다.",
+  "keyPoints": [
+   "40% 할인 요구 근거: 현 가격이면 MSRP 가 Marvis 보다 높아짐",
+   "Marvis = 경쟁 벤치마크 브랜드",
+   "리테일러 프레젠테이션용 샘플 요청"
+  ],
+  "intent": "가격 인하와 샘플 확보",
+  "needsReply": true,
+  "replyReason": "할인 요구에 대한 답과 샘플 발송 여부를 모두 회신해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "공급사와 할인율을 협의하고 샘플 발송 일정을 함께 회신"
+ },
+ {
+  "id": "6aa0d3b28f83165dc75cea7b",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: SV: Osstem Pharma (Vussen) x Dangaard",
+  "translationBody": "Camilla 님께\n\n온라인으로 뵙게 되어 반가웠습니다. 두 가지 문의가 있습니다.\n\n1) 저희가 이해하기로는 Dangaard 가 4개국(덴마크, 스웨덴, 노르웨이, 핀란드)에 대해서만 독점 계약을 맺는 것으로 알고 있었습니다. 이 국가들 외에도 라벨이 필요하신가요?\n\n2) 이 라벨은 국가별로 하나씩 만드는 것인가요? 아니면 모든 언어를 한꺼번에 넣는 것인가요?\n\n명확히 해 주시면 감사하겠습니다.\n\nJK Kim / 오스템파마 해외사업",
+  "topic": "Dangaard 독점 범위·라벨 방식 확인 요청",
+  "summary": "오스템파마 김정규 과장이 Dangaard의 Camilla에게 두 가지를 확인 요청했습니다. 독점 계약이 북유럽 4개국(덴마크·스웨덴·노르웨이·핀란드) 한정인지, 그 외 국가에도 라벨이 필요한지. 그리고 라벨을 국가별로 만드는지 전 언어를 한 번에 넣는지입니다. 앞선 13개국 확대 우려와 같은 맥락입니다.",
+  "keyPoints": [
+   "독점 범위 확인: 북유럽 4개국(DK·SE·NO·FI) 한정 여부",
+   "4개국 외 라벨 필요 여부 확인",
+   "라벨 방식: 국가별 개별 제작 vs 전 언어 통합",
+   "13개국 확대 우려와 직결된 질문"
+  ],
+  "intent": "독점 범위와 라벨 제작 방식 확정",
+  "needsReply": true,
+  "replyReason": "공급사가 Dangaard 측 답을 기다리고 있고, 중간에서 우리가 연결해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "Dangaard 에 두 질문을 전달하고 답을 오스템파마에 회신"
+ },
+ {
+  "id": "6aa0d3a08f83165dc75cea33",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: [Yogico] Osstem Pharma & Vussen 사업 개요 소개",
+  "translationBody": "David 님께\n\n피드백 감사합니다.\n\n현 단계의 가격으로는 주요 리테일 채널에 성공적으로 진입하기 어렵습니다. 저희 판단으로는 경쟁력을 확보하려면 약 40% 할인이 필요합니다.\n\n이 수준이 되면 Watsons, Rossmann, Gratis 런칭을 진행할 수 있습니다. 이 세 곳을 합치면 1,500개 이상의 매장 네트워크이며, 터키에서 브랜드에 상당한 성장 기회가 됩니다.\n\n가능 여부에 대한 의견을 알려 주세요.",
+  "topic": "40% 할인 요구 · 1,500개 매장 진입 조건",
+  "summary": "터키 Distribution Group이 현 가격으로는 주요 리테일 채널 진입이 어렵다며 약 40% 할인을 요구했습니다. 조건이 맞으면 Watsons·Rossmann·Gratis에 런칭할 수 있고, 세 곳 합쳐 1,500개 이상 매장이라는 규모를 제시했습니다. 가격과 유통 규모를 맞바꾸는 협상입니다.",
+  "keyPoints": [
+   "40% 할인 요구 — 리테일 채널 진입 조건",
+   "대가: Watsons + Rossmann + Gratis 런칭",
+   "합계 1,500개 이상 매장 네트워크",
+   "가격 vs 유통 규모 협상 국면"
+  ],
+  "intent": "가격 인하 가능 여부 확답",
+  "needsReply": true,
+  "replyReason": "할인 가능 여부에 대한 의견을 직접 요청했고, 1,500개 매장 진입이 여기에 걸려 있습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "공급사와 40% 할인 가능선을 확인하고, 물량 보장 조건과 연계한 역제안을 준비"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea3f",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "포트폴리오 확장을 위한 저가형 K-뷰티 브랜드 요청",
+  "translationBody": "David 님께\n\n잘 지내시죠.\n\n저희가 현재 준비 중인 새로운 전략 방향에 대해 말씀드리려 연락드립니다.\n\n루마니아의 현 경제 상황으로 소비자 행동이 크게 바뀌었습니다. 전반적인 소비가 줄고, 고객들이 가격에 훨씬 민감해지면서 저렴한 제품을 선호하는 쪽으로 움직이고 있습니다.\n\n그 결과 저희는 강한 리테일 경쟁력을 갖춘 엔트리급 K-뷰티 브랜드로 포트폴리오를 확장하는 데 집중하고 있습니다.",
+  "topic": "루마니아 시장 변화 — 저가형 K-뷰티 브랜드 요청",
+  "summary": "My K Romania의 Andreea가 루마니아 경제 상황으로 소비가 줄고 소비자가 가격에 민감해졌다고 전하며, 엔트리급(저가형) K-뷰티 브랜드로 포트폴리오를 확장하려 한다고 알렸습니다. 시장 변화에 맞는 브랜드 제안을 요청하는 내용입니다.",
+  "keyPoints": [
+   "루마니아 소비 위축 · 가격 민감도 상승",
+   "전략 전환: 엔트리급(저가형) K-뷰티 브랜드 확대",
+   "리테일 경쟁력 있는 가격대 브랜드 요청"
+  ],
+  "intent": "저가형 K-뷰티 브랜드 후보 제안 요청",
+  "needsReply": true,
+  "replyReason": "새 전략 방향에 맞는 브랜드 제안을 요청하는 메일로, 답하지 않으면 기회를 넘기게 됩니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "high", "suggestedAction": "가격 경쟁력 있는 엔트리급 K-뷰티 브랜드를 추려 가격표와 함께 제안"
+ },
+ {
+  "id": "6aa0d3bc8f83165dc75ceaa9",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\n계약서 초안을 첨부합니다. 검토하시고 관련 의견을 주시면 감사하겠습니다.\n\n물론 필요하다면 법무팀과 추가 통화를 진행할 수 있습니다.\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "계약서 초안 송부 · 의견 요청",
+  "summary": "Schestowitz의 Keren이 계약서 초안을 첨부해 보내며 검토 의견을 요청했습니다. 필요하면 법무팀과 추가 통화도 가능하다고 했습니다.",
+  "keyPoints": [
+   "계약서 초안 첨부 — 검토 의견 요청",
+   "필요 시 법무팀과 추가 통화 가능"
+  ],
+  "intent": "계약서 검토 의견 확보",
+  "needsReply": true,
+  "replyReason": "초안 검토 의견을 직접 요청받았고, 답이 없으면 계약이 진행되지 않습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "high", "suggestedAction": "계약서 초안을 검토해 조항별 의견을 정리해 회신"
+ },
+ {
+  "id": "6aa0d3b28f83165dc75cea7c",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "유럽 RP(책임자) 관련 서류 — ⚠️ 본문 인코딩 깨짐",
+  "summary": "오스템파마 김정규 과장이 Dangaard 측(카밀라)이 요청한 유럽 RP(Responsible Person) 관련 자료를 전달하는 메일입니다. 카밀라 요청서의 '공급업체와 Vussen 간의 체결 계약서'라는 표현에서 공급업체가 무엇을 가리키는지 확인을 요청하고 있습니다. 오스템파마는 아직 유럽 RP를 정하지 못한 상황이라 관련 자료 첨부가 어렵다는 내용도 포함됩니다.\n\n⚠️ 이 메일은 본문 글자가 깨진 상태로 수집되었습니다(EUC-KR 로 보낸 메일에 문자셋 표시가 없었던 것으로 보임). 위 요약은 판독 가능한 부분에서 재구성한 것이므로, 정확한 내용은 이카운트 웹메일에서 원문을 확인하세요.",
+  "keyPoints": [
+   "⚠️ 본문 인코딩 깨짐 — 원문은 이카운트 웹메일에서 확인 필요",
+   "유럽 RP(Responsible Person) 관련 서류 건",
+   "'공급업체와 Vussen 간 체결 계약서' 의 공급업체 정의 확인 요청",
+   "오스템파마는 유럽 RP 미정 상태로 자료 첨부 곤란"
+  ],
+  "intent": "RP 서류 요건의 용어 정의 확인",
+  "needsReply": true,
+  "replyReason": "용어 정의 확인을 요청받았고, RP 지정이 유럽 진출의 선행 요건입니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "",
+  "urgency": "mid", "suggestedAction": "원문을 웹메일에서 확인한 뒤, Dangaard 에 '공급업체' 정의를 물어 오스템파마에 회신"
+ },
+ {
+  "id": "6aa0d3b28f83165dc75cea7d",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: Osstem Pharma (Vussen) x Dangaard",
+  "translationBody": "Hjerrild 님께\n\n안녕하세요. 답신이 늦어 죄송합니다. 현재 출장 중입니다.\n\nRP 관련 서류는 제 동료가 David Park (Yogi Corporation) 님께 전달했습니다. 그분이 공유해 주실 겁니다.\n\n말씀하신 세부 사안은 다음 주 컨퍼런스 콜에서 다루겠습니다.\n\n회신 감사합니다.\nJK Kim / 오스템파마",
+  "topic": "RP 서류는 Yogi 를 통해 전달 · 세부는 컨콜에서",
+  "summary": "오스템파마 김정규 과장이 출장 중이라 회신이 늦었다고 알리며, RP 관련 서류는 동료가 Yogi Corporation의 David에게 전달했으니 그쪽에서 공유될 것이라고 했습니다. 세부 사안은 다음 주 컨퍼런스 콜에서 다루기로 했습니다.",
+  "keyPoints": [
+   "RP 서류는 Yogi Corporation 을 통해 Dangaard 에 전달 예정",
+   "우리가 중간 전달자 역할 — 전달 여부 확인 필요",
+   "세부 사안은 다음 주 컨퍼런스 콜에서"
+  ],
+  "intent": "RP 서류를 Dangaard 에 전달",
+  "needsReply": true,
+  "replyReason": "우리를 거쳐 서류가 전달되게 되어 있어, 실제로 전달했는지 확인·조치가 필요합니다.",
+  "deadline": "", "deadlineText": "conference call next week", "deadlineType": "meeting",
+  "urgency": "mid", "suggestedAction": "RP 서류를 Dangaard 에 전달하고 컨퍼런스 콜 일정을 확정"
+ },
+ {
+  "id": "6aa0d3b28f83165dc75cea7e",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 공급사 양식 - Dangaard",
+  "translationBody": "Jensen 님께\n\n안녕하세요. 만나뵙게 되어 반갑습니다. 이번 주까지 출장 중입니다.\n\n한국에 돌아가는 대로 가능한 한 빨리 양식을 작성하겠습니다.\n\n감사합니다.\nJK Kim / 오스템파마",
+  "topic": "공급사 등록 양식 — 출장 복귀 후 작성 예정",
+  "summary": "오스템파마 김정규 과장이 Dangaard의 공급사 등록 양식을 출장에서 복귀하는 대로 작성하겠다고 회신했습니다. 우리 쪽 조치는 없으나 진행 여부를 지켜봐야 합니다.",
+  "keyPoints": [
+   "Dangaard 공급사 등록 양식 작성 예정",
+   "출장 복귀 후 처리 — 이번 주 이후"
+  ],
+  "intent": "양식 작성 지연 양해 요청",
+  "needsReply": false, "replyReason": "",
+  "deadline": "", "deadlineText": "till this week (출장)", "deadlineType": "",
+  "urgency": "low", "suggestedAction": "양식 제출이 지연되면 오스템파마에 진행 상황 확인"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea40",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: AK 브랜드 소개 및 컨퍼런스 콜 가능 일정",
+  "translationBody": "David 님께\n\n브랜드 프레젠테이션 공유해 주셔서 감사합니다.\n\n다만 제공해 주신 링크로 파일에 접근할 수가 없습니다. ciucu.andreea@gmail.com 주소에 권한을 부여해 주시면 문서를 검토하겠습니다.\n\n미팅은 다음 주 월요일, 화요일, 수요일 모두 루마니아 시간 오전 11시로 가능합니다.\n\n어느 쪽이 편하신지 알려 주세요.\n\n감사합니다.",
+  "topic": "자료 접근 권한 요청 · 미팅 3개 날짜 제시",
+  "summary": "My K Romania의 Andreea가 공유받은 브랜드 프레젠테이션 링크에 접근할 수 없다며 ciucu.andreea@gmail.com에 권한 부여를 요청했습니다. 미팅은 다음 주 월·화·수 루마니아 시간 오전 11시 모두 가능하니 편한 날을 알려달라고 했습니다.",
+  "keyPoints": [
+   "⚠️ 브랜드 자료 링크 접근 불가 — 권한 부여 필요",
+   "권한 부여 대상: ciucu.andreea@gmail.com",
+   "미팅 가능: 다음 주 월·화·수 11:00 (루마니아 시간)"
+  ],
+  "intent": "자료 접근 권한 확보와 미팅 날짜 확정",
+  "needsReply": true,
+  "replyReason": "권한 부여와 미팅 날짜 선택 두 가지가 모두 우리 조치를 기다리고 있습니다.",
+  "deadline": "", "deadlineText": "next week Monday/Tuesday/Wednesday 11:00 AM", "deadlineType": "meeting",
+  "urgency": "high", "suggestedAction": "드라이브 권한을 부여하고 미팅 날짜를 하나 확정해 회신"
+ },
+ {
+  "id": "6aa0d3b28f83165dc75cea7f",
+  "classification": "b2b", "lang": "ko",
+  "translationSubject": "", "translationBody": "",
+  "topic": "컨퍼런스 콜 4월 22일 16시 확정 — 링크 요청",
+  "summary": "오스템파마 김정규 과장이 컨퍼런스 콜을 4월 22일(수) 16시로 진행하겠다고 확정하고 회의 링크 공유를 요청했습니다.",
+  "keyPoints": [
+   "컨퍼런스 콜: 4월 22일(수) 16:00 확정",
+   "회의 링크 공유 요청"
+  ],
+  "intent": "회의 링크 수령",
+  "needsReply": true,
+  "replyReason": "회의 링크를 요청받았고, 없으면 컨퍼런스 콜이 진행되지 않습니다.",
+  "deadline": "2026-04-22", "deadlineText": "4.22(수) 16시", "deadlineType": "meeting",
+  "urgency": "high", "suggestedAction": "화상회의 링크를 생성해 참석자 전원에게 공유"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea41",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 서명 계약서 및 Cosmoprof 2026 이후 다음 단계",
+  "translationBody": "David 님께\n\n서명된 계약서를 공유해 주셔서 감사합니다. 수령을 확인하며 지원에 진심으로 감사드립니다.\n\n브랜드 관련해서는 Age20's, 특히 쿠션 제품(및 CPNP 를 갖춘 해당 브랜드의 다른 제품들)과 Signiq 브랜드에 대한 관심을 확정하고 싶습니다.\n\nFarmstay(Myungin) 관련해서는 제품 수입·유통과 자체 브랜드 개발(ODM) 양쪽 모두에 관심이 있습니다. 두 방향 모두 강한 잠재력이 있다고 봅니다.",
+  "topic": "브랜드 관심 확정 — Age20's 쿠션 · Signiq · Farmstay ODM",
+  "summary": "My K Romania가 서명 계약서 수령을 확인하고 관심 브랜드를 구체화했습니다. Age20's는 특히 쿠션 제품과 CPNP를 갖춘 제품들, Signiq도 관심 확정. Farmstay(명인)는 제품 수입·유통과 자체 브랜드 개발(ODM) 양쪽 모두에 관심이 있다고 밝혔습니다.",
+  "keyPoints": [
+   "계약서 수령 확인 — 계약 관계 성립",
+   "Age20's: 쿠션 제품 + CPNP 보유 제품 관심 확정",
+   "Signiq: 관심 확정",
+   "Farmstay(명인): 수입·유통 + ODM 자체 브랜드 개발 양방향 관심"
+  ],
+  "intent": "관심 브랜드별 다음 단계(가격·조건) 진행",
+  "needsReply": true,
+  "replyReason": "브랜드별 관심을 구체적으로 확정했으므로 가격표·조건 등 다음 단계를 제시해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "Age20's·Signiq 가격표와 CPNP 보유 제품 목록을 송부하고, Farmstay ODM 상담을 연결"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea42",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "Re: 서명 계약서 및 Cosmoprof 2026 이후 다음 단계",
+  "translationBody": "David 님께\n\n메시지와 지원 감사합니다. 저희도 공식적으로 협업을 시작하게 되어 매우 기쁩니다.\n\nSigniq(Age20's)와 FarmStay 관련 업데이트 감사드리며, 다음 단계에 대한 의견을 기다리겠습니다.\n\n그 사이에, 계약서 원본 2부를 어디로 보내야 하는지 주소를 한 번 더 확인해 주실 수 있을까요?\n\n감사합니다.",
+  "topic": "계약서 원본 발송 주소 재확인 요청",
+  "summary": "My K Romania가 협업 시작을 반기며, 계약서 원본 2부를 보낼 주소를 다시 확인해 달라고 요청했습니다. Signiq(Age20's)와 FarmStay의 다음 단계 의견도 기다리고 있습니다.",
+  "keyPoints": [
+   "계약서 원본 2부 발송 주소 재확인 요청",
+   "Signiq(Age20's)·FarmStay 다음 단계 의견 대기"
+  ],
+  "intent": "원본 계약서 발송 주소 확보",
+  "needsReply": true,
+  "replyReason": "주소를 다시 알려달라는 직접 요청이며, 없으면 원본 계약서가 발송되지 않습니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "mid", "suggestedAction": "회사 주소를 다시 안내하고 Signiq·FarmStay 다음 단계를 함께 회신"
+ },
+ {
+  "id": "6aa0d3a38f83165dc75cea43",
+  "classification": "b2b", "lang": "en",
+  "translationSubject": "서명 계약서 및 Cosmoprof 2026 이후 다음 단계",
+  "translationBody": "David 님께\n\n저희가 부활절 휴가를 마무리하는 동안 기다려 주셔서 감사합니다.\n\n먼저 지난 메일에서 성함을 잘못 적은 점 사과드립니다 😊\n\n말씀드린 대로 서명한 계약서를 첨부합니다.\n\n또한 Signiq 와 FarmStay 브랜드로 협업을 시작하고 싶다는 관심을 전합니다. Biodance 에 대한 업데이트가 있으면 알려 주시면 감사하겠습니다. 이 기회를 계속 주시하고 있습니다.\n\n곧 더 자세한 내용으로 회신드리겠습니다.",
+  "topic": "서명 계약서 송부 · Signiq·FarmStay 협업 희망 · Biodance 문의",
+  "summary": "My K Romania가 서명한 계약서를 첨부해 보냈습니다. Signiq와 FarmStay 브랜드로 협업을 시작하고 싶다는 의사를 밝혔고, Biodance 건에 대한 업데이트가 있으면 알려달라고 요청했습니다.",
+  "keyPoints": [
+   "서명 계약서 첨부 — 계약 체결",
+   "협업 희망 브랜드: Signiq, FarmStay",
+   "Biodance 진행 상황 업데이트 요청"
+  ],
+  "intent": "브랜드 협업 착수와 Biodance 진행 상황 확인",
+  "needsReply": true,
+  "replyReason": "Biodance 업데이트를 요청받았고, 브랜드 협업 착수 절차도 안내해야 합니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "contract",
+  "urgency": "mid", "suggestedAction": "Biodance 진행 상황을 확인해 회신하고 Signiq·FarmStay 협업 절차를 안내"
+ },
+ {
+  "id": "6aa0d3bd8f83165dc75ceaaa",
+  "classification": "b2b", "lang": "he",
+  "translationSubject": "RE: 미팅 후속 건",
+  "translationBody": "길라드 님께\n\n계약 관련 의견을 법무팀에 전달했습니다. 그쪽에서 초안을 받기를 기다리고 있습니다.\n\n아래 언급하신 브랜드들에 대해서는 — 저희가 아직 해당 카테고리에서 이 브랜드들의 실적을 검토하는 단계라 대량 주문을 확약하고 싶지 않습니다. 그래서 앞서 이야기한 대로 HERO PRODUCTS 위주로 일정 재고를 들여오고자 합니다. 따라서 해당 제품들의 가격표를 받고 싶습니다. 꼭 공식 회사를 통하지 않아도 괜찮습니다.\n\n감사합니다.\nKeren Meir / Schestowitz",
+  "topic": "HERO PRODUCT 소량 도입 · 가격표 요청",
+  "summary": "Schestowitz가 계약 의견을 법무팀에 넘겼고 초안을 기다리는 중이라고 알렸습니다. 브랜드들은 아직 실적 검토 단계라 대량 주문을 확약하지 않고, HERO PRODUCTS 위주로 소량 재고를 들여오겠다고 했습니다. 해당 제품 가격표를 요청했으며 공식 회사를 통하지 않아도 된다고 했습니다.",
+  "keyPoints": [
+   "계약 의견 법무팀 전달 — 초안 대기 중",
+   "대량 주문 확약은 보류, HERO PRODUCTS 소량 도입 희망",
+   "HERO PRODUCTS 가격표 요청",
+   "공식 총판을 거치지 않아도 무방하다는 입장"
+  ],
+  "intent": "HERO PRODUCT 가격표 확보 후 소량 발주",
+  "needsReply": true,
+  "replyReason": "가격표를 명시적으로 요청받았고, 소량 시범 도입이 첫 거래로 이어지는 단계입니다.",
+  "deadline": "", "deadlineText": "", "deadlineType": "quote_due",
+  "urgency": "high", "suggestedAction": "언급된 브랜드들의 HERO PRODUCT 가격표를 정리해 송부"
+ }
+]

@@ -13,13 +13,21 @@ export const runtime = 'nodejs';
  * AI 분석을 돌린 메일은 deadlineText(원문 표현)까지 함께 보여준다.
  *
  * 이미 답한 메일은 제외한다 — 처리한 건이 계속 D-day 로 뜨면 목록이 무의미해진다.
+ *
+ * accountId 로 대표 계정 것만 거른다. 이게 없던 동안에는 사이드바 배지(대표 계정
+ * 기준)와 이 목록(전 계정)이 서로 다른 숫자를 말했다. 남의 계정 기한까지 섞여 보이면
+ * "내가 답해야 하는 건"을 셀 수 없다.
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await dbConnect();
 
+    const accountId = new URL(req.url).searchParams.get('accountId');
+    const acc = accountId && accountId !== 'all' ? { accountId } : {};
+
     const mails: any[] = await InboundMail.find(
       {
+        ...acc,
         trashedAt: null,
         direction: 'in',
         'analysis.deadline': { $ne: null },

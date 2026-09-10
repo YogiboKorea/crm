@@ -17,6 +17,15 @@ export const runtime = 'nodejs';
 const NOT_AI = { importBatch: { $not: /^ai-search-/ } };
 
 /**
+ * 지운 건은 빼고 센다.
+ *
+ * 이게 없던 동안에는 중복 정리로 deleted=true 를 붙인 건까지 폴더 숫자에 잡혀서,
+ * 정리를 하고도 화면 숫자가 그대로였다. 지운 것이 다시 보이면 "정리가 안 됐나"
+ * 하고 또 지우게 된다.
+ */
+const NOT_DELETED = { deleted: { $ne: true } };
+
+/**
  * 기존 데이터의 Email 칸에는 주소가 아닌 말이 섞여 있다 —
  * "Contact form on site" 1243건, "Not found publicly" 550건, "DM via Instagram" 112건 …
  * 5068건 중 2497건이 이런 값이다. 크롤링 담당자가 '연락 방법'을 적어둔 것이라
@@ -24,6 +33,17 @@ const NOT_AI = { importBatch: { $not: /^ai-search-/ } };
  * 그래서 "칸이 비었나"가 아니라 "실제 주소 형태인가"로 거른다.
  */
 const REAL_EMAIL = { Email: { $regex: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ } };
+
+/**
+ * 정리 과정에서 걸러낸 것들 (scripts/dedup-legacy.mjs).
+ * 지운 게 아니라 표시만 해 둔 것이라, 필드를 지우면 다시 보인다.
+ *
+ *  dupHiddenAt — 같은 회사·같은 주소가 여러 건 (2571건이 실제로는 660곳이었다)
+ *  badEmailAt  — 주소 하나가 서로 다른 회사 수십 곳에 붙어 있음.
+ *                dev7561@gmail.com 이 이집트·키프로스·부르키나파소 회사에 동시에 달려 있었다.
+ *                회사는 진짜지만 주소가 그 회사 것이 아니므로 보내면 엉뚱한 사람에게 간다.
+ */
+const NOT_HIDDEN = { dupHiddenAt: { $exists: false }, badEmailAt: { $exists: false } };
 
 const LIST_PROJECTION = {
   leadId: 1, Company: 1, Country: 1, Email: 1, WebsiteContact: 1, Phone: 1,
@@ -45,20 +65,25 @@ export async function GET(req: Request) {
     // 배치를 고르지 않았으면 배치 목록만 (어디에 뭐가 있는지 먼저 보여준다)
     if (!batch) {
       const batches = await Lead.aggregate([
-        { $match: NOT_AI },
+        { $match: { ...NOT_AI, ...NOT_DELETED } },
         {
           $group: {
             _id: '$importBatch',
             total: { $sum: 1 },
             // 실제 주소 형태인 것만 센다 (위 REAL_EMAIL 주석 참고)
+            // 실제로 보낼 수 있는 곳 = 주소 형태 + 중복/오염 제외
             withEmail: {
-              $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ['$Email', ''] }, regex: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ } }, 1, 0] },
+              $sum: { $cond: [{ $and: [
+                { $regexMatch: { input: { $ifNull: ['$Email', ''] }, regex: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ } },
+                { $eq: [{ $type: '$dupHiddenAt' }, 'missing'] },
+                { $eq: [{ $type: '$badEmailAt' }, 'missing'] },
+              ] }, 1, 0] },
             },
             archived: { $sum: { $cond: [{ $eq: ['$stage', 'archived'] }, 1, 0] } },
             live: {
               $sum: {
                 $cond: [
-                  { $in: ['$stage', ['verified', 'contacted', 'replied', 'negotiating', 'partner']] },
+                  { $in: ['$stage', ['verified', 'queued', 'contacted', 'replied', 'negotiating', 'partner']] },
                   1, 0,
                 ],
               },
@@ -72,7 +97,7 @@ export async function GET(req: Request) {
     }
 
     // 배치 안의 리드 목록. 이메일 없는 건은 보내지 못하므로 기본에서 뺀다.
-    const query: any = { ...NOT_AI, importBatch: batch, ...REAL_EMAIL };
+    const query: any = { ...NOT_AI, ...NOT_DELETED, importBatch: batch, ...REAL_EMAIL, ...NOT_HIDDEN };
     if (country) query.Country = country;
     if (q) {
       const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -84,7 +109,7 @@ export async function GET(req: Request) {
         .skip((page - 1) * limit).limit(limit).lean(),
       Lead.countDocuments(query),
       Lead.aggregate([
-        { $match: { ...NOT_AI, importBatch: batch, ...REAL_EMAIL } },
+        { $match: { ...NOT_AI, ...NOT_DELETED, importBatch: batch, ...REAL_EMAIL, ...NOT_HIDDEN } },
         { $group: { _id: '$Country', n: { $sum: 1 } } },
         { $sort: { n: -1 } }, { $limit: 30 },
       ]),
@@ -123,7 +148,7 @@ export async function POST(req: Request) {
     // 주소가 아닌 값("Contact form on site" 등)이 섞여 들어오면
     // 발송대기에 보낼 수 없는 채로 쌓였다가 전부 발송 실패한다.
     const targets = await Lead.find(
-      { leadId: { $in: ids }, ...REAL_EMAIL },
+      { leadId: { $in: ids }, ...REAL_EMAIL, ...NOT_HIDDEN },
       { leadId: 1, stage: 1 },
     ).lean();
 

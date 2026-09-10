@@ -102,12 +102,12 @@ export async function verifySmtp(): Promise<{ ok: boolean; error?: string; host?
    생긴다. 코드 상수는 저장 즉시 hot reload 로 먹는다.
 
    ── 지금 상태: false (여기서는 막지 않는다) ──
-   대량 발송은 send/route.ts 의 SEND_KILL_SWITCH 가 막고 있다.
+   대량 발송은 lib/outbound-lock.ts 의 OUTBOUND_LOCKED 가 막고 있다.
    여기까지 켜면 받은 메일 답장(mail/reply)까지 막혀서, 진행 중인 거래처에
    답을 못 하게 된다. 막아야 할 것은 "먼저 보내는 콜드메일 400통"이지
    "상대가 보낸 메일에 답하는 것"이 아니다.
 
-   ⚠️ 대량 발송을 다시 열 때(SEND_KILL_SWITCH=false) 반드시 먼저 할 것:
+   ⚠️ 대량 발송을 다시 열 때(OUTBOUND_LOCKED=false) 반드시 먼저 할 것:
       하루 발송 상한과 발송 간격 넣기. 현재 발송 루프에는 둘 다 없어
       400통이 한 번에 나간다. yogico.kr 로 실거래 메일도 나가므로
       스팸 판정을 받으면 그 메일들까지 상대 스팸함으로 간다.

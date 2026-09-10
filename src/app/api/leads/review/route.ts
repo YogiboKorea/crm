@@ -19,6 +19,8 @@ const REVIEW_PROJECTION = {
   leadId: 1, Company: 1, Country: 1, Email: 1, WebsiteContact: 1, Phone: 1,
   Type: 1, Category: 1, Priority: 1, Evidence: 1, Sources: 1, Confidence: 1,
   BrandsChannels: 1, notes: 1, importBatch: 1,
+  recoScore: 1, recoReasons: 1,
+  EvidenceKo: 1, TypeKo: 1,
 };
 
 /**
@@ -45,9 +47,11 @@ export async function GET(req: Request) {
       : basePending;
 
     const [items, remaining, approved, byCategory] = await Promise.all([
-      // 나라별로 묶여서 나오면 판단 기준이 일정하게 유지된다 —
-      // 스웨덴 20곳을 연달아 보는 편이, 매번 다른 나라로 튀는 것보다 덜 지친다.
-      Lead.find(pending, REVIEW_PROJECTION).sort({ Country: 1, Company: 1 }).limit(limit).lean(),
+      // 추천 우선순위 높은 것부터. 도중에 그만두더라도 값어치 있는 곳은
+      // 이미 판단이 끝나 있게 된다. 점수가 같으면 나라로 묶어
+      // 같은 시장을 연달아 보게 한다 (판단 기준이 덜 흔들린다).
+      Lead.find(pending, REVIEW_PROJECTION)
+        .sort({ recoScore: -1, Country: 1, Company: 1 }).limit(limit).lean(),
       Lead.countDocuments(pending),
       Lead.countDocuments({ stage: 'verified', readyForOutreach: true }),
       // 분류 탭에 붙일 남은 건수

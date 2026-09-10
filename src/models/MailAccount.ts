@@ -25,7 +25,9 @@ export interface IMailAccount extends Document {
   senderAddress?: string;     // 예: "201, 125, Bongeunsa-ro, Gangnam-gu, Seoul, Korea"
   senderWebsite?: string;     // 예: "www.yogico.kr"
 
-  isDefault: boolean;         // 기본 발송 계정
+  isDefault: boolean;
+  /** 테스트 발송 전용 계정 — 대량 발송이 대표 주소로 나가지 않게 분리 */
+  isTestSender?: boolean;         // 기본 발송 계정
   isActive: boolean;
 
   /**
@@ -65,6 +67,14 @@ const MailAccountSchema = new Schema<IMailAccount>({
   senderWebsite: { type: String, default: '' },
 
   isDefault: { type: Boolean, default: false },
+
+  // 테스트 발송 전용 계정.
+  //
+  // isDefault 는 수신함 기본 계정이자 답장 발신 계정이라 대표 주소여야 한다
+  // (메일이 전부 거기 쌓여 있다). 그런데 대량 발송 테스트를 대표 주소로 하면
+  // 실수 한 번에 실거래 메일까지 스팸함으로 들어간다.
+  // 그래서 "먼저 보내는 메일"의 기본 발신만 따로 지정한다.
+  isTestSender: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   imapFolders: { type: [String], default: [] },
 

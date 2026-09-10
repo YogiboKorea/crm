@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
  * 반환:
  *   {
  *     success,
- *     stages: { imported, verifying, verified, contacted, replied, negotiating, partner, archived, failed },
+ *     stages: { imported, verifying, verified, queued, contacted, replied, negotiating, partner, archived, failed },
  *     verifyingSub: { unverified, maybe, all },
  *     verifiedSub: { approved, pending, noEmail, all },
  *     batches: [ { batchId, dateLabel, breakdown: {...} } ]   // 검증대기 폴더용
@@ -33,7 +33,7 @@ export async function GET() {
     //    Lead 모델 enum 에 stage 를 추가하면 여기도 반드시 함께 추가할 것.
     const stages: any = {
       imported: 0, 'ai-searched': 0, verifying: 0, verified: 0,
-      contacted: 0, replied: 0, negotiating: 0,
+      queued: 0, contacted: 0, replied: 0, negotiating: 0,
       partner: 0, archived: 0, failed: 0,
     };
     for (const row of stageAgg) {
@@ -65,7 +65,13 @@ export async function GET() {
     verifyingSub.maybe = vMaybe;
 
     // 3) 검증완료 서브필터 카운트
-    const verifiedSub = { approved: 0, pending: 0, noEmail: 0, all: stages.verified };
+    //
+    // approved(readyForOutreach) 는 더 이상 "보낼 대상"을 뜻하지 않는다.
+    // 예전 스크립트가 검증 완료 전 건에 true 를 켜둬서 항상 전체와 같은 수가
+    // 나오고, 화면에는 "승인됨 409" 로 떠서 실제 발송 리스트(queued, 1건)와
+    // 어긋났다. 지금 기준은 "발송 리스트로 옮겼는가" = stage 'queued' 다.
+    // approved 는 옛 화면 호환으로만 남긴다.
+    const verifiedSub = { approved: 0, pending: 0, noEmail: 0, all: stages.verified, queued: stages.queued };
     const [vApproved, vNoEmail] = await Promise.all([
       Lead.countDocuments({ stage: 'verified', readyForOutreach: true, deleted: { $ne: true } }),
       Lead.countDocuments({

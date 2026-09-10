@@ -45,6 +45,11 @@ export default function Home() {
               <span className="nav-icon">📥</span><span className="nav-label">가져오기 (Import)</span>
             </button>
             */}
+            {/* AI 서칭 · 검증 대기는 숨김 — 둘 다 0건이라 눌러도 빈 화면이다.
+                발굴은 개발자 쪽에서 워크플로우로 돌려 결과를 바로 [검증 완료]에 넣고,
+                검증은 [⚡ 빠른 검토]가 대신한다. 빈 메뉴가 남아 있으면
+                "여기 뭘 해야 하나" 하는 혼란만 만든다.
+                되살리려면 이 주석을 풀면 된다 (stage 와 데이터는 그대로 있다).
             <button className="nav-item" data-view="pipeline-ai-searched" type="button" title="AI 서칭 — Claude 가 웹에서 자동 발굴한 후보 · 검토 후 검증대기로 승격하거나 제외">
               <span className="nav-icon">🤖</span><span className="nav-label">AI 서칭</span>
               <span className="nav-badge" data-nav-badge="ai-searched"></span>
@@ -53,13 +58,14 @@ export default function Home() {
               <span className="nav-icon">🔍</span><span className="nav-label">검증 대기</span>
               <span className="nav-badge" data-nav-badge="verifying"></span>
             </button>
-            {/* 첫 화면 = 발송 대기. 클라이언트가 매일 여는 곳이 여기다. */}
-            <button className="nav-item active" data-view="pipeline-verified" type="button" title="발송 대기 — 승인 후 메일 발송할 대상 리드">
-              <span className="nav-icon">✅</span><span className="nav-label">발송 대기</span>
+            */}
+            {/* 첫 화면 = 검증 완료. 클라이언트가 매일 여는 곳이 여기다. */}
+            <button className="nav-item active" data-view="pipeline-verified" type="button" title="검증 완료 — 승인 후 메일 발송할 대상 리드">
+              <span className="nav-icon">✅</span><span className="nav-label">검증 완료</span>
               <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
-            <button className="nav-item" data-view="pipeline-contacted" type="button" title="메일 발송함 — 이미 메일 보낸 리드 · 여기서 단체 즉시/예약 재발송">
-              <span className="nav-icon">📨</span><span className="nav-label">메일 발송함</span>
+            <button className="nav-item" data-view="pipeline-contacted" type="button" title="발송 관리 — 보낼 메일 · 예약된 메일 · 나간 메일을 단계별로 봅니다">
+              <span className="nav-icon">📨</span><span className="nav-label">발송 관리</span>
               <span className="nav-badge" data-nav-badge="contacted"></span>
             </button>
             <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드. 회사명 옆 💬 버튼으로 주고받은 메일 확인">
@@ -130,8 +136,8 @@ export default function Home() {
             <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 발송에 쓸 SMTP 계정과 서명 정보 등록">
               <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
             </button>
-            <button className="nav-item" data-view="tool-legacy" type="button" title="기존 데이터 — 예전에 올린 엑셀 데이터. 중복 정리로 보관함에 있지만 지워진 것은 아니며, 보낼 만한 곳을 골라 발송 대기로 되돌릴 수 있습니다">
-              <span className="nav-icon">📚</span><span className="nav-label">기존 데이터</span>
+            <button className="nav-item" data-view="tool-legacy" type="button" title="올린 데이터 — 엑셀로 올린 업체 목록. 올린 날짜별 폴더로 나뉘어 있고, 보낼 만한 곳을 골라 검증 완료로 되돌릴 수 있습니다">
+              <span className="nav-icon">📚</span><span className="nav-label">올린 데이터</span>
             </button>
             {/* 추천 리스트는 숨김 — 고정 시드 54개짜리 구버전 기능이라,
                 웹에서 실시간으로 발굴하는 [🤖 AI 서칭] 이 대체한다.
@@ -250,8 +256,9 @@ export default function Home() {
               <h3 id="el-title" style={{ margin: 0 }}>바이어 상세</h3>
               <p id="el-meta" style={{ margin: '4px 0 0', fontSize: '13px', color: '#68726c' }}></p>
             </div>
+            {/* Favorite 는 뺐다 — 즐겨찾기로 뭘 하는 화면이 없어서 눌러도
+                아무 데도 모이지 않았다. 기능(toggleFavorite)은 살아 있다. */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-              <button id="el-favoriteBtn" className="favorite-button" type="button">☆ Favorite</button>
               <button id="editModalCloseBtn" className="modal-close" type="button">&#x2715;</button>
             </div>
           </div>
@@ -268,7 +275,7 @@ export default function Home() {
 
             {/*
               === 이 폼이 왜 이 모양인가 ===
-              원래는 22칸이 한 화면에 전부 펼쳐져 있었다. 발송대기 411건을 실측해 보니
+              원래는 22칸이 한 화면에 전부 펼쳐져 있었다. 검증 완료 411건을 실측해 보니
               그중 10칸(바이어 이름·직함·LinkedIn·주소·접근방법·담당자·최근연락일·다음후속일 등)이
               채워진 비율 0% 였다. 대표님 엑셀 컬럼을 그대로 화면에 옮긴 결과인데,
               엑셀은 옆으로 넓어도 부담이 없지만 화면은 세로로 쌓이면서
@@ -276,7 +283,7 @@ export default function Home() {
 
               그 0% 칸들이 쓸모없는 건 아니고 **지금 단계에 안 맞는** 것이다.
               바이어 이름·직함·최근 연락일은 대화가 시작된 뒤에 채우는 칸인데,
-              아직 메일도 안 보낸 발송대기 회사에까지 똑같이 떠 있었다.
+              아직 메일도 안 보낸 검증 완료 회사에까지 똑같이 떠 있었다.
               그래서 지우지 않고 <details> 로 접었다 — 필요한 사람은 한 번 눌러 펼치면 된다.
 
               라벨은 한글, id 는 영문 그대로다. id 가 곧 DB 필드명이자 엑셀 헤더라
@@ -330,6 +337,12 @@ export default function Home() {
               <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: '#4e5968', padding: '8px 0' }}>
                 🔍 이 회사를 고른 근거 <span style={{ fontWeight: 400, opacity: 0.7 }}>· 맞는지 확인하는 곳</span>
               </summary>
+              {/* AI 판정 사유 —— 읽기 전용.
+                  DB 에 한국어로 저장돼 있는데 화면에 안 나오고 있었다.
+                  '왜 이 단계로 갔나'(특히 검증 실패)를 설명하는 유일한 근거라
+                  근거 칸보다 위에 둔다. openEditModal 에서 채운다. */}
+              <div id="el-aiReasonBox" style={{ display: 'none', marginTop: '10px' }}></div>
+
               <div className="modal-grid" style={{ marginTop: '10px' }}>
                 <label className="modal-full"><span>근거</span><textarea id="el-Evidence" placeholder="K-뷰티 취급 정황 · 사업 형태 등"></textarea></label>
                 <label className="modal-full"><span>출처</span><textarea id="el-Sources" placeholder="이 정보를 어디서 찾았는지"></textarea></label>
@@ -673,7 +686,9 @@ export default function Home() {
         </div>
       </div>
 
-      <Script src="/app.js" strategy="afterInteractive" />
+      {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
+          계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
+      <Script src="/app.js?v=a093b605" strategy="afterInteractive" />
     </>
   );
 }

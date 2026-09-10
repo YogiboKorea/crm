@@ -1181,3 +1181,58 @@ th.sortable:hover { color: var(--text-primary); }
   content: ''; position: absolute; top: 100%; left: 12px;
   border: 6px solid transparent; border-top-color: #0f172a;
 }
+
+/* ── 팝업이 떠 있는 동안 뒤 화면 고정 ────────────────────────
+   모달 안에서 스크롤하다 끝에 닿으면 뒤 목록이 따라 움직여서
+   (스크롤 체이닝) 닫고 나면 엉뚱한 위치에 가 있었다.
+   overflow:hidden 만 주면 스크롤바가 사라지며 화면이 옆으로 튀므로
+   사라진 스크롤바 폭만큼 padding 으로 메운다 (JS 에서 채워 넣는다). */
+body.modal-open {
+  overflow: hidden;
+  padding-right: var(--scrollbar-w, 0px);
+}
+
+/* 메일 전체 보기 — 팝업을 화면 전체로 */
+#mailDetailRoot.mail-full { padding: 0 !important; }
+#mailDetailRoot.mail-full > div {
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+}
+
+/* ── 리드 표 — 행이 세로로 늘어나지 않게 ──────────────────────
+   좁은 칸에서 "승/인/됨" 이나 "United / Kingdom" 처럼 글자가 세로로
+   쪼개지면 행 높이가 제각각이 되어 표가 흐트러진다. */
+.table-wrap table td { vertical-align: middle; }
+.company-cell strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.company-cell .meta-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+/* 긴 값이 표를 옆으로 밀어내지 않게 — 잘라 보여주고 전체는 title 툴팁으로.
+   (전화번호에 "+48 222 662 877 (B2B/wholesale) / +48 22 602 28 32 (retail…)"
+    같은 값이 들어와 가로 스크롤이 생기던 문제) */
+.cell-ellipsis {
+  max-width: 0;          /* table-layout 이 auto 라 0 을 주면 지정 width 를 따른다 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell-ellipsis > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  max-width: 100%;
+}

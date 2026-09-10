@@ -1,3 +1,4 @@
+import { OUTBOUND_LOCKED, OUTBOUND_LOCK_MESSAGE, canSendTo, TEST_RECIPIENTS } from './outbound-lock';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { Lead } from '@/models/Lead';
 import { MailAccount } from '@/models/MailAccount';
@@ -77,6 +78,20 @@ export async function processScheduleItem(doc: any) {
     textPayload = renderedBody;
   }
 
+  // ⚠️ 예약 발송은 /api/mail/send 를 거치지 않는다. 그 라우트의 차단 스위치만
+  //    믿으면 예약 시각이 됐을 때 그대로 나가버린다 (실제로 그런 구멍이 있었다).
+  // 잠금 중에도 테스트 주소로는 나가게 둔다 — 예약 → 발송 → 수신까지
+  // 실제로 돌려봐야 하기 때문이다. 그 외 주소는 그대로 막는다.
+  if (!canSendTo(doc.to)) {
+    console.log(`[schedule:LOCKED] 발송 차단 → to=${doc.to} subject=${renderedSubject.slice(0, 60)}`);
+    return {
+      ok: false,
+      error: OUTBOUND_LOCKED
+        ? `발송 잠금 중 — 지금은 ${TEST_RECIPIENTS.join(', ')} 로만 나갑니다`
+        : OUTBOUND_LOCK_MESSAGE,
+    };
+  }
+
   const dryRun = process.env.MAIL_DRY_RUN === '1';
   let result: any;
   if (dryRun) {
@@ -107,7 +122,9 @@ export async function processScheduleItem(doc: any) {
       to: doc.to,
       sentAt: now.toISOString(),
       scheduledFor: doc.scheduledFor.toISOString(),
-      status: 'sent',
+      // DRY_RUN 은 실제로 나가지 않았다. 이걸 'sent' 로 남기면 발송 횟수
+      // 3회 한도가 테스트만으로 소진되고, 화면에도 "보낸 곳"으로 뜬다.
+      status: dryRun ? 'scheduled' : 'sent',
       // 답장 매칭 열쇠 — 상대 답장의 In-Reply-To 가 이 값을 가리킨다 (match-lead.ts)
       messageId: result.messageId || '',
     };

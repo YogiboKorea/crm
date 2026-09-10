@@ -10,12 +10,16 @@ const uri = env.match(/^MONGODB_URI=(.*)$/m)[1].trim().replace(/^["']|["']$/g, '
 await mongoose.connect(uri);
 const db = mongoose.connection.db;
 
+// 어제까지 받은 것만. 오늘 것은 아직 들어오는 중이라 다음 회차에 돌린다.
+const until = new Date(); until.setHours(0, 0, 0, 0);
 const mails = await db.collection('inboundmails').find({
   classification: { $nin: ['ad', 'system'] },
   direction: { $ne: 'out' },
   trashedAt: null,
   'analysis.method': { $ne: 'ai' },
+  date: { $lt: until },
 }).sort({ date: -1 }).toArray();
+console.log('기준: ' + until.toISOString().slice(0, 10) + ' 이전 수신분');
 
 // 리드 회사명을 붙여준다 — 우리가 먼저 콜드메일을 보낸 곳인지가 판단에 크게 작용한다
 const leadIds = [...new Set(mails.map((m) => m.leadId).filter(Boolean))];
