@@ -2103,8 +2103,8 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
               리스트에 있는 모든 업체를 <b>점검 완료한 뒤</b> 이 버튼을 누르면 발송 관리로 이동합니다.
               <span style="color:var(--text-quaternary)">누른다고 메일이 나가지 않습니다 — 화면만 옮겨갑니다.</span>
               ${queuedCount
-                ? `<br>지금 발송 리스트에 <b style="color:var(--text-secondary)">${queuedCount.toLocaleString()}곳</b>이 있습니다.`
-                : '<br>아직 발송 리스트가 비어 있습니다. 위에서 보낼 곳을 먼저 골라 주세요.'}
+                ? `<br>지금 발송 관리에 <b style="color:var(--text-secondary)">${queuedCount.toLocaleString()}곳</b>이 있습니다.`
+                : '<br>아직 발송 관리에 옮긴 곳이 없습니다. 위에서 보낼 곳을 먼저 골라 주세요.'}
             </div>
           </div>
           <button id="openFirstSendBtn" type="button"
@@ -2417,7 +2417,7 @@ function renderVerifiedSubFilterChips(allInStage) {
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <span style="font-size:11px;color:var(--text-tertiary)">
-          보낼 곳을 체크해서 <b>[발송 리스트로 옮기기]</b>
+          보낼 곳을 체크해서 <b>[📨 발송 관리로 이동]</b>
         </span>
       </div>
     </div>
@@ -2623,16 +2623,16 @@ function renderVerifiedSubFilterChipsServer(verifiedSub, _failedCount) {
       ${chip('all', '아직 안 옮김', verifiedSub.all, '#334155')}
       ${chip('no-email', '📭 이메일 없음', verifiedSub.noEmail, '#94a3b8')}
       <button type="button" id="goSendListBtn"
-        title="발송 리스트로 옮긴 곳을 봅니다 (발송 관리 → 보낼 메일)"
+        title="발송 관리로 옮긴 곳을 봅니다 (발송 관리 → 보낼 메일)"
         style="padding:6px 12px;font-size:12px;font-weight:700;border-radius:99px;cursor:pointer;
                display:inline-flex;align-items:center;gap:6px;
                background:${queuedN ? '#e0f2fe' : 'var(--surface-1)'};
                color:${queuedN ? '#075985' : 'var(--text-tertiary)'};
                border:1px solid ${queuedN ? '#7dd3fc' : 'var(--border)'}">
-        📋 발송 리스트 <span style="opacity:.75;font-weight:600">${queuedN.toLocaleString()}</span> →
+        📨 발송 관리 <span style="opacity:.75;font-weight:600">${queuedN.toLocaleString()}</span> →
       </button>
       <span style="font-size:11px;color:var(--text-tertiary)">
-        보낼 곳을 체크해서 <b>[발송 리스트로 옮기기]</b> 를 누르면 발송 관리로 넘어갑니다
+        보낼 곳을 체크해서 <b>[📨 발송 관리로 이동]</b> 을 누르면 그쪽으로 넘어갑니다
       </span>
     </div>
   `;
@@ -3862,12 +3862,12 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
         <button class="button primary" id="moveToQueueBtn" type="button" ${state.selectedLeadIds.size ? '' : 'disabled'}
           title="고른 곳을 [발송 관리 → 보낼 메일] 로 옮깁니다. 옮겨야 발송 대상이 됩니다."
           style="${state.selectedLeadIds.size ? '' : 'opacity:.45;cursor:default'}">
-          📋 발송 리스트로 옮기기 (${state.selectedLeadIds.size})
+          📨 발송 관리로 이동 (${state.selectedLeadIds.size})
         </button>
         <!-- 아닌 곳을 검증 실패로 다 뺀 뒤에는 남은 전체를 한 번에 옮기는 게 자연스럽다.
              418건을 페이지마다 체크하게 두면 9페이지를 넘겨야 한다. -->
         <button class="button" id="moveAllToQueueBtn" type="button"
-          title="지금 검증 완료에 남아 있는 곳을 전부 발송 리스트로 옮깁니다 (검색·국가로 좁혀 놨으면 그 범위만)"
+          title="지금 검증 완료에 남아 있는 곳을 전부 발송 관리로 옮깁니다 (검색·국가로 좁혀 놨으면 그 범위만)"
           style="border:1px solid #15803d;background:#f0fdf4;color:#15803d;font-weight:700">
           ⇢ 남은 전체 옮기기
         </button>` : ''}
@@ -4247,7 +4247,7 @@ const STAGE_STYLE = {
   'ai-searched': { bg: '#ede9fe', fg: '#5b21b6', label: '🤖 AI 서칭' },
   verifying:     { bg: '#fef9c3', fg: '#854d0e', label: '🔍 검증 대기' },
   verified:      { bg: '#dcfce7', fg: '#166534', label: '✅ AI 검증 완료' },
-  queued:        { bg: '#e0f2fe', fg: '#075985', label: '📋 발송 리스트' },
+  queued:        { bg: '#e0f2fe', fg: '#075985', label: '📨 발송 관리로 이동' },
   contacted:     { bg: '#dbeafe', fg: '#1e40af', label: '📨 발송 관리' },
   replied:       { bg: '#e0e7ff', fg: '#3730a3', label: '💬 답장 받음' },
   negotiating:   { bg: '#fed7aa', fg: '#9a3412', label: '🤝 대화 진행 중' },
@@ -4317,7 +4317,7 @@ function stageCellHtml(lead) {
     const CONTEXT_LABEL = {
       'replied:failed': '🚫 컨택 실패',
       'negotiating:failed': '🚫 컨택 실패',
-      'queued:verified': '↩ 리스트에서 빼기',
+      'queued:verified': '↩ 검증 완료로 되돌리기',
     };
     const shortLabel = CONTEXT_LABEL[`${cur}:${target}`]
       || t.label.replace(/^([^\s]+)\s(.+)$/, '$1 $2');
@@ -8379,8 +8379,20 @@ async function openLeadPopupByObjectId(oid, fallbackLeadId) {
 
 // ── Stage 변경 핸들러 ───────────────────────────────────────
 async function handleStageChange(leadId, newStage, selectEl) {
-  const lead = baseLeads.find(l => l.id === leadId);
-  if (!lead || !lead._id) return;
+  // ⚠️ baseLeads 만 보면 안 된다.
+  // 표가 서버 페이지로 그려지는 화면(검증 완료·검증 실패·답장 받음)에서는
+  // 그 배열이 비어 있어서, 행의 [→ 발송 리스트]·[→ 검증 실패] 버튼을 눌러도
+  // 여기서 조용히 return 되어 **아무 일도 일어나지 않았다**.
+  // 오류도 안 나고 알림도 없어서 "눌렀는데 왜 그대로지" 가 된다.
+  const lead = findLeadForPopup(leadId);
+  if (!lead) {
+    alert('이 업체를 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+    return;
+  }
+  if (!lead._id) {
+    alert('이 업체는 여기서 단계를 옮길 수 없습니다 (내부 번호 없음).');
+    return;
+  }
 
   // ── 안전 게이트: 이메일 컨택 이동 시 실제 이메일 필수 ─────────
   // 이메일 컨택 = B2B 메일 발송 준비 상태. 메일 없으면 발송 불가 → 이동 자체 차단
@@ -10459,7 +10471,7 @@ function openSendLogicModal(lock) {
 
         <div style="padding:6px 22px 18px;overflow-y:auto">
           ${step(1, '검증 완료에서 보낼 곳을 고릅니다',
-            '체크한 뒤 <b>[📋 발송 리스트로 옮기기]</b> 를 누릅니다. ' +
+            '체크한 뒤 <b>[📨 발송 관리로 이동]</b> 를 누릅니다. ' +
             '옮기지 않은 곳에는 메일이 나가지 않습니다.')}
 
           ${step(2, '보낼 메일에서 문구를 정합니다',
@@ -13341,7 +13353,7 @@ async function moveSelectedToQueue() {
     render();
   } catch (e) {
     alert('이동 실패: ' + (e.message || 'unknown'));
-    if (btn) { btn.disabled = false; btn.textContent = '📋 발송 리스트로 옮기기'; }
+    if (btn) { btn.disabled = false; btn.textContent = '📨 발송 관리로 이동'; }
   }
 }
 
