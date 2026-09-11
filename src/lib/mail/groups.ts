@@ -207,6 +207,60 @@ export function suggestGroupByName(
 /** 화면 숫자의 기준 기간 — 모든 카운트가 같은 기준을 써야 한다 (period.ts) */
 const FRESH_SINCE = () => countSince();
 
+async function getFolderOrder(accountId?: string): Promise<{
+  merged: Map<string, number>;
+  byAccount: Map<string, Map<string, number>>;
+}> {
+  const query: any = {};
+  if (accountId && accountId !== 'all') query._id = accountId;
+
+  const accounts: any[] = await MailAccount.find(query, {
+    imapFolders: 1,
+    isDefault: 1,
+    updatedAt: 1,
+  }).lean();
+
+  accounts.sort((a, b) => {
+    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+    return new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
+  });
+
+  const merged = new Map<string, number>();
+  const byAccount = new Map<string, Map<string, number>>();
+
+  for (const account of accounts) {
+    const accountKey = String(account._id);
+    const accountOrder = new Map<string, number>();
+
+    for (const folder of account.imapFolders || []) {
+      const group = groupNameFromFolder(folder);
+      if (!group || group === folder) continue;
+      if (!accountOrder.has(group)) accountOrder.set(group, accountOrder.size);
+      if (!merged.has(group)) merged.set(group, merged.size);
+    }
+
+    byAccount.set(accountKey, accountOrder);
+  }
+
+  return { merged, byAccount };
+}
+
+function sortByFolderOrder(folderOrder?: Map<string, number>) {
+  return (a: GroupRow, b: GroupRow) => {
+    const aIndex = folderOrder?.get(a.group);
+    const bIndex = folderOrder?.get(b.group);
+    const aKnown = typeof aIndex === 'number';
+    const bKnown = typeof bIndex === 'number';
+
+    if (aKnown && bKnown) return aIndex - bIndex;
+    if (aKnown) return -1;
+    if (bKnown) return 1;
+    return b.count - a.count || b.total - a.total || a.group.localeCompare(b.group);
+  };
+}
+
+const SPECIAL_VISIBLE_GROUPS = new Set(['\uAD11\uACE0\u00B7\uC790\uB3D9\uBC1C\uC1A1']);
+
 export interface GroupRow {
   group: string;
   count: number;   // 최근 한 달 통수
@@ -224,6 +278,7 @@ export interface GroupRow {
 export async function listGroups(accountId?: string): Promise<{ groups: GroupRow[]; byAccount: Record<string, GroupRow[]> }> {
   const match: any = { group: { $nin: [null, ''] } };
   if (accountId && accountId !== 'all') match.accountId = accountId;
+  const folderOrder = await getFolderOrder(accountId);
 
   const rows: any[] = await InboundMail.aggregate([
     { $match: match },
@@ -256,10 +311,12 @@ export async function listGroups(accountId?: string): Promise<{ groups: GroupRow
     { $sort: { n: -1 } },
   ]);
 
-  const order = (a: GroupRow, b: GroupRow) => b.count - a.count || b.total - a.total;
+  const isVisibleFolderGroup = (group: string, order?: Map<string, number>) =>
+    Boolean(order?.has(group) || SPECIAL_VISIBLE_GROUPS.has(group));
 
   const merged = new Map<string, GroupRow>();
   for (const r of rows) {
+    if (!isVisibleFolderGroup(r._id.group, folderOrder.merged)) continue;
     const g = merged.get(r._id.group)
       || { group: r._id.group, count: 0, total: 0, fresh: 0, last: null };
     g.count += r.n; g.total += r.total; g.fresh += r.fresh;
@@ -269,14 +326,19 @@ export async function listGroups(accountId?: string): Promise<{ groups: GroupRow
 
   const byAccount = new Map<string, GroupRow[]>();
   for (const r of rows) {
+    const accountOrder = folderOrder.byAccount.get(r._id.accountId) || folderOrder.merged;
+    if (!isVisibleFolderGroup(r._id.group, accountOrder)) continue;
     const list = byAccount.get(r._id.accountId) || [];
     list.push({ group: r._id.group, count: r.n, total: r.total, fresh: r.fresh, last: r.last });
     byAccount.set(r._id.accountId, list);
   }
 
   return {
-    groups: [...merged.values()].sort(order),
-    byAccount: Object.fromEntries([...byAccount].map(([id, list]) => [id, list.sort(order)])),
+    groups: [...merged.values()].sort(sortByFolderOrder(folderOrder.merged)),
+    byAccount: Object.fromEntries([...byAccount].map(([id, list]) => [
+      id,
+      list.sort(sortByFolderOrder(folderOrder.byAccount.get(id) || folderOrder.merged)),
+    ])),
   };
 }
 
