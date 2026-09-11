@@ -107,6 +107,9 @@ export async function GET(req: Request) {
 
       return {
         leadId: l.leadId,
+        // 단계 이동 API(/api/leads/[id]/stage)는 Mongo _id 로 찾는다.
+        // leadId 를 넘기면 findById 가 못 찾아 404 가 난다.
+        _id: String(l._id),
         Company: l.Company || '',
         Country: l.Country || '',
         Email: l.Email || '',

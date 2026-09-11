@@ -293,6 +293,7 @@ async function init() {
   renderFilters();
   bindEvents();
   startNavBadgePolling();
+  syncMailOnLogin();   // 밤사이 온 답장을 화면 열 때 한 번 당겨온다 (기다리지 않는다)
 
   const needsBaseLeads = state.view === 'pipeline-verifying' || state.view === 'pipeline-import';
   if (needsBaseLeads) {
@@ -300,6 +301,57 @@ async function init() {
     state.selectedId = baseLeads[0]?.id || null;
   }
   render();
+}
+
+/**
+ * 화면을 열 때 받은 메일을 한 번 당겨온다.
+ *
+ * 왜:
+ * 수신 수집은 크론이 하는데 Vercel Hobby 는 하루 1회다. 그래서 아침 이후에
+ * 온 답장은 다음 날까지 화면에 안 나타났다 — 실제로 테스트 답장이 들어왔는데
+ * 리드가 [발송 완료]에 계속 머물러 있었고, [📥 메일 가져오기]를 손으로
+ * 눌러야만 [답장 받음]으로 넘어갔다. 그 버튼을 알아야만 최신 상태를 볼 수
+ * 있는 구조는 좋지 않다.
+ *
+ * 기다리지 않는다:
+ * IMAP 수집은 수십 초가 걸린다. await 하면 그동안 화면이 멈춘 것처럼 보인다.
+ * 그래서 띄워만 놓고, 끝나면 그때 배지와 목록을 갱신한다.
+ *
+ * 자주 돌지 않는다:
+ * 서버가 마지막 수집으로부터 10분이 안 지났으면 아무것도 하지 않고 돌아온다.
+ * 새로고침을 연달아 해도 메일 서버에 계속 붙지 않는다.
+ */
+async function syncMailOnLogin() {
+  try {
+    const r = await safeJsonFetch('/api/mail/sync-on-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!r || !r.success || !r.ran) return;   // 쿨다운이거나 계정 없음 — 조용히 끝낸다
+
+    console.log(`[mail] 로그인 수집 — 새 메일 ${r.inserted}통 · 리드 연결 ${r.matched} · 답장받음 ${r.movedToReplied}`);
+
+    // 새로 들어온 게 있을 때만 화면을 건드린다
+    if (!r.inserted && !r.movedToReplied) return;
+    _mailCountsCache = null;
+    _mailGroupsCache = null;
+    await loadMailCounts(true);
+    if (r.movedToReplied) { invalidateServerPage(); loadStageCounts(true); }
+
+    // 지금 보고 있는 화면이 메일·리드 목록이면 다시 그린다.
+    // 다른 화면을 보는 중이면 건드리지 않는다 — 하던 일이 끊긴다.
+    const affected = ['tool-inbox', 'tool-inbox-needsreply', 'tool-deadlines',
+                      'pipeline-replied', 'pipeline-negotiating', 'pipeline-partner'];
+    if (affected.includes(state.view)) render();
+
+    if (r.movedToReplied) {
+      console.log(`[mail] ${r.movedToReplied}곳이 [답장 받음]으로 넘어갔습니다`);
+    }
+  } catch (e) {
+    // 수집이 실패해도 화면은 그대로 써야 한다
+    console.warn('[mail] 로그인 수집 실패', e);
+  }
 }
 
 // ── 사이드바 접기/펴기 ────────────────────────────────────
@@ -522,6 +574,14 @@ function updateNavBadges(counts) {
     if (key === 'inboxUnread' || key === 'inboxNeedsReply' || key === 'inboxDeadlines' || key === 'inboxTrash') return;
     // 발송 관리 배지는 그 화면이 실제로 담고 있는 수 — 보낼 메일(queued) + 발송 완료(contacted).
     // contacted 만 세면 옮겨둔 곳이 있는데도 0 으로 떠서 "안 옮겨졌나" 싶어진다.
+    // 집계에 없는 키는 비워 둔다.
+    // (s[key] || 0) 으로 떨어뜨리면 모르는 키가 전부 "0" 으로 떠서,
+    // 실제로는 수천 건이 있는 화면에 0 이 붙는 일이 생긴다.
+    if (key !== 'contacted' && !(key in s)) {
+      el.textContent = '';
+      delete el.dataset.count;
+      return;
+    }
     const n = key === 'contacted' ? ((s.queued || 0) + (s.contacted || 0)) : (s[key] || 0);
     el.textContent = n.toLocaleString();
     el.dataset.count = String(n);
@@ -6373,6 +6433,250 @@ function relEmptyHtml(isPartner) {
     </div>`;
 }
 
+/**
+ * 회사 하나를 펼친 화면 — 이 회사와 어디까지 갔나.
+ *
+ * 카드가 "누구와 거래 중인가" 라면 여기는 "무슨 얘기가 오갔나" 다.
+ * 보낸 메일(Lead.emailHistory)과 받은 메일(InboundMail)을 시간순으로 엮어
+ * 한 줄기로 보여준다 — 두 곳에 나뉘어 있어서 어느 한쪽만으로는 못 만드는 화면이다.
+ */
+async function renderRelationshipDetail() {
+  const leadId = _rel.open;
+  if (!leadId) return renderRelationshipsPage();
+
+  const card = _rel.items.find((x) => x.leadId === leadId) || {};
+  const tone = _rel.stage === 'partner' ? '#7c3aed' : '#0891b2';
+
+  if (!_rel.thread || _rel.thread.lead?.leadId !== leadId) {
+    els.content.innerHTML = `<div class="inline-loader">대화를 불러오는 중…</div>`;
+    try {
+      const d = await safeJsonFetch(`/api/mail/thread?leadId=${encodeURIComponent(leadId)}`);
+      if (!d || !d.success) throw new Error(d?.error || '불러오지 못했습니다');
+      _rel.thread = d;
+    } catch (e) {
+      els.content.innerHTML = `
+        <div class="empty-detail" style="padding:40px 24px">
+          <div style="font-size:44px;margin-bottom:8px">⚠️</div>
+          <h3>대화를 불러오지 못했습니다</h3><p>${escapeHtml(String(e.message || e))}</p>
+          <button type="button" id="relBackErr"
+            style="margin-top:16px;padding:11px 22px;border:1px solid var(--border-default);
+                   border-radius:10px;background:var(--bg-surface);color:var(--text-secondary);
+                   font-size:13.5px;font-weight:700;cursor:pointer">← 목록으로</button>
+        </div>`;
+      els.content.querySelector('#relBackErr')?.addEventListener('click', () => {
+        _rel.open = null; _rel.thread = null; renderRelationshipsPage();
+      });
+      return;
+    }
+  }
+  if (state.view !== 'pipeline-partner' && state.view !== 'pipeline-negotiating') return;
+
+  const lead = _rel.thread.lead || {};
+  const timeline = _rel.thread.timeline || [];
+  const company = lead.Company || card.Company || '(이름 없음)';
+
+  els.content.innerHTML = `
+    <div style="max-width:1020px;margin:0 auto">
+      <button type="button" id="relBack"
+        style="display:inline-flex;align-items:center;gap:6px;margin-bottom:13px;padding:8px 15px;
+               border-radius:9px;border:1px solid var(--border-default);background:var(--bg-surface);
+               color:var(--text-secondary);font-size:12.5px;font-weight:700;cursor:pointer">
+        ← ${_rel.stage === 'partner' ? '파트너 목록으로' : '대화 진행 중 목록으로'}
+      </button>
+
+      ${relDetailHeadHtml(company, lead, card, tone)}
+      ${relDetailFactsHtml(lead, card)}
+
+      <div style="font-size:12px;font-weight:800;color:var(--text-tertiary);letter-spacing:.04em;
+                  margin:22px 2px 10px">💬 주고받은 대화 · ${timeline.length}건</div>
+      ${timeline.length
+        ? `<div style="display:flex;flex-direction:column;gap:10px">
+             ${timeline.slice().reverse().map(relTimelineItemHtml).join('')}
+           </div>`
+        : `<div style="padding:36px 24px;text-align:center;background:var(--bg-surface);
+                       border:1px dashed var(--border-default);border-radius:12px;
+                       color:var(--text-tertiary);font-size:13px">
+             아직 주고받은 메일이 없습니다.<br>
+             <span style="font-size:12px;color:var(--text-quaternary)">
+               이 회사 주소로 메일이 오면 자동으로 여기에 쌓입니다.</span>
+           </div>`}
+    </div>`;
+
+  els.content.querySelector('#relBack')?.addEventListener('click', () => {
+    _rel.open = null; _rel.thread = null; renderRelationshipsPage();
+  });
+  els.content.querySelectorAll('.rel-stage-move').forEach((b) => {
+    b.addEventListener('click', () => moveRelationshipStage(leadId, b.dataset.to, company));
+  });
+  els.content.querySelectorAll('.rel-quote').forEach((b) => {
+    b.addEventListener('click', () => {
+      const box = document.getElementById(b.dataset.target);
+      if (!box) return;
+      const showing = box.hasAttribute('hidden');
+      if (showing) box.removeAttribute('hidden'); else box.setAttribute('hidden', '');
+      b.textContent = showing ? '▲ 인용문 접기' : '▼ 인용된 이전 대화 보기';
+    });
+  });
+}
+
+function relDetailHeadHtml(company, lead, card, tone) {
+  const site = lead.WebsiteContact || card.WebsiteContact || '';
+  return `
+    <div style="padding:24px 27px;border-radius:17px;border:1px solid ${tone}44;
+                background:linear-gradient(135deg,${tone}0f 0%,${tone}05 100%)">
+      <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <h2 style="margin:0;font-size:28px;font-weight:800;color:var(--text-primary);line-height:1.2">
+            ${escapeHtml(company)}
+          </h2>
+          <div style="font-size:13px;color:var(--text-secondary);margin-top:5px">
+            ${escapeHtml(lead.Country || card.Country || '국가 미상')}
+            ${(lead.BuyerContact || card.BuyerContact) ? ' · ' + escapeHtml(lead.BuyerContact || card.BuyerContact) : ''}
+            ${card.Title ? ' (' + escapeHtml(card.Title) + ')' : ''}
+          </div>
+          ${site ? `<a href="${escapeAttr(urlFor(site))}" target="_blank" rel="noreferrer"
+               style="font-size:12.5px;color:#2563eb;text-decoration:none;word-break:break-all">${escapeHtml(site)} ↗</a>` : ''}
+        </div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap">
+          <div><div style="font-size:24px;font-weight:800;color:${tone};line-height:1">${(card.total ?? 0).toLocaleString()}</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:1px">주고받은 메일</div></div>
+          <div><div style="font-size:24px;font-weight:800;color:var(--text-primary);line-height:1">${(card.inCount ?? 0).toLocaleString()}</div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:1px">받은 메일</div></div>
+          ${card.needsReply
+            ? `<div><div style="font-size:24px;font-weight:800;color:#b45309;line-height:1">${card.needsReply}</div>
+                 <div style="font-size:11px;color:#92400e;margin-top:1px">답장 필요</div></div>` : ''}
+        </div>
+      </div>
+
+      <!-- 단계 옮기기 — 협의가 확정되거나, 반대로 물러날 때 -->
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:17px;padding-top:15px;
+                  border-top:1px solid ${tone}33">
+        <span style="font-size:11.5px;color:var(--text-tertiary);font-weight:700;align-self:center">단계 옮기기</span>
+        ${_rel.stage !== 'negotiating' ? `<button type="button" class="rel-stage-move" data-to="negotiating"
+          style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
+                 border:1px solid var(--border-default);background:var(--bg-surface);
+                 color:var(--text-secondary)">🤝 대화 진행 중으로</button>` : ''}
+        ${_rel.stage !== 'partner' ? `<button type="button" class="rel-stage-move" data-to="partner"
+          style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
+                 border:1px solid #7c3aed;background:#7c3aed;color:#fff">⭐ 파트너십 확정으로</button>` : ''}
+        <button type="button" class="rel-stage-move" data-to="archived"
+          style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
+                 border:1px solid var(--border-default);background:var(--bg-surface);
+                 color:var(--text-tertiary)">📦 보관함으로</button>
+      </div>
+    </div>`;
+}
+
+function relDetailFactsHtml(lead, card) {
+  const row = (label, value) => value
+    ? `<div style="display:flex;gap:14px;padding:9px 0;border-bottom:1px solid var(--border-subtle)">
+         <span style="width:86px;flex:none;font-size:12px;color:var(--text-tertiary);font-weight:700">${label}</span>
+         <span style="font-size:13.5px;color:var(--text-primary);word-break:break-word">${value}</span>
+       </div>` : '';
+  const fmt = (d) => d ? new Date(d).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+
+  const body = [
+    row('이메일', escapeHtml(lead.Email || card.Email || '')),
+    row('전화', escapeHtml(lead.Phone || card.Phone || '')),
+    row('업종', escapeHtml(card.Type || '')),
+    row('취급', escapeHtml(String(card.BrandsChannels || '').slice(0, 300))),
+    row('첫 연락', escapeHtml(fmt(card.firstTouch))),
+    row('마지막 연락', escapeHtml(fmt(card.lastTouch))),
+    row('메모', escapeHtml(String(card.notes || '').slice(0, 500))),
+  ].join('');
+
+  if (!body) return '';
+  return `
+    <div style="margin-top:14px;padding:18px 22px;background:var(--bg-surface);
+                border:1px solid var(--border-default);border-radius:14px">
+      <div style="font-size:11.5px;font-weight:800;color:var(--text-tertiary);
+                  letter-spacing:.04em;margin-bottom:6px">회사 정보</div>
+      ${body}
+    </div>`;
+}
+
+function relTimelineItemHtml(t, i) {
+  const out = t.direction === 'out';
+  const when = t.at
+    ? new Date(t.at).toLocaleString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : '';
+  const who = out
+    ? `우리 → ${escapeHtml(t.to || '')}`
+    : `${escapeHtml(t.from?.name || t.from?.address || '상대')} → 우리`;
+  const qid = `rel-q-${i}`;
+
+  return `
+    <div style="border:1px solid ${out ? 'var(--border-default)' : '#bfdbfe'};border-left:4px solid ${out ? 'var(--border-strong)' : '#2563eb'};
+                border-radius:12px;padding:15px 18px;background:${out ? 'var(--bg-surface-alt)' : 'var(--bg-surface)'}">
+      <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:7px">
+        <span style="font-size:11px;font-weight:800;padding:2px 9px;border-radius:99px;
+                     background:${out ? 'var(--bg-surface)' : '#eff6ff'};color:${out ? 'var(--text-tertiary)' : '#1d4ed8'}">
+          ${out ? '↗ 보냄' : '↘ 받음'}</span>
+        <span style="font-size:13.5px;font-weight:700;color:var(--text-primary);flex:1;min-width:0;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.subject || '(제목 없음)')}</span>
+        <span style="font-size:11.5px;color:var(--text-quaternary);white-space:nowrap">${escapeHtml(when)}</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-tertiary);margin-bottom:8px">${who}
+        ${t.needsReply ? '<span style="color:#b45309;font-weight:700"> · ⚠ 답장 필요</span>' : ''}
+        ${t.deadline ? ` · 기한 ${escapeHtml(new Date(t.deadline).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }))}` : ''}
+      </div>
+
+      ${t.summary ? `
+        <div style="padding:10px 13px;background:#eef2ff;border-radius:9px;margin-bottom:9px">
+          <div style="font-size:10.5px;font-weight:800;color:#4338ca;margin-bottom:4px">요지</div>
+          <div style="font-size:12.5px;color:#3730a3;line-height:1.7">${escapeHtml(t.summary)}</div>
+        </div>` : ''}
+
+      <!-- 한국어본이 있으면 그것을 먼저 보여준다. 쓰는 사람이 전부 한국인이다. -->
+      <!-- 우리가 보낸 메일은 HTML 이다. 그대로 escape 하면 태그가 글자로 보인다. -->
+      <div style="font-size:13.5px;color:var(--text-secondary);line-height:1.8;
+                  ${t.translation || !looksLikeHtml(t.body) ? 'white-space:pre-wrap;' : ''}
+                  word-break:break-word;max-height:280px;overflow:auto">${
+        t.translation ? escapeHtml(String(t.translation).slice(0, 2000)) : renderMailBodyHtml(t.body)
+      }</div>
+      ${t.translation ? `<div style="font-size:10.5px;color:var(--text-quaternary);margin-top:6px">🌐 한글 번역본입니다</div>` : ''}
+
+      ${t.hasQuoted && t.bodyFull ? `
+        <div style="margin-top:9px;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+          <button type="button" class="rel-quote" data-target="${qid}"
+            style="background:none;border:none;color:var(--text-tertiary);font-size:11.5px;
+                   cursor:pointer;padding:0;text-decoration:underline">▼ 인용된 이전 대화 보기</button>
+          <span style="font-size:10.5px;color:var(--text-quaternary)">— 답장에 딸려온 지난번 내용입니다</span>
+        </div>
+        <pre id="${qid}" hidden style="margin:8px 0 0;padding:11px;background:var(--bg-surface-alt);
+             border:1px solid var(--border-subtle);border-radius:8px;font-size:11.5px;
+             color:var(--text-tertiary);white-space:pre-wrap;word-break:break-word;
+             max-height:240px;overflow:auto">${escapeHtml(t.bodyFull)}</pre>` : ''}
+    </div>`;
+}
+
+/** 단계 옮기기 — 확정되거나 물러날 때 */
+async function moveRelationshipStage(leadId, to, company) {
+  const label = { negotiating: '대화 진행 중', partner: '파트너십 확정', archived: '보관함' }[to] || to;
+  if (!confirm(`[${company}] 을(를) [${label}] 로 옮깁니다.\n\n대화 이력은 그대로 남습니다. 진행할까요?`)) return;
+
+  const lead = (_rel.items || []).find((x) => x.leadId === leadId);
+  // stage API 는 Mongo _id 로 찾는다(findById). leadId 를 넘기면 404 다.
+  const id = lead && lead._id;
+  if (!id) { alert('이 업체의 내부 번호를 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.'); return; }
+  try {
+    const r = await safeJsonFetch(`/api/leads/${encodeURIComponent(id)}/stage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: to }),
+    });
+    if (!r?.success) throw new Error(r?.error || '이동 실패');
+    if (lead) lead.stage = to;
+    _rel.open = null;
+    _rel.thread = null;
+    invalidateServerPage();
+    loadStageCounts(true);
+    renderRelationshipsPage();
+  } catch (e) {
+    alert(`옮기지 못했습니다: ${(e && e.message) || e}`);
+  }
+}
+
 function bindRelationshipsPage() {
   els.content.querySelectorAll('.rel-card').forEach((el) => {
     el.addEventListener('click', () => {
@@ -6389,6 +6693,145 @@ function bindRelationshipsPage() {
     clearTimeout(t);
     t = setTimeout(() => { _rel.q = box.value.trim(); renderRelationshipsPage(); }, 350);
   });
+}
+
+/**
+ * 이미 연락이 닿아 있던 회사를 직접 등록하는 창.
+ *
+ * 이 앱을 쓰기 전부터 메일로 거래하던 곳은 파이프라인 어디에도 없다.
+ * 검증도 발송도 거치지 않았으니 당연한데, 정작 지금 가장 중요한 회사들이다.
+ *
+ * 회사명과 메일 주소만 받는다. 나머지는 비워도 되고, 등록하고 나면
+ * 그 주소로 이미 받아둔 메일이 자동으로 붙어 대화 이력이 바로 보인다.
+ */
+function openRelationshipAddModal(stage) {
+  document.getElementById('relAddRoot')?.remove();
+  const label = stage === 'partner' ? '파트너십 확정' : '대화 진행 중';
+  const tone = stage === 'partner' ? '#7c3aed' : '#0891b2';
+
+  const field = (id, label, ph, required) => `
+    <label style="display:block;margin-bottom:11px">
+      <span style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">
+        ${label}${required ? ' <span style="color:#dc2626">*</span>' : ''}
+      </span>
+      <input id="${id}" type="text" placeholder="${escapeAttr(ph)}"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;font-size:13.5px;border-radius:9px;
+               border:1px solid var(--border-default);background:var(--bg-surface);color:var(--text-primary)">
+    </label>`;
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="relAddRoot" style="position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.5);
+         display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="background:var(--bg-surface);border-radius:16px;max-width:560px;width:100%;
+                  max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="padding:19px 24px;border-bottom:1px solid var(--border-default);display:flex;
+                    align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-size:16.5px;font-weight:800;color:var(--text-primary)">업체 직접 추가</div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px">
+              [${label}] 로 바로 등록됩니다
+            </div>
+          </div>
+          <button id="relAddClose" type="button"
+            style="border:none;background:none;font-size:22px;line-height:1;cursor:pointer;
+                   color:var(--text-tertiary);padding:2px 6px">×</button>
+        </div>
+
+        <div style="padding:18px 24px;overflow-y:auto">
+          <div style="padding:11px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
+                      font-size:12px;color:#1e40af;line-height:1.65;margin-bottom:15px">
+            이미 메일을 주고받던 거래처를 넣는 자리입니다.
+            <b>등록하면 그 주소로 받아둔 메일이 자동으로 붙어</b> 대화 이력이 바로 보입니다.
+            <span style="color:#1d4ed8">여기 넣은 곳에는 콜드메일이 나가지 않습니다.</span>
+          </div>
+
+          ${field('relAddCompany', '회사명', '예: Dangaard Group', true)}
+          ${field('relAddEmail', '메일 주소', '예: lcl@dangaard.com', true)}
+          ${field('relAddCountry', '국가', '예: Denmark')}
+          ${field('relAddContact', '담당자', '예: Lars Christensen')}
+          ${field('relAddTitle', '직함', '예: Purchasing Manager')}
+          ${field('relAddPhone', '전화', '')}
+          ${field('relAddSite', '웹사이트', 'https://…')}
+          <label style="display:block">
+            <span style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">메모</span>
+            <textarea id="relAddNotes" rows="3" placeholder="어떤 경위로 연결된 곳인지 적어두면 나중에 도움이 됩니다"
+              style="width:100%;box-sizing:border-box;padding:9px 12px;font-size:13px;border-radius:9px;
+                     border:1px solid var(--border-default);background:var(--bg-surface);
+                     color:var(--text-primary);resize:vertical;line-height:1.6"></textarea>
+          </label>
+          <div id="relAddMsg" style="font-size:12.5px;margin-top:11px;line-height:1.6"></div>
+        </div>
+
+        <div style="padding:14px 24px;border-top:1px solid var(--border-default);display:flex;
+                    justify-content:flex-end;gap:8px">
+          <button id="relAddCancel" type="button"
+            style="padding:10px 18px;border:1px solid var(--border-default);border-radius:9px;
+                   background:var(--bg-surface);color:var(--text-secondary);font-size:13px;
+                   font-weight:700;cursor:pointer">취소</button>
+          <button id="relAddSave" type="button"
+            style="padding:10px 22px;border:none;border-radius:9px;background:${tone};color:#fff;
+                   font-size:13px;font-weight:800;cursor:pointer">등록</button>
+        </div>
+      </div>
+    </div>`);
+
+  const root = document.getElementById('relAddRoot');
+  const close = () => { root?.remove(); syncBodyScrollLock?.(); };
+  document.getElementById('relAddClose')?.addEventListener('click', close);
+  document.getElementById('relAddCancel')?.addEventListener('click', close);
+  bindBackdropDismiss(root, close);   // 쓰던 내용이 있으면 확인을 묻는다
+  document.getElementById('relAddCompany')?.focus();
+
+  document.getElementById('relAddSave')?.addEventListener('click', async () => {
+    const msg = document.getElementById('relAddMsg');
+    const btn = document.getElementById('relAddSave');
+    const val = (id) => (document.getElementById(id)?.value || '').trim();
+
+    const payload = {
+      stage,
+      Company: val('relAddCompany'),
+      Email: val('relAddEmail'),
+      Country: val('relAddCountry'),
+      BuyerContact: val('relAddContact'),
+      Title: val('relAddTitle'),
+      Phone: val('relAddPhone'),
+      WebsiteContact: val('relAddSite'),
+      notes: val('relAddNotes'),
+    };
+    if (!payload.Company) { msg.innerHTML = '<span style="color:#b91c1c">회사명을 적어주세요.</span>'; return; }
+    if (!payload.Email) { msg.innerHTML = '<span style="color:#b91c1c">메일 주소를 적어주세요.</span>'; return; }
+
+    btn.disabled = true;
+    btn.textContent = '등록 중…';
+    msg.innerHTML = '';
+    try {
+      const r = await safeJsonFetch('/api/leads/relationships/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r || !r.success) {
+        // 같은 주소가 이미 있으면 새로 만들지 않는다 — 대화 이력이 갈라지기 때문
+        msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(r?.error || '등록 실패')}</span>`;
+        btn.disabled = false; btn.textContent = '등록';
+        return;
+      }
+      close();
+      alert(
+        `[${r.Company}] 을(를) ${label} 에 등록했습니다.` +
+        (r.linkedMails ? `\n\n이미 받아둔 메일 ${r.linkedMails}통이 이 회사에 연결됐습니다.` : ''),
+      );
+      _rel.open = null; _rel.thread = null;
+      invalidateServerPage();
+      loadStageCounts(true);
+      renderRelationshipsPage();
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(String((e && e.message) || e))}</span>`;
+      btn.disabled = false; btn.textContent = '등록';
+    }
+  });
+
+  syncBodyScrollLock?.();
 }
 
 // ── 휴지통 ────────────────────────────────────────────────────
@@ -7199,7 +7642,9 @@ async function openConversationModal(leadId) {
           <div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:6px">
             ${escapeHtml(t.subject || '(제목 없음)')}
           </div>
-          <div style="font-size:13px;color:#334155;line-height:1.6;white-space:pre-wrap;word-break:break-word">${escapeHtml(t.body || '(본문 없음)')}</div>
+          <!-- 우리가 보낸 메일은 HTML 이라 그대로 escape 하면 태그가 글자로 보인다.
+               위험한 것만 걷어내고 보이는 대로 그린다 (renderMailBodyHtml). -->
+          <div style="font-size:13px;color:#334155;line-height:1.6;${looksLikeHtml(t.body) ? '' : 'white-space:pre-wrap;'}word-break:break-word">${renderMailBodyHtml(t.body)}</div>
           <!-- 상대가 보낸 영문 답장에만. 우리가 보낸 것과 이미 번역이 있는 건 제외 -->
           ${!out && !t.translation ? translateBtnHtml(t.body || '', { inline: true }) : ''}
           ${attachBlock}
@@ -7280,6 +7725,68 @@ var REPLY_FONTS = [
   { label: 'Times New Roman', stack: "'Times New Roman',Times,serif" },
   { label: 'Courier New',     stack: "'Courier New',monospace" },
 ];
+
+/**
+ * 메일 본문을 화면에 보이는 대로 그린다.
+ *
+ * 우리가 보낸 메일은 HTML 로 저장된다(양식이 HTML 이라서). 그걸 그대로
+ * escapeHtml 로 감싸면 <p>Dear …</p> 같은 **태그가 글자로 보인다** —
+ * 대화 이력을 읽을 수가 없다.
+ *
+ * 그렇다고 innerHTML 에 통째로 넣을 수는 없다. 받은 메일 본문에는 남이 보낸
+ * 내용이 들어 있어서, 스크립트가 섞여 있으면 그대로 실행된다.
+ * 그래서 **위험한 것만 걷어내고** 그린다.
+ *
+ * 걷어내는 것:
+ *   · script · style · iframe · object · embed · link · meta  — 통째로
+ *   · on* 속성 (onclick 등)                                   — 실행 지점
+ *   · href/src 의 javascript: 스킴                             — 클릭 시 실행
+ *   · form · input                                            — 가짜 입력창 방지
+ *
+ * HTML 이 아니면(그냥 글) 예전처럼 줄바꿈만 살려 글자로 보여준다.
+ */
+function looksLikeHtml(s) {
+  return /<\s*(p|div|br|table|span|a|ul|ol|li|h[1-6]|img|b|strong|em|font)\b|<\/\s*[a-z]+\s*>/i.test(String(s || ''));
+}
+
+function renderMailBodyHtml(body) {
+  const raw = String(body || '');
+  if (!raw.trim()) return '<span style="color:var(--text-quaternary)">(본문 없음)</span>';
+
+  if (!looksLikeHtml(raw)) {
+    // 평문 — 줄바꿈만 살린다 (바깥 컨테이너가 white-space:pre-wrap 를 준다)
+    return escapeHtml(raw);
+  }
+
+  let el;
+  try {
+    // DOMParser 는 넣는 순간 스크립트를 실행하지 않는다.
+    // innerHTML 로 임시 div 에 넣으면 img onerror 같은 것이 바로 터진다.
+    const doc = new DOMParser().parseFromString(raw, 'text/html');
+    el = doc.body;
+  } catch {
+    return escapeHtml(raw);
+  }
+
+  el.querySelectorAll('script,style,iframe,object,embed,link,meta,form,input,button').forEach((n) => n.remove());
+  el.querySelectorAll('*').forEach((n) => {
+    [...n.attributes].forEach((a) => {
+      const name = a.name.toLowerCase();
+      const val = String(a.value || '');
+      if (name.startsWith('on')) { n.removeAttribute(a.name); return; }
+      if ((name === 'href' || name === 'src' || name === 'xlink:href')
+          && /^\s*(javascript|data:text\/html|vbscript)/i.test(val)) {
+        n.removeAttribute(a.name);
+      }
+    });
+    // 링크는 새 창으로 — 대화 화면이 통째로 날아가지 않게
+    if (n.tagName === 'A') {
+      n.setAttribute('target', '_blank');
+      n.setAttribute('rel', 'noopener noreferrer');
+    }
+  });
+  return el.innerHTML;
+}
 
 function replyBoxHtml(lastInbound) {
   if (!lastInbound || !lastInbound._id) return '';
@@ -7805,6 +8312,16 @@ async function handleStageChange(leadId, newStage, selectEl) {
     lead.stageChangedAt = data.data.stageChangedAt;
     if (data.data.becamePartnerAt) lead.becamePartnerAt = data.data.becamePartnerAt;
     if (typeof data.data.readyForOutreach === 'boolean') lead.readyForOutreach = data.data.readyForOutreach;
+
+    // ⚠️ 이 두 줄이 없으면 "옮겼는데 그대로 남아 있다" 가 된다.
+    //
+    // 답장 받음·대화 진행 중 같은 화면은 목록을 서버에서 받아 캐시해 둔다.
+    // 위에서 고친 것은 브라우저가 들고 있는 배열(baseLeads)뿐이라,
+    // 캐시를 비우지 않으면 render() 가 옛 응답을 그대로 다시 그린다.
+    // 새로고침을 해야만 사라지던 원인이 이것이다.
+    invalidateServerPage();
+    loadStageCounts(true);   // 사이드바 숫자도 같이 맞춘다
+
     render();
   } catch (e) {
     alert(`stage 변경 실패: ${e.message || 'unknown'}`);

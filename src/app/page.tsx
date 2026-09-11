@@ -126,8 +126,10 @@ export default function Home() {
                 보여 "내가 올린 게 어디 갔지"가 된다. 그래서 자기 구역으로 뺐다. */}
             <div className="nav-section-label">📥 import 하여 올린 데이터</div>
             <button className="nav-item" data-view="tool-legacy" type="button" title="올린 업체 목록 — 엑셀로 올린 업체. 올린 날짜별 폴더로 나뉘어 있습니다. 여기서 AI 검증과 직접 검토를 돌려 보낼 곳을 고릅니다">
+              {/* 배지를 달지 않는다. 여기 숫자는 stage 집계에 없는 값이라
+                  늘 0 으로 떴다 — 실제로는 1,900곳이 들어 있는데 0 이 붙어
+                  "비었나" 로 읽힌다. 숫자가 필요하면 화면 안에서 보여준다. */}
               <span className="nav-icon">📚</span><span className="nav-label">올린 업체 목록</span>
-              <span className="nav-badge" data-nav-badge="legacy"></span>
             </button>
             <button className="nav-item" id="navImportCsv" data-view="tool-legacy-import" type="button" title="엑셀·CSV 올리기 — 업체 목록 파일을 올립니다. 올린 데이터는 위 [올린 업체 목록]에서 관리됩니다">
               <span className="nav-icon">⬆</span><span className="nav-label">엑셀·CSV 올리기</span>
