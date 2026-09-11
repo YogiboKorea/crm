@@ -2968,7 +2968,7 @@ async function openComposeModal(scope) {
     // 여기서 다시 필터를 짜면 화면 숫자와 모달 숫자가 어긋나고,
     // 이미 예약해 둔 곳에 또 예약이 걸린다.
     recipients = _outboxReadyIds
-      .map((id) => baseLeads.find((l) => l.leadId === id))
+      .map((id) => findLeadForPopup(id))
       .filter(hasValidEmail);
   } else if (scope === 'bulk-contacted') {
     // 첫 발송 관리 (contacted) · 재발송 대상 (답장 안 온 애들 우선)
@@ -2978,10 +2978,10 @@ async function openComposeModal(scope) {
     recipients = baseLeads.filter(l => !l.deleted && (l.stage || 'imported') === 'contacted' && hasValidEmail(l));
   } else if (scope === 'selected') {
     recipients = [...state.selectedLeadIds]
-      .map(id => baseLeads.find(l => l.id === id))
+      .map(id => findLeadForPopup(id))
       .filter(hasValidEmail);
   } else if (typeof scope === 'string') {
-    const l = baseLeads.find(x => x.id === scope || x.leadId === scope);
+    const l = findLeadForPopup(scope);
     if (l) recipients = [l];
   }
   if (!recipients.length) {
@@ -3055,8 +3055,10 @@ function renderComposeModal() {
   // 기존 모달 제거 후 재생성
   document.getElementById('composeModalRoot')?.remove();
 
+  // 발송 대상은 반드시 찾혀야 한다 — 못 찾으면 받는 사람이 0명이 되어
+  // 메일을 아예 못 보낸다. 서버 페이지로 받은 것까지 본다.
   const recipients = _composeState.recipientIds.map(id =>
-    baseLeads.find(l => l.leadId === id)
+    findLeadForPopup(id)
   ).filter(Boolean);
   const previewLead = recipients.find(l => l.leadId === _composeState.previewLeadId) || recipients[0];
 
@@ -3395,7 +3397,7 @@ function renderComposeModal() {
   document.getElementById('composeSubjectInput')?.addEventListener('input', (e) => {
     _composeState.subject = e.target.value;
     // 우측 subject 만 갱신 (포커스 유지)
-    const previewLead = baseLeads.find(l => l.leadId === _composeState.previewLeadId);
+    const previewLead = findLeadForPopup(_composeState.previewLeadId);
     const vars = {};
     for (const v of state.email.variables) vars[v.key] = (previewLead?.[v.key] || v.example || '');
     vars.SenderName = '요기보'; vars.SenderCompany = 'Yogico'; vars.SenderEmail = _mailerEnvCache?.from || '';
@@ -7201,12 +7203,22 @@ async function openMailDetailModal(mailId) {
         font-size:12px;color:#1e1b4b;border-left:3px solid #6366f1"><b>다음 할 일</b> · ${escapeHtml(a.suggestedAction)}</div>` : ''}
       ${a.deadlineText ? `<div style="margin-top:6px;font-size:11.5px;color:#b45309">⏰ "${escapeHtml(a.deadlineText)}"</div>` : ''}
     </div>` : `
-    <div style="margin:12px 0;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
-                font-size:11.5px;color:#64748b">
-      아직 분석하지 않은 메일입니다.
-      위의 <b>🧠 AI 분석</b> 을 누르면 <b>한글 번역까지 한 번에</b> 같이 진행됩니다
-      — 번역 · 요약 · 회신 필요 여부 · 회신 기한이 함께 붙습니다.
-      <br>본문만 한글로 보고 싶으면 본문 아래 <b>🌐 AI 번역</b> 을 누르세요 (더 저렴합니다).
+    <!-- 버튼을 설명 안에 둔다.
+         예전에는 설명은 본문 위에 있고 버튼은 팝업 오른쪽 맨 위 구석에 있었다.
+         "위의 [🧠 AI 분석] 을 누르세요" 라고 적혀 있어도 눈이 거기까지 안 간다.
+         읽은 자리에서 바로 누를 수 있어야 한다. -->
+    <div style="margin:12px 0;padding:13px 15px;background:#eef2ff;border:1px solid #c7d2fe;
+                border-radius:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:230px;font-size:12px;color:#3730a3;line-height:1.7">
+        <b style="font-size:12.5px;color:#312e81">아직 분석하지 않은 메일입니다</b><br>
+        누르면 <b>한글 번역까지 한 번에</b> 붙습니다 — 번역 · 요약 · 회신 필요 여부 · 회신 기한.
+        <span style="color:#6366f1">본문만 한글로 보려면 본문 아래 [🌐 AI 번역] 이 더 저렴합니다.</span>
+      </div>
+      <button type="button" id="mdAnalyzeInline"
+        title="이 메일 한 통만 — 한글 번역 + 요약 + 회신 필요 여부 + 기한을 한 번에. 누를 때만 비용이 발생합니다"
+        style="flex:none;padding:11px 20px;font-size:13px;font-weight:800;border:none;border-radius:9px;
+               background:#4338ca;color:#fff;cursor:pointer;white-space:nowrap;
+               box-shadow:0 2px 8px rgba(67,56,202,.3)">🧠 AI 분석하기</button>
     </div>`;
 
   const transBlock = m.translation?.body ? `
@@ -7337,8 +7349,11 @@ async function openMailDetailModal(mailId) {
   root.focus();
 
   // 이 메일 한 통만 AI 분석 (번역까지 함께)
-  const anBtn = root.querySelector('#mdAnalyze');
-  anBtn?.addEventListener('click', async () => {
+  // AI 분석 버튼은 두 군데 있다 — 헤더 구석과 본문 위 안내 상자 안.
+  // 둘 다 같은 일을 하므로 한 번에 묶는다. 하나가 없어도 나머지는 동작한다.
+  const analyzeBtns = [root.querySelector('#mdAnalyze'), root.querySelector('#mdAnalyzeInline')]
+    .filter(Boolean);
+  const runAnalyze = async (btn) => {
     const msg = [
       '이 메일 한 통을 AI로 분석합니다.',
       '',
@@ -7348,8 +7363,9 @@ async function openMailDetailModal(mailId) {
       '진행할까요?',
     ].join('\n');
     if (!confirm(msg)) return;
-    anBtn.disabled = true;
-    anBtn.textContent = '분석 중…';
+    const was = btn.textContent;
+    analyzeBtns.forEach((b) => { b.disabled = true; });
+    btn.textContent = '⏳ 분석 중…';
     try {
       await safeJsonFetch('/api/mail/analyze', {
         method: 'POST',
@@ -7360,10 +7376,11 @@ async function openMailDetailModal(mailId) {
       openMailDetailModal(m.id);   // 결과를 반영해 다시 그린다
     } catch (e) {
       alert(`분석 실패: ${e.message || e}`);
-      anBtn.disabled = false;
-      anBtn.textContent = '🧠 AI 분석 (번역 포함)';
+      analyzeBtns.forEach((b) => { b.disabled = false; });
+      btn.textContent = was;
     }
-  });
+  };
+  analyzeBtns.forEach((b) => b.addEventListener('click', () => runAnalyze(b)));
   bindBackdropDismiss(root, closeMailDetailModal);
 
   const patch = async (body, okMsg) => {
@@ -8515,7 +8532,7 @@ async function handleStageChange(leadId, newStage, selectEl) {
 
 // ── 발송 승인 토글 ─────────────────────────────────────────
 async function handleOutreachApproval(leadId, on) {
-  const lead = baseLeads.find(l => l.id === leadId);
+  const lead = findLeadForPopup(leadId);   // 서버 페이지 화면에서도 찾히게
   if (!lead || !lead._id) return;
   try {
     const res = await fetch(`/api/leads/${lead._id}`, {
@@ -13398,8 +13415,13 @@ async function moveSelectedToQueue() {
   const ids = [...state.selectedLeadIds];
   if (!ids.length) return;
 
+  // ⚠️ baseLeads.find 로는 못 찾는다.
+  // 검증 완료는 목록이 서버 페이지라 그 배열이 비어 있어서, 고른 곳이
+  // 하나도 안 잡혀 sendable=0 → "고른 곳에 보낼 수 있는 메일 주소가 없습니다"
+  // 로 끝났다. 주소가 멀쩡한데도 그렇게 떴다.
+  const picked = ids.map((id) => findLeadForPopup(id)).filter(Boolean);
+
   // 메일 없는 곳은 옮겨도 못 보낸다 — 미리 알려주고 숫자에서 뺀다
-  const picked = ids.map((id) => baseLeads.find((l) => l.id === id)).filter(Boolean);
   const noEmail = picked.filter((l) =>
     !l.Email || /^Not found/i.test(l.Email) || !/@/.test(l.Email)).length;
   const sendable = picked.length - noEmail;
