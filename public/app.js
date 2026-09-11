@@ -277,7 +277,7 @@ const els = {
   get settingsBtn() { return document.getElementById("settingsBtn"); }
 };
 
-init();
+// init() 호출은 **파일 맨 아래**로 옮겼다 — 그쪽 설명 참고.
 
 async function init() {
   // 초기 페이지 로드에서 전체 리드(5000+) fetch 하지 않음 — render()가 필요 시 loadLeads 호출
@@ -8396,7 +8396,13 @@ function getLeads() {
 function allKnownLeads() {
   const out = [];
   const seen = new Set();
-  for (const src of [baseLeads, _serverPageCache?.leads || [], _popupLeadCache || []]) {
+  // 아래 var 들의 대입보다 먼저 불릴 수 있다 (findLeadForPopup 주석 참고)
+  const sources = [
+    typeof baseLeads !== 'undefined' ? baseLeads : [],
+    _serverPageCache?.leads || [],
+    typeof _popupLeadCache !== 'undefined' ? _popupLeadCache : [],
+  ];
+  for (const src of sources) {
     for (const l of src) {
       if (!l || l.deleted || seen.has(l.id)) continue;
       seen.add(l.id);
@@ -8418,9 +8424,18 @@ function allKnownLeads() {
  * 그래서 세 곳을 다 본다 — 로컬 캐시 · 지금 화면의 서버 페이지 · 팝업으로 열어본 것.
  */
 function findLeadForPopup(id) {
-  return getLeads().find(l => l.id === id)
-      || (_serverPageCache?.leads || []).find(l => l.id === id)
-      || _popupLeadCache.find(l => l.id === id);
+  if (!id) return null;
+  // ?. 와 || [] 를 쓰는 이유:
+  // init() 이 파일 위쪽에서 먼저 돌아서, 아래에 있는 var 들의 **대입이 아직
+  // 실행되기 전에** 이 함수가 불린다 (선언은 끌어올려지지만 값은 undefined).
+  // 방어가 없으면 첫 렌더에서 "Cannot read properties of undefined (reading 'find')"
+  // 로 화면이 통째로 죽는다.
+  return (typeof baseLeads !== 'undefined' ? baseLeads : [])
+        .find(l => l && !l.deleted && l.id === id)
+      || (_serverPageCache?.leads || []).find(l => l && l.id === id)
+      || (typeof _popupLeadCache !== 'undefined' ? _popupLeadCache : [])
+        .find(l => l && l.id === id)
+      || null;
 }
 
 /**
@@ -14604,3 +14619,23 @@ function escapeHtml(value = "") {
 function escapeAttr(value = "") {
   return escapeHtml(value);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   앱 시작 — 반드시 파일 맨 아래에서 부른다.
+
+   왜 여기인가:
+   이 파일의 최상위 var 43개(_serverPageCache · _popupLeadCache · _inboxState …)는
+   선언만 끌어올려지고 **대입은 그 줄에 닿아야 실행된다.** init() 을 파일 위쪽에서
+   부르면 그 시점에 43개가 전부 undefined 다.
+
+   실제로 그래서 두 번 터졌다.
+     · _countryFacet.list   → renderFilters 에서 TypeError
+     · _popupLeadCache.find → "Cannot read properties of undefined" 로
+       첫 화면이 통째로 죽었다.
+
+   한 곳씩 방어 코드를 넣는 것은 끝이 없다. 여기서 부르면 43개가 모두 값을
+   가진 뒤 시작하므로 이 종류의 사고가 구조적으로 사라진다.
+
+   새 코드를 파일 끝에 덧붙일 때는 이 호출보다 위에 넣을 것.
+   ═══════════════════════════════════════════════════════════════ */
+init();

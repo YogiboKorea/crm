@@ -161,3 +161,36 @@ console.log('✅ HTML 생성 함수', checks.length, '개 실행 통과');
   }
   console.log('✅ CSS 변수 모두 :root 에서 해결됨');
 }
+
+// ── init() 호출 위치 점검 ────────────────────────────────────
+//
+// 이 파일의 최상위 var 들은 선언만 끌어올려지고 대입은 그 줄에 닿아야 실행된다.
+// init() 을 파일 위쪽에서 부르면 아래에 있는 var 가 전부 undefined 인 채로
+// 화면을 그리기 시작한다. 실제로 두 번 터졌다 —
+//   _countryFacet.list / _popupLeadCache.find → 첫 화면이 통째로 죽음.
+//
+// vm 평가만으로는 안 잡힌다. 스텁 DOM 에서는 그 경로까지 안 가는 일이 많아서다.
+// 그래서 위치 자체를 규칙으로 못박는다.
+{
+  const lines = src.split(/\r?\n/);
+  const initLine = lines.findIndex((l) => /^\s*init\(\);?\s*$/.test(l));
+  if (initLine < 0) {
+    console.log('❌ init() 호출을 찾지 못했습니다');
+    process.exit(1);
+  }
+
+  const late = [];
+  lines.forEach((l, i) => {
+    const m = l.match(/^var ([A-Za-z_$][\w$]*)\s*=/);
+    if (m && i > initLine) late.push({ name: m[1], line: i + 1 });
+  });
+
+  if (late.length) {
+    console.log(`❌ init() 이 ${initLine + 1}행에서 불리는데, 그 뒤에 대입되는 최상위 var 가 ${late.length}개 있습니다`);
+    console.log('   → 그 변수들은 첫 렌더에서 undefined 입니다. init() 호출을 파일 맨 아래로 옮기세요.');
+    for (const v of late.slice(0, 8)) console.log(`     ${String(v.line).padStart(6)}  ${v.name}`);
+    if (late.length > 8) console.log(`     … 외 ${late.length - 8}개`);
+    process.exit(1);
+  }
+  console.log('✅ init() 이 모든 전역 대입 뒤에서 호출됨');
+}
