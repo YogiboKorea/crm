@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { processScheduleItem } from '@/lib/schedule-runner';
@@ -28,21 +30,42 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  *   · 실행 시간이 RUN_BUDGET_MS 에 닿으면 남은 것은 다음 실행으로 넘긴다
  *     (status 는 pending 그대로라 다음 크론이 이어서 집어간다)
  *
- * 보안:
- *   - CRON_SECRET env 있으면 Authorization: Bearer <SECRET> 검증
- *   - 없으면 (dev/편의) 통과 (`x-vercel-cron: 1` 헤더는 Vercel 이 자동 붙임)
+ * ── 보안 ──
+ * 이 경로는 proxy.ts 의 로그인 검사에서 빠져 있다(/api/cron 은 통과).
+ * 크론이 쿠키를 들고 올 수 없기 때문인데, 그 말은 URL 만 알면 누구나
+ * 발송을 돌릴 수 있다는 뜻이기도 하다. 그래서 여기서 직접 검사한다.
+ *
+ * 셋 중 하나면 통과한다.
+ *   1) Authorization: Bearer <CRON_SECRET>   — 외부 크론·Vercel 크론
+ *      (Vercel 은 CRON_SECRET 환경변수가 있으면 이 헤더를 자동으로 붙인다)
+ *   2) 로그인한 관리자 세션                    — 화면의 [⏱ 지금 예약분 내보내기]
+ *   3) CRON_SECRET 을 아예 안 걸어둔 경우      — 개발 편의
+ *
+ * 2번이 필요한 이유: 브라우저 fetch 는 Bearer 를 붙일 수 없다.
+ * 이게 없으면 CRON_SECRET 을 켜는 순간 화면의 버튼이 401 을 받는다.
  */
-export async function GET(req: Request) {
-  const isVercelCron = req.headers.get('x-vercel-cron') === '1';
+async function authorized(req: Request): Promise<boolean> {
   const cronSecret = process.env.CRON_SECRET;
-  const authHeader = req.headers.get('authorization') || '';
+  if (!cronSecret) return true;                       // 3) 안 걸어뒀으면 통과
 
-  if (cronSecret) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
-    }
-  } else if (!isVercelCron) {
-    console.log('[cron:process-schedules] warning: no CRON_SECRET set and not vercel-cron request');
+  const authHeader = req.headers.get('authorization') || '';
+  if (authHeader === `Bearer ${cronSecret}`) return true;   // 1) 크론
+
+  // 2) 로그인한 사람이 화면에서 직접 누른 경우
+  try {
+    const c = await cookies();
+    const token = c.get('admin_session')?.value;
+    if (!token) return false;
+    await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function GET(req: Request) {
+  if (!(await authorized(req))) {
+    return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
   }
 
   const startedAt = Date.now();

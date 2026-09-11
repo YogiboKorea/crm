@@ -9309,7 +9309,7 @@ async function renderOutboxPage() {
           ❓ 발송 로직 — 메일이 나가는 순서
         </button>
       </div>
-      ${outboxLockBannerHtml(lock)}
+      ${outboxLockBannerHtml(lock, ready.length)}
 
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
         ${tab('ready',     '✉️', '보낼 메일',  ready.length,      '#2563eb')}
@@ -9441,15 +9441,31 @@ async function renderOutboxPage() {
 }
 
 /** 발송 잠금 배너 — 지금 메일이 나가는 상태인지 화면 맨 위에서 못 박는다 */
-function outboxLockBannerHtml(lock) {
+function outboxLockBannerHtml(lock, readyCount) {
   if (!lock || !lock.locked) {
+    // 열려 있을 때를 초록으로 두면 "괜찮다"로 읽힌다.
+    // 여기서부터는 진짜 업체로 메일이 나가므로, 상태가 한눈에 보여야 한다.
+    // 특히 "어디로 나가는가"(발송 리스트에 있는 곳만)를 같이 적는다 —
+    // 검증 완료 수백 곳으로 나가는 줄 알고 겁내거나, 반대로 전부 나가는 줄
+    // 모르고 누르는 일을 둘 다 막기 위해서다.
+    const n = typeof readyCount === 'number' ? readyCount : null;
     return `
-      <div style="padding:12px 16px;background:#dcfce7;border:1px solid #86efac;border-radius:11px;
-                  display:flex;align-items:center;gap:11px">
+      <div style="padding:14px 17px;background:#eff6ff;border:1px solid #2563eb;border-radius:11px;
+                  display:flex;align-items:flex-start;gap:12px">
         <span style="font-size:19px">📤</span>
-        <div style="flex:1;font-size:13px;color:#166534;line-height:1.55">
-          <b>발송이 열려 있습니다.</b> 예약 시각이 되면 메일이 실제로 나갑니다.
-          ${lock?.dailyCap ? `<span style="color:#15803d"> · 하루 최대 ${lock.dailyCap}통 · ${Math.round((lock.intervalMs || 0) / 1000)}초 간격</span>` : ''}
+        <div style="flex:1;font-size:13px;color:#1e3a8a;line-height:1.65">
+          <b style="font-size:14px">실제 발송이 열려 있습니다 — 누르면 진짜로 나갑니다</b>
+          <div style="margin-top:4px">
+            ${n === null
+              ? '아래 <b>[보낼 메일]</b>에 있는 곳으로만 나갑니다.'
+              : n === 0
+                ? '지금 <b>[보낼 메일]이 비어 있어</b> 나갈 곳이 없습니다. 검증 완료에서 옮겨야 대상이 됩니다.'
+                : `지금 나갈 수 있는 곳은 <b>[보낼 메일] ${n.toLocaleString()}곳</b>뿐입니다.
+                   검증 완료에 있는 나머지는 발송 리스트로 옮기기 전까지 나가지 않습니다.`}
+            ${lock?.dailyCap
+              ? `<br><span style="color:#1d4ed8">하루 최대 ${lock.dailyCap}통 · 한 통 사이 ${Math.round((lock.intervalMs || 0) / 1000)}초 ·
+                 같은 곳에는 48시간 안에 다시 안 나갑니다</span>` : ''}
+          </div>
         </div>
       </div>`;
   }
