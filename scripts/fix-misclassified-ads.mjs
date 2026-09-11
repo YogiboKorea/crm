@@ -6,48 +6,108 @@
  * 그러면 **잘못 광고로 찍힌 실제 상담 메일**도 같이 빨려 들어간다.
  * 규칙을 켜기 전에 오분류를 먼저 걷어내야 한다.
  *
- * 무엇을 오분류로 보나:
- * 같은 발신자에게서 **광고가 아닌 메일도 온 적이 있다면**, 그 사람은 광고
- * 발송자가 아니라 거래 상대다. 그런 사람이 보낸 메일이 광고로 찍혔으면
- * 규칙/AI 가 틀린 쪽일 가능성이 높다.
- * (읽음확인·부재중 같은 system 은 제외한다 — 그건 실제로 자동발송이 맞다)
+ * ── 무엇을 오분류로 보나 ──
+ * 같은 발신자에게서 **업무 메일로 확정된 것**도 온 적이 있다면, 그 주소는
+ * 광고 발송처가 아니라 거래 상대다. 그런 사람이 보낸 메일이 광고로 찍혔으면
+ * 규칙/AI 가 틀렸을 가능성이 높다.
+ *
+ * ⚠️ "업무 메일로 확정된 것" 을 제대로 골라야 한다.
+ *    처음에는 `classification ∉ {ad,newsletter,system}` 으로 잡았는데,
+ *    그러면 **아직 분류하지 않은 메일(unknown · classifiedBy 없음, 128통)**
+ *    까지 업무 메일로 세어 버린다. 실제로 그 기준으로는 쿠팡 자동알림
+ *    (no_reply@coupang.com) 과 우리 에이전트가 우리에게 보내는 내부 리포트
+ *    (yogico.ai@gmail.com) 가 "거래 상대" 로 잡혔다 — 형제 메일이 전부
+ *    unknown 이었기 때문이다.
+ *    그래서 **판정을 거쳐 업무로 확정된 것만** 센다: b2b · partner · inquiry.
+ *
+ * 또 하나: 자동발송 주소(no_reply, noreply, donotreply …)와 우리 자신이
+ * 보낸 주소는 애초에 후보에서 뺀다. 사람이 답장할 수 있는 주소가 아니다.
+ *
+ * --apply 없이 돌리면 무엇이 바뀌는지만 보여준다.
  */
 import mongoose from 'mongoose';
 import { config } from 'dotenv';
-config({ path:'.env.local', quiet:true });
+config({ path: '.env.local', quiet: true });
+
 const APPLY = process.argv.includes('--apply');
 await mongoose.connect(process.env.MONGODB_URI);
 const M = mongoose.connection.collection('inboundmails');
 
-const SUSPECT = ['ad','newsletter'];   // system(읽음확인·부재중)은 건드리지 않는다
-const cand = await M.find({ trashedAt:null, direction:'in', classification:{ $in:SUSPECT } })
-  .project({subject:1,from:1,group:1,groupBy:1,classification:1,classifiedBy:1}).toArray();
+/** 사람이 주고받은 업무 메일로 **확정된** 분류값 */
+const REAL_BUSINESS = ['b2b', 'partner', 'inquiry'];
+/** 광고로 찍혀 있어 되돌림 대상이 될 수 있는 분류값 (system 은 제외 — 읽음확인·부재중은 실제로 자동발송이 맞다) */
+const SUSPECT = ['ad', 'newsletter'];
+/** 사람이 쓰는 주소가 아닌 것 */
+const ROBOT = /(^|[._-])(no[._-]?reply|donotreply|do[._-]?not[._-]?reply|mailer[-_]?daemon|postmaster|notifications?|alerts?|bounce)@|@(mails?|email|mailer|notifications?)\./i;
+
+const selfAddrs = new Set(
+  (await M.distinct('from.address', { direction: 'out' })).filter(Boolean).map((a) => String(a).toLowerCase()),
+);
+
+const cand = await M.find({ trashedAt: null, direction: 'in', classification: { $in: SUSPECT } })
+  .project({ subject: 1, from: 1, group: 1, groupBy: 1, classification: 1, classifiedBy: 1 }).toArray();
 
 const hits = [];
+const skipped = [];
 for (const r of cand) {
-  const addr = r.from?.address;
+  const addr = String(r.from?.address || '').toLowerCase();
   if (!addr) continue;
-  // 같은 사람에게서 온 '광고가 아닌' 메일이 있는가
+
+  if (ROBOT.test(addr)) { skipped.push({ ...r, why: '자동발송 주소' }); continue; }
+  if (selfAddrs.has(addr)) { skipped.push({ ...r, why: '우리가 보내는 주소' }); continue; }
+
+  // 같은 사람에게서 **업무로 확정된** 메일이 있는가
   const real = await M.countDocuments({
-    trashedAt:null, direction:'in', 'from.address': addr,
-    classification: { $nin: ['ad','newsletter','system'] },
+    trashedAt: null, direction: 'in', 'from.address': r.from.address,
+    classification: { $in: REAL_BUSINESS },
   });
   if (real > 0) hits.push({ ...r, realFromSameSender: real });
+  else skipped.push({ ...r, why: '같은 주소에 업무로 확정된 메일 없음' });
 }
 
-console.log(`광고/뉴스레터로 찍힌 메일 ${cand.length}통 중, 같은 사람과 실제 대화도 있는 것: ${hits.length}통\n`);
+console.log(`광고/뉴스레터로 찍힌 메일 ${cand.length}통 검사\n`);
+console.log(`되돌릴 것 ${hits.length}통:`);
 for (const h of hits) {
-  console.log(`  [${h.classification}/${h.classifiedBy||'-'}] ${String(h.from.address).padEnd(32)} 실제대화 ${h.realFromSameSender}통`);
-  console.log(`      폴더: ${h.group||'미분류'} (${h.groupBy||'-'})`);
-  console.log(`      제목: ${String(h.subject||'').slice(0,66)}\n`);
+  console.log(`  [${h.classification}/${h.classifiedBy || '-'}] ${String(h.from.address).padEnd(32)} 업무확정 ${h.realFromSameSender}통`);
+  console.log(`      폴더: ${h.group || '미분류'} (${h.groupBy || '-'})`);
+  console.log(`      제목: ${String(h.subject || '').slice(0, 66)}`);
 }
 
-if (!hits.length) { console.log('되돌릴 것 없음'); await mongoose.disconnect(); process.exit(0); }
-if (!APPLY) { console.log('(미리보기입니다. 되돌리려면 --apply)'); await mongoose.disconnect(); process.exit(0); }
+console.log(`\n건드리지 않는 것 ${skipped.length}통:`);
+const byWhy = {};
+for (const s of skipped) (byWhy[s.why] ||= []).push(s);
+for (const [why, list] of Object.entries(byWhy)) {
+  console.log(`  · ${why} — ${list.length}통`);
+  for (const s of list.slice(0, 4)) console.log(`       ${String(s.from?.address || '?').padEnd(32)} ${String(s.subject || '').slice(0, 50)}`);
+  if (list.length > 4) console.log(`       … 외 ${list.length - 4}통`);
+}
+
+if (!hits.length) { console.log('\n되돌릴 것 없음'); await mongoose.disconnect(); process.exit(0); }
+if (!APPLY) { console.log('\n(미리보기입니다. 되돌리려면 --apply)'); await mongoose.disconnect(); process.exit(0); }
+
+// 되돌린다 — 분류만 바꾼다. 폴더(group)는 손대지 않는다.
+//
+// 왜 폴더는 그대로 두나: 이 메일들은 이미 거래처 폴더에 잘 들어가 있다.
+// 문제는 "광고로 찍혀 있다" 는 것뿐이고, 그래서 새 수집 규칙이 돌 때
+// 광고 폴더로 쓸려 갈 위험이 있는 것이다. 분류만 고치면 그 위험이 사라진다.
+//
+// 'other' 로 두는 이유: 무엇인지 단정하지 않으면서 광고가 아님만 표시한다.
+// 다음에 AI 분석이 돌면 b2b / inquiry 같은 제 이름을 찾아간다.
+const before = hits.map((h) => ({ _id: h._id, classification: h.classification, classifiedBy: h.classifiedBy }));
+console.log('\n되돌리기 전 상태 (문제 생기면 이 값으로 복구):');
+console.log(JSON.stringify(before, null, 1));
 
 const r = await M.updateMany(
-  { _id: { $in: hits.map(h=>h._id) } },
+  { _id: { $in: hits.map((h) => h._id) } },
   { $set: { classification: 'other', classifiedBy: 'fix-misclassified' } },
 );
-console.log(`\n되돌림 ${r.modifiedCount}통 → classification: 'other' (광고 폴더로 쓸려가지 않는다)`);
+console.log(`\n되돌림 ${r.modifiedCount}통 → classification: 'other'`);
+
+// 확인 — 정말 바뀌었나, 폴더는 그대로인가
+for (const h of hits) {
+  const now = await M.findOne({ _id: h._id }, { projection: { subject: 1, classification: 1, group: 1 } });
+  const folderOk = (now.group || '') === (h.group || '');
+  console.log(`  ${now.classification === 'other' ? 'OK ' : 'X  '} ${String(now.subject).slice(0, 44)}`);
+  console.log(`      분류 ${h.classification} → ${now.classification} · 폴더 ${folderOk ? '그대로' : '⚠ 바뀜!'} (${now.group || '미분류'})`);
+}
 await mongoose.disconnect();
