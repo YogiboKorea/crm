@@ -1200,17 +1200,107 @@ th.sortable:hover { color: var(--text-primary); }
   border: 0;
 }
 
-/* Media */
+/* ══ 좁은 화면 ═══════════════════════════════════════════════
+
+   예전에는 620px 아래에서 .app-shell 을 세로로 쌓았다. 그러면 사이드바가
+   가로 100% 가 되면서 메뉴 15개가 첫 화면을 통째로 차지했다 — 390px 에서
+   재 보면 본문이 한 줄도 안 보이고, 업체 목록을 보려면 메뉴를 전부 지나
+   스크롤해야 했다. "반응형이 안 된다" 의 정체가 이것이었다.
+
+   그래서 쌓지 않고 **서랍**으로 바꾼다. 사이드바를 화면 왼쪽 밖에 세워 두고
+   상단 ☰ 를 누를 때만 본문 위로 덮어서 연다. 본문은 언제나 첫 화면에 있다.
+   ═══════════════════════════════════════════════════════════ */
+
+/* 넓은 화면 기본값 — 서랍 장치는 보이지 않는다 */
+.nav-drawer-btn { display: none; }
+.nav-backdrop { display: none; }
+.topbar-head { display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.topbar-title { min-width: 0; }
+
 @media (max-width: 900px) {
-  .sidebar { width: 200px; }
   .main { padding: var(--sp-4); }
   .topbar h2 { font-size: 20px; }
+
+  /* ☰ 버튼 */
+  .nav-drawer-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    font-size: 19px;
+    line-height: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-md);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .nav-drawer-btn:hover { background: var(--bg-surface-hover); }
+
+  /* 사이드바 = 화면 밖에 세워 둔 서랍 */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 272px;
+    max-width: 84vw;
+    z-index: 70;
+    overflow-y: auto;
+    overflow-x: hidden;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    border-right: 1px solid var(--border-subtle);
+  }
+  body[data-nav-open="true"] .sidebar {
+    transform: none;
+    box-shadow: 0 0 40px rgba(15, 23, 42, 0.28);
+  }
+
+  /* 뒤를 덮는 막 */
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: rgba(15, 23, 42, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  body[data-nav-open="true"] .nav-backdrop { opacity: 1; pointer-events: auto; }
+
+  /* 서랍에서는 접기 토글이 의미가 없다 (이미 숨어 있다) */
+  .sidebar-toggle { display: none; }
+
+  /* 넓은 화면에서 접어 둔 상태로 저장돼 있어도,
+     서랍은 글자까지 펴서 보여준다 — 아이콘만 뜨면 무슨 메뉴인지 모른다. */
+  :root[data-sidebar-collapsed="true"] .sidebar {
+    width: 272px;
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
+  }
+  :root[data-sidebar-collapsed="true"] .brand { padding: var(--sp-3); justify-content: flex-start; }
+  :root[data-sidebar-collapsed="true"] .brand-text,
+  :root[data-sidebar-collapsed="true"] .nav-label,
+  :root[data-sidebar-collapsed="true"] .nav-badge,
+  :root[data-sidebar-collapsed="true"] .nav-section-label,
+  :root[data-sidebar-collapsed="true"] .nav-sub-divider,
+  :root[data-sidebar-collapsed="true"] .nav-external { display: revert; }
+  :root[data-sidebar-collapsed="true"] .nav-item { justify-content: flex-start; padding: 9px 10px; }
+  :root[data-sidebar-collapsed="true"] .nav-icon { margin-right: 8px; font-size: 14px; }
+  :root[data-sidebar-collapsed="true"] .nav-badge { margin-left: auto; }
 }
+
 @media (max-width: 620px) {
-  .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border-subtle); }
+  .main { padding: var(--sp-3); }
+  .topbar { flex-wrap: wrap; row-gap: var(--sp-3); margin-bottom: var(--sp-4); }
+  .top-actions { flex-wrap: wrap; }
   .modal-grid, .modal-grid.modal-grid-3col { grid-template-columns: 1fr; }
-  .modal-card { margin: 12px; max-height: 95vh; }
+  .modal-card { margin: 8px; max-height: 94vh; width: auto; max-width: none; }
 }
 
 /* ── 회신 상자 (contenteditable) ─────────────────────────────

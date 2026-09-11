@@ -17,7 +17,7 @@ export default function Home() {
       </div>
 
       <div className="app-shell">
-        <aside className="sidebar">
+        <aside className="sidebar" id="appSidebar">
           {/* 사이드바 접기/펴기 토글 */}
           <button id="sidebarToggleBtn" className="sidebar-toggle" type="button"
             title="사이드바 접기/펴기 (Ctrl+B)" aria-label="사이드바 접기/펴기">
@@ -134,9 +134,14 @@ export default function Home() {
             <button className="nav-item" id="navImportCsv" data-view="tool-legacy-import" type="button" title="엑셀·CSV 올리기 — 업체 목록 파일을 올립니다. 올린 데이터는 위 [올린 업체 목록]에서 관리됩니다">
               <span className="nav-icon">⬆</span><span className="nav-label">엑셀·CSV 올리기</span>
             </button>
-            <button className="nav-item" data-view="tool-import-history" type="button" title="올린 기록 — 언제 무엇을 올렸는지. 잘못 올린 파일은 통째로 되돌릴 수 있습니다">
+            {/* [📋 올린 기록] 은 뺐다.
+                "언제 무엇을 올렸나" 는 [올린 업체 목록] 이 이미 올린 날짜별 폴더로
+                보여준다. 같은 것을 두 군데서 보게 하면 어느 쪽이 진짜인지 헷갈린다.
+                (renderImportHistoryPage 는 그대로 살아 있어 주석만 풀면 돌아온다)
+            <button className="nav-item" data-view="tool-import-history" type="button" title="올린 기록 — 언제 무엇을 올렸는지">
               <span className="nav-icon">📋</span><span className="nav-label">올린 기록</span>
             </button>
+            */}
 
             <div className="nav-divider"></div>
 
@@ -151,11 +156,14 @@ export default function Home() {
               <span className="nav-icon">🔌</span><span className="nav-label">메일 수신 설정</span>
             </button>
             */}
+            {/* 계정이 먼저다.
+                보내는 주소·서명이 정해져야 양식이 의미를 갖고, 대표 계정을 바꾸면
+                받은 메일함이 통째로 그 계정 기준으로 바뀐다. 순서가 곧 설정 순서다. */}
+            <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 보내는 주소와 서명을 등록합니다. 대표 계정을 바꾸면 받은 메일함도 그 계정 기준으로 바뀝니다">
+              <span className="nav-icon">📬</span><span className="nav-label">메일 계정 관리</span>
+            </button>
             <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 양식 — 발송할 메일 제목/본문 작성 (회사명 자동 대체)">
               <span className="nav-icon">📝</span><span className="nav-label">메일 양식</span>
-            </button>
-            <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 발송에 쓸 SMTP 계정과 서명 정보 등록">
-              <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
             </button>
             {/* 추천 리스트는 숨김 — 고정 시드 54개짜리 구버전 기능이라,
                 웹에서 실시간으로 발굴하는 [🤖 AI 서칭] 이 대체한다.
@@ -170,11 +178,21 @@ export default function Home() {
           </nav>
         </aside>
 
+        {/* 서랍이 열렸을 때 뒤를 덮는 막 — 누르면 닫힌다.
+            넓은 화면에서는 CSS 로 숨겨져 있다. */}
+        <div id="navBackdrop" className="nav-backdrop" aria-hidden="true"></div>
+
         <main className="main">
           <header className="topbar">
-            <div>
-              <h2 id="viewTitle" className="">Leads</h2>
-              <p id="viewSubtitle">Search, qualify, and manage outreach.</p>
+            {/* 좁은 화면에서는 사이드바가 서랍으로 숨는다 — 그때 여는 버튼.
+                900px 이상에서는 CSS 로 숨겨져 보이지 않는다. */}
+            <div className="topbar-head">
+              <button id="navDrawerBtn" className="nav-drawer-btn" type="button"
+                      aria-label="메뉴 열기" aria-expanded="false" aria-controls="appSidebar">☰</button>
+              <div className="topbar-title">
+                <h2 id="viewTitle" className="">Leads</h2>
+                <p id="viewSubtitle">Search, qualify, and manage outreach.</p>
+              </div>
             </div>
             <div className="top-actions">
               {/* [+ 리드 추가]·[🔍 검증]·[⬆ Import] 는 숨겼다.
@@ -724,7 +742,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=b20a0fa3" strategy="afterInteractive" />
+      <Script src="/app.js?v=aadb5edb" strategy="afterInteractive" />
     </>
   );
 }

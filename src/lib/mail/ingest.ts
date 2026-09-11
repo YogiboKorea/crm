@@ -354,11 +354,20 @@ async function ingestFolder(
       // 그러면 "미분류에 진짜 볼 것이 있나" 를 볼 때마다 광고를 헤집게 된다.
       // 지우지 않고 한 폴더로 모으면 미분류에는 판단이 필요한 것만 남는다.
       //
-      // 이미 폴더가 정해진 것은 건드리지 않는다 — 거래처가 보낸 뉴스레터가
-      // 그 거래처 폴더에 들어가 있으면 그대로 두는 편이 맞다.
+      // 폴더가 이미 정해진 것도 옮긴다 — 단, **프로그램이 추측한 폴더**일 때만.
+      // 발신자 이력(sender:*)·제목(name:*)으로 찍은 폴더는 틀릴 수 있어서,
+      // 거래처와 한 번 주고받았다는 이유만으로 그 뒤 광고까지 그 거래처
+      // 폴더에 쌓인다. 광고가 거래처 대화 사이에 섞이면 대화를 못 읽는다.
+      //
+      // 사람이 정한 폴더는 건드리지 않는다:
+      //   groupBy 'folder'  대표가 이카운트 메일함에서 직접 넣은 것
+      //   groupBy 'manual'  이 화면에서 직접 옮긴 것
+      // 사람이 일부러 거기 둔 것을 자동 규칙이 뒤집으면, 옮겨놔도 소용없는
+      // 화면이 된다.
       //
       // ⚠️ 분류(ruleClassify) 뒤에 와야 한다. 그 전에는 classification 이 없다.
-      if (!doc.group && AD_CLASSES.includes(doc.classification as any)) {
+      const humanFiled = doc.groupBy === 'folder' || doc.groupBy === 'manual';
+      if (!humanFiled && AD_CLASSES.includes(doc.classification as any)) {
         doc.group = AD_FOLDER;
         doc.groupBy = 'auto-ad';
         // 폴더가 바뀌었으니 스레드 키도 다시 만든다.

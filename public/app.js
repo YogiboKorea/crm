@@ -290,6 +290,7 @@ async function init() {
   initImportHistoryModal();
   initThemeToggle();
   initSidebarToggle();
+  initNavDrawer();
   initReviewBar();     // 상세 팝업의 이전/다음·판정 버튼
   // 저장된 페이지 크기 복원 (사용자가 이전에 선택한 값 유지)
   try {
@@ -358,6 +359,45 @@ async function syncMailOnLogin() {
     // 수집이 실패해도 화면은 그대로 써야 한다
     console.warn('[mail] 로그인 수집 실패', e);
   }
+}
+
+// ── 좁은 화면 — 사이드바 서랍 ──────────────────────────────
+//
+// 900px 아래에서 사이드바는 화면 밖에 세워 둔 서랍이 된다 (styles.css).
+// 여는 방법이 ☰ 하나뿐이면 갇히기 쉬우므로 닫는 길을 여러 개 둔다 —
+// 막 누르기 · Esc · 메뉴 선택. 특히 **메뉴를 고르면 저절로 닫혀야** 한다.
+// 안 그러면 고른 화면이 서랍에 가려서, 눌렀는데 아무 일도 안 난 것처럼 보인다.
+function initNavDrawer() {
+  const btn = document.getElementById('navDrawerBtn');
+  const backdrop = document.getElementById('navBackdrop');
+  const sidebar = document.getElementById('appSidebar');
+  if (!btn || !sidebar) return;
+
+  const isOpen = () => document.body.getAttribute('data-nav-open') === 'true';
+  const setOpen = (open) => {
+    if (open) document.body.setAttribute('data-nav-open', 'true');
+    else document.body.removeAttribute('data-nav-open');
+    btn.setAttribute('aria-expanded', String(open));
+  };
+
+  btn.addEventListener('click', () => setOpen(!isOpen()));
+  backdrop?.addEventListener('click', () => setOpen(false));
+
+  // 메뉴를 고르면 닫는다. 사이드바 전체에 위임해 두면 나중에 메뉴가
+  // 늘어나도 따로 손댈 곳이 없다.
+  sidebar.addEventListener('click', (e) => {
+    if (e.target.closest('.nav-item, .nav-external')) setOpen(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isOpen()) setOpen(false);
+  });
+
+  // 창을 넓히면 서랍 상태를 털어낸다. 열어 둔 채로 넓히면 data-nav-open 이
+  // 남아 그림자만 계속 붙어 있다.
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900 && isOpen()) setOpen(false);
+  });
 }
 
 // ── 사이드바 접기/펴기 ────────────────────────────────────
@@ -1754,6 +1794,12 @@ async function _renderInner() {
     openImportCsvModal();
     return;
   }
+  if (state.view === "tool-decisions") {
+    els.viewTitle.textContent = "🗂 검토 결과";
+    els.viewSubtitle.textContent = "지금까지 어느 업체를 어디로 보냈는지 날짜별로 봅니다. 잘못 누른 것은 여기서 되돌립니다.";
+    renderDecisionsPage();
+    return;
+  }
   if (state.view === "tool-review") {
     const fromLegacy = _review.source === 'legacy';
     els.viewTitle.textContent = fromLegacy ? "🔎 직접 검토 · 올린 데이터" : "🔎 직접 검토";
@@ -2075,15 +2121,23 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
               </div>
             </div>
 
-            <button id="startReviewBtn" type="button"
-              title="한 회사씩 카드로 보며 보낼 곳인지 아닌지만 고릅니다"
-              style="margin-left:auto;font-size:16px;font-weight:800;padding:17px 34px;white-space:nowrap;
-                     background:#2563eb;color:#fff;border:none;border-radius:13px;cursor:pointer;
-                     box-shadow:0 4px 16px rgba(37,99,235,.36);
-                     ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}"
-              ${emailReadyCount === 0 ? 'disabled' : ''}>
-              2차 검토 시작 →
-            </button>
+            <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:7px">
+              <button id="startReviewBtn" type="button"
+                title="한 회사씩 카드로 보며 보낼 곳인지 아닌지만 고릅니다"
+                style="font-size:16px;font-weight:800;padding:17px 34px;white-space:nowrap;
+                       background:#2563eb;color:#fff;border:none;border-radius:13px;cursor:pointer;
+                       box-shadow:0 4px 16px rgba(37,99,235,.36);
+                       ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}"
+                ${emailReadyCount === 0 ? 'disabled' : ''}>
+                2차 검토 시작 →
+              </button>
+              <!-- 고르고 나면 "내가 뭘 골랐더라" 를 볼 곳이 필요하다 -->
+              <button id="goDecisionsBtn" type="button"
+                title="지금까지 어느 업체를 어디로 보냈는지 날짜별로 봅니다"
+                style="font-size:12px;font-weight:700;padding:6px 14px;white-space:nowrap;
+                       background:transparent;color:#1d4ed8;border:none;cursor:pointer;
+                       text-decoration:underline">🗂 지금까지 고른 결과 보기</button>
+            </div>
           </div>
         </div>
 
@@ -2143,6 +2197,10 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   // 빠른 검토 진입 — 들어갈 때마다 대기열을 새로 받는다.
   // 이전에 보던 큐가 남아 있으면 이미 판단한 회사가 다시 뜬다.
   document.getElementById('startReviewBtn')?.addEventListener('click', () => startDirectReview());
+  document.getElementById('goDecisionsBtn')?.addEventListener('click', () => {
+    state.view = 'tool-decisions';
+    render();
+  });
   // 검증 완료 · 첫 발송 진입점 (verified stage · 승인된 리드 or 이메일 있는 리드 대상)
   // 발송은 한 곳(발송 화면)에서만 시작한다. 여기서 모달을 바로 띄우면
   // 같은 일을 두 자리에서 하게 되고, "보낼 메일" 목록을 건너뛰게 된다.
@@ -4457,6 +4515,10 @@ const MAIL_CLASS = {
                 desc: '위 어디에도 확실히 넣기 어렵거나, 아직 AI 분석을 돌리지 않아 판단 근거가 부족한 메일.' },
 };
 
+// 광고·자동발송을 모아두는 폴더 이름 — 서버(lib/mail/ingest.ts)와 같아야 한다.
+// 다르면 화면에서 거래처 폴더인 줄 알고 목록 사이에 섞여 나온다.
+var AD_FOLDER_NAME = '광고·자동발송';
+
 async function renderInboxPage(opts) {
   const needsReplyOnly = opts && opts.needsReplyOnly === true;
   els.content.innerHTML = `<div class="inline-loader">메일함 불러오는 중…</div>`;
@@ -4604,7 +4666,7 @@ async function renderInboxPage(opts) {
            style="padding:2px 8px;font-size:10px;border:1px solid #16a34a;border-radius:99px;
                   background:#16a34a;color:#fff;font-weight:700;cursor:pointer;white-space:nowrap">
            💬 리드 대화</button>`
-      : `<span style="font-size:10px;color:var(--text-quaternary)">리드 미연결</span>`;
+      : `<span title="이 메일을 보낸 곳이 우리 업체 목록에 없습니다.&#10;&#10;우리가 먼저 메일을 보낸 적이 없는 곳(새 문의·광고 등)이면 정상입니다.&#10;거래 중인 곳인데 미연결이면, 그 주소로 업체를 등록하면 대화가 이어서 보입니다.&#10;(대화 진행 중·파트너십 화면의 [+ 업체 직접 추가])" style="font-size:10px;color:var(--text-quaternary);border-bottom:1px dotted var(--border-strong);cursor:help">리드 미연결 <b>?</b></span>`;
 
     return `
       <tr class="inbox-row" data-mail-id="${escapeAttr(String(m._id))}" style="cursor:pointer">
@@ -4827,8 +4889,18 @@ async function renderInboxPage(opts) {
       <div style="font-size:10px;font-weight:800;color:var(--text-tertiary);padding:2px 10px 8px;
                   text-transform:uppercase;letter-spacing:.5px">거래처 폴더</div>
       ${folderItem('전체', '', total, 0, '📬')}
-      ${groups.map((g) => folderItem(g.group, g.group, g.total, g.fresh, '📁')).join('')}
+      <!-- 순서: 거래처 폴더 → 미분류 → 광고·자동발송.
+           광고는 목록 맨 아래 [미분류] 바로 밑이다. 거래처 사이에 끼면
+           거래처인 줄 알고, 따로 상자를 쳐서 내려두면 목록 밖으로 보여
+           아예 못 찾는다 (실제로 못 찾으셨다). 같은 목록 안, 맨 끝이 맞다.
+           아이콘만 📢 로 달리 써서 거래처 폴더(📁)와 구분한다. -->
+      ${groups.filter((g) => g.group !== AD_FOLDER_NAME)
+        .map((g) => folderItem(g.group, g.group, g.total, g.fresh, '📁')).join('')}
       ${ungrouped ? folderItem('미분류', '__none__', ungrouped, 0, '❔') : ''}
+      ${(() => {
+        const ad = groups.find((g) => g.group === AD_FOLDER_NAME);
+        return ad ? folderItem('광고·자동발송', AD_FOLDER_NAME, ad.total, 0, '📢') : '';
+      })()}
       <!-- 휴지통도 폴더의 하나로 둔다. 별도 화면으로 빼두면 "치웠는데 어디 갔지"가 되고,
            치운 메일을 되돌리려면 다른 화면으로 나가야 해서 흐름이 끊긴다.
            DB 에서 지우지 않으므로 여기서 언제든 되살릴 수 있다. -->
@@ -5425,7 +5497,7 @@ async function renderDeadlinesPage() {
                 ? `<button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(m.leadId)}"
                      style="padding:3px 9px;font-size:11px;border:1px solid #16a34a;border-radius:99px;
                             background:#16a34a;color:#fff;font-weight:700;cursor:pointer">💬 ${escapeHtml(String(m.company || '대화').slice(0, 14))}</button>`
-                : '<span style="font-size:11px;color:var(--text-quaternary)">리드 미연결</span>'}</td>
+                : '<span title="이 메일을 보낸 곳이 우리 업체 목록에 없습니다.&#10;&#10;우리가 먼저 메일을 보낸 적이 없는 곳(새 문의·광고 등)이면 정상입니다.&#10;거래 중인 곳인데 미연결이면, 그 주소로 업체를 등록하면 대화가 이어서 보입니다.&#10;(대화 진행 중·파트너십 화면의 [+ 업체 직접 추가])" style="font-size:11px;color:var(--text-quaternary);border-bottom:1px dotted var(--border-strong);cursor:help">리드 미연결 <b>?</b></span>'}</td>
             </tr>`;
           }).join('')}
         </tbody></table></div>
@@ -7022,6 +7094,218 @@ function openRelationshipAddModal(stage) {
   });
 
   syncBodyScrollLock?.();
+}
+
+// ── 검토 결과 ─────────────────────────────────────────────────
+//
+// 2차 검토로 수백 곳을 훑고 나면 "내가 뭘 골랐더라" 를 볼 곳이 없다.
+// 잘못 누른 것도 그때는 모르고 지나간다.
+//
+// 날짜로 묶는 이유:
+// 이 데이터에는 사람이 고른 것과 정리 스크립트가 옮긴 것이 섞여 있다.
+// 필드만으로는 안 갈린다 — 9/8 에 한꺼번에 들어간 1,647곳에도 사유가 없다.
+// 날짜로 묶으면 "오늘 내가 한 것" 이 맨 위에 그대로 올라온다.
+var _dec = { days: 0, stage: '', items: [], byDay: [], counts: {}, busy: false };
+
+const DEC_STAGE = {
+  queued:   { label: '📨 보낼 메일',   color: '#2563eb', bg: '#eff6ff', bd: '#bfdbfe' },
+  failed:   { label: '🚫 검증 실패',   color: '#b91c1c', bg: '#fef2f2', bd: '#fecaca' },
+  archived: { label: '📦 보관함',      color: '#6b7280', bg: '#f3f4f6', bd: '#e5e7eb' },
+};
+
+async function renderDecisionsPage() {
+  els.content.innerHTML = `<div class="inline-loader">불러오는 중…</div>`;
+  let d;
+  try {
+    const p = new URLSearchParams({ days: String(_dec.days), limit: '200' });
+    if (_dec.stage) p.set('stage', _dec.stage);
+    d = await safeJsonFetch(`/api/leads/decisions?${p}`);
+    if (!d || !d.success) throw new Error(d?.error || '불러오지 못했습니다');
+  } catch (e) {
+    els.content.innerHTML = `
+      <div class="empty-detail" style="padding:40px 24px">
+        <div style="font-size:44px;margin-bottom:8px">⚠️</div>
+        <h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p>
+        <button type="button" id="decRetry"
+          style="margin-top:16px;padding:11px 22px;border:none;border-radius:10px;background:#2563eb;
+                 color:#fff;font-size:13.5px;font-weight:800;cursor:pointer">다시 시도</button>
+      </div>`;
+    els.content.querySelector('#decRetry')?.addEventListener('click', () => renderDecisionsPage());
+    return;
+  }
+  if (state.view !== 'tool-decisions') return;
+
+  _dec.items = d.items || [];
+  _dec.byDay = d.byDay || [];
+  _dec.counts = d.counts || {};
+
+  const tab = (key, label, n, tone) => {
+    const on = _dec.stage === key;
+    return `<button type="button" class="dec-tab" data-stage="${key}"
+      style="padding:9px 17px;font-size:13px;font-weight:${on ? '800' : '600'};border-radius:10px;
+             cursor:pointer;border:1px solid ${on ? tone : 'var(--border-default)'};
+             background:${on ? tone : 'var(--bg-surface)'};color:${on ? '#fff' : 'var(--text-secondary)'}">
+      ${label} <span style="opacity:.75;font-weight:600">${(n || 0).toLocaleString()}</span></button>`;
+  };
+
+  const period = (v, label) => `<button type="button" class="dec-days" data-days="${v}"
+    style="padding:5px 12px;font-size:12px;font-weight:${_dec.days === v ? '800' : '600'};
+           border-radius:99px;cursor:pointer;
+           border:1px solid ${_dec.days === v ? 'var(--brand)' : 'var(--border-default)'};
+           background:${_dec.days === v ? 'var(--brand-soft)' : 'var(--bg-surface)'};
+           color:${_dec.days === v ? 'var(--brand-text)' : 'var(--text-secondary)'}">${label}</button>`;
+
+  els.content.innerHTML = `
+    <div style="max-width:1080px;margin:0 auto">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        ${tab('', '전체', (_dec.counts.queued || 0) + (_dec.counts.failed || 0) + (_dec.counts.archived || 0), '#334155')}
+        ${tab('queued', '📨 보낼 메일', _dec.counts.queued, '#2563eb')}
+        ${tab('failed', '🚫 검증 실패', _dec.counts.failed, '#b91c1c')}
+        ${tab('archived', '📦 보관함', _dec.counts.archived, '#6b7280')}
+        <span style="margin-left:auto;display:flex;gap:5px;align-items:center">
+          <span style="font-size:11px;color:var(--text-tertiary);font-weight:700">기간</span>
+          ${period(7, '최근 7일')}${period(30, '최근 30일')}${period(0, '전체')}
+        </span>
+      </div>
+
+      ${decByDayHtml()}
+
+      <div style="font-size:11.5px;font-weight:800;color:var(--text-quaternary);
+                  letter-spacing:.04em;margin:20px 2px 9px">
+        최근 판정 ${_dec.items.length.toLocaleString()}곳
+        ${d.total > _dec.items.length ? `<span style="font-weight:500">· 전체 ${d.total.toLocaleString()}곳 중</span>` : ''}
+      </div>
+      ${_dec.items.length ? decListHtml() : `
+        <div style="padding:38px 24px;text-align:center;background:var(--bg-surface);
+                    border:1px dashed var(--border-default);border-radius:12px;
+                    color:var(--text-tertiary);font-size:13px">
+          이 조건에 해당하는 판정이 없습니다.
+        </div>`}
+    </div>`;
+
+  bindDecisionsPage();
+}
+
+/** 날짜별 묶음 — "며칠에 무엇을 골랐나" 로 읽히게 */
+function decByDayHtml() {
+  if (!_dec.byDay.length) return '';
+  const today = new Date().toISOString().slice(0, 10);
+  const bar = (n, total, color) => n
+    ? `<div style="flex:${n};height:100%;background:${color}" title="${n}곳"></div>` : '';
+
+  return `
+    <div style="background:var(--bg-surface);border:1px solid var(--border-default);
+                border-radius:13px;overflow:hidden">
+      <div style="padding:12px 18px;border-bottom:1px solid var(--border-subtle);
+                  font-size:12.5px;font-weight:800;color:var(--text-secondary)">
+        날짜별 판정
+        <span style="font-weight:500;color:var(--text-quaternary);margin-left:6px">
+          숫자가 큰 날은 일괄 정리가 돌아간 날입니다</span>
+      </div>
+      ${_dec.byDay.slice(0, 14).map((b) => {
+        const isToday = b.date === today;
+        return `
+        <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;
+                    border-bottom:1px solid var(--border-subtle);
+                    background:${isToday ? '#eff6ff' : 'transparent'}">
+          <div style="width:104px;flex:none;font-size:12.5px;font-weight:${isToday ? '800' : '600'};
+                      color:${isToday ? '#1d4ed8' : 'var(--text-secondary)'}">
+            ${escapeHtml(b.date)}${isToday ? ' · 오늘' : ''}
+          </div>
+          <div style="width:58px;flex:none;text-align:right;font-size:15px;font-weight:800;
+                      color:var(--text-primary)">${b.total.toLocaleString()}</div>
+          <div style="flex:1;min-width:80px;height:8px;border-radius:99px;overflow:hidden;
+                      display:flex;background:var(--bg-surface-alt)">
+            ${bar(b.queued, b.total, '#2563eb')}
+            ${bar(b.failed, b.total, '#b91c1c')}
+            ${bar(b.archived, b.total, '#9ca3af')}
+          </div>
+          <div style="width:210px;flex:none;text-align:right;font-size:11.5px;color:var(--text-tertiary)">
+            ${b.queued ? `<span style="color:#2563eb;font-weight:700">보낼곳 ${b.queued}</span> ` : ''}
+            ${b.failed ? `<span style="color:#b91c1c;font-weight:700">실패 ${b.failed}</span> ` : ''}
+            ${b.archived ? `<span>보관 ${b.archived}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function decListHtml() {
+  return `
+    <div style="display:flex;flex-direction:column;gap:7px">
+      ${_dec.items.map((l) => {
+        const s = DEC_STAGE[l.stage] || DEC_STAGE.archived;
+        const when = l.stageChangedAt
+          ? new Date(l.stageChangedAt).toLocaleString('ko-KR',
+              { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+          : '';
+        return `
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 15px;border-radius:10px;
+                    background:var(--bg-surface);border:1px solid var(--border-subtle)">
+          <span style="flex:none;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700;
+                       background:${s.bg};color:${s.color};border:1px solid ${s.bd};
+                       white-space:nowrap">${s.label}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13.5px;font-weight:700;color:var(--text-primary);
+                        overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              ${escapeHtml(l.Company || '(이름 없음)')}
+            </div>
+            <div style="font-size:11px;color:var(--text-tertiary);margin-top:1px;
+                        overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              ${escapeHtml(l.Country || '')}${l.Email ? ' · ' + escapeHtml(l.Email) : ''}
+              ${l.sentCount ? ` · 메일 ${l.sentCount}회 나감` : ''}
+            </div>
+          </div>
+          <span style="flex:none;font-size:11px;color:var(--text-quaternary);white-space:nowrap">${escapeHtml(when)}</span>
+          <!-- 되돌리기 — 잘못 누른 것을 여기서 바로 고칠 수 있어야
+               "내가 뭘 골랐나" 를 보는 의미가 있다. -->
+          <button type="button" class="dec-undo" data-lead="${escapeAttr(l.leadId)}" data-cur="${l.stage}"
+            title="이 업체를 [AI 검증 완료] 로 되돌립니다"
+            style="flex:none;padding:5px 12px;font-size:11.5px;font-weight:700;border-radius:8px;
+                   cursor:pointer;border:1px solid var(--border-default);
+                   background:var(--bg-surface);color:var(--text-secondary);white-space:nowrap"
+            ${l.sentCount ? 'disabled title="메일이 이미 나가서 되돌릴 수 없습니다" style="opacity:.4;cursor:not-allowed"' : ''}>
+            ↩ 되돌리기
+          </button>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function bindDecisionsPage() {
+  els.content.querySelectorAll('.dec-tab').forEach((b) =>
+    b.addEventListener('click', () => { _dec.stage = b.dataset.stage; renderDecisionsPage(); }));
+  els.content.querySelectorAll('.dec-days').forEach((b) =>
+    b.addEventListener('click', () => { _dec.days = Number(b.dataset.days); renderDecisionsPage(); }));
+
+  els.content.querySelectorAll('.dec-undo').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (_dec.busy) return;
+      const leadId = b.dataset.lead;
+      const row = _dec.items.find((x) => x.leadId === leadId);
+      if (!confirm(`[${row?.Company || leadId}] 를 [AI 검증 완료] 로 되돌립니다.\n\n진행할까요?`)) return;
+      _dec.busy = true;
+      b.disabled = true;
+      const was = b.textContent;
+      b.textContent = '⏳';
+      try {
+        const r = await safeJsonFetch(`/api/leads/${encodeURIComponent(row._id)}/stage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stage: 'verified' }),
+        });
+        if (!r?.success) throw new Error(r?.error || '되돌리기 실패');
+        invalidateServerPage();
+        await loadStageCounts(true);
+        renderDecisionsPage();
+      } catch (e) {
+        alert(`되돌리지 못했습니다: ${(e && e.message) || e}`);
+        b.disabled = false;
+        b.textContent = was;
+      } finally {
+        _dec.busy = false;
+      }
+    }));
 }
 
 // ── 휴지통 ────────────────────────────────────────────────────
