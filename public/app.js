@@ -4247,8 +4247,8 @@ const STAGE_STYLE = {
   'ai-searched': { bg: '#ede9fe', fg: '#5b21b6', label: '🤖 AI 서칭' },
   verifying:     { bg: '#fef9c3', fg: '#854d0e', label: '🔍 검증 대기' },
   verified:      { bg: '#dcfce7', fg: '#166534', label: '✅ AI 검증 완료' },
-  queued:        { bg: '#e0f2fe', fg: '#075985', label: '📨 발송 관리로 이동' },
-  contacted:     { bg: '#dbeafe', fg: '#1e40af', label: '📨 발송 관리' },
+  queued:        { bg: '#e0f2fe', fg: '#075985', label: '📨 보낼 메일' },
+  contacted:     { bg: '#dbeafe', fg: '#1e40af', label: '✅ 발송 완료' },
   replied:       { bg: '#e0e7ff', fg: '#3730a3', label: '💬 답장 받음' },
   negotiating:   { bg: '#fed7aa', fg: '#9a3412', label: '🤝 대화 진행 중' },
   partner:       { bg: '#f3e8ff', fg: '#6b21a8', label: '⭐ 파트너십 확정' },
@@ -4318,6 +4318,8 @@ function stageCellHtml(lead) {
       'replied:failed': '🚫 컨택 실패',
       'negotiating:failed': '🚫 컨택 실패',
       'queued:verified': '↩ 검증 완료로 되돌리기',
+      // 검증 완료에서 보낼 곳으로 고르는 순간이라 '어디로 가는가' 를 적는다
+      'verified:queued': '📨 발송 관리로 이동',
     };
     const shortLabel = CONTEXT_LABEL[`${cur}:${target}`]
       || t.label.replace(/^([^\s]+)\s(.+)$/, '$1 $2');
@@ -8418,10 +8420,22 @@ async function handleStageChange(leadId, newStage, selectEl) {
 
   const oldStage = lead.stage || 'imported';
   const oldStyle = STAGE_STYLE[oldStage];
-  if (selectEl) {
-    selectEl.style.opacity = '0.6';
+  // 누른 티를 낸다.
+  //
+  // 예전에는 실패해도 아무 표시가 없어서 "눌렀는데 왜 그대로지" 가 됐다.
+  // 서버에 다녀오는 동안 버튼이 눌린 상태로 보이면, 적어도 눌리긴 했다는 걸 안다.
+  const restoreBtn = (() => {
+    if (!selectEl) return () => {};
+    const wasHtml = selectEl.tagName === 'SELECT' ? null : selectEl.innerHTML;
+    selectEl.style.opacity = '0.55';
     selectEl.disabled = true;
-  }
+    if (wasHtml !== null) selectEl.innerHTML = '⏳ 옮기는 중';
+    return () => {
+      selectEl.disabled = false;
+      selectEl.style.opacity = '1';
+      if (wasHtml !== null) selectEl.innerHTML = wasHtml;
+    };
+  })();
   try {
     const res = await fetch(`/api/leads/${lead._id}/stage`, {
       method: 'POST',
@@ -8447,12 +8461,10 @@ async function handleStageChange(leadId, newStage, selectEl) {
 
     render();
   } catch (e) {
-    alert(`stage 변경 실패: ${e.message || 'unknown'}`);
-    if (selectEl) {
-      selectEl.value = oldStage;
-      selectEl.disabled = false;
-      selectEl.style.opacity = '1';
-    }
+    // 실패를 반드시 보여준다. 조용히 끝나면 "눌렀는데 그대로" 가 된다.
+    alert(`옮기지 못했습니다: ${e.message || 'unknown'}\n\n화면을 새로고침한 뒤 다시 시도해 주세요.`);
+    restoreBtn();
+    if (selectEl && selectEl.tagName === 'SELECT') selectEl.value = oldStage;
   }
 }
 
