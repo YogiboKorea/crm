@@ -333,6 +333,25 @@ export async function listGroups(accountId?: string): Promise<{ groups: GroupRow
     byAccount.set(r._id.accountId, list);
   }
 
+  for (const [group] of folderOrder.merged) {
+    if (!merged.has(group)) {
+      merged.set(group, { group, count: 0, total: 0, fresh: 0, last: null });
+    }
+  }
+
+  for (const [id, accountOrder] of folderOrder.byAccount) {
+    const list = byAccount.get(id) || [];
+    const seen = new Set(list.map((row) => row.group));
+
+    for (const [group] of accountOrder) {
+      if (!seen.has(group)) {
+        list.push({ group, count: 0, total: 0, fresh: 0, last: null });
+      }
+    }
+
+    byAccount.set(id, list);
+  }
+
   return {
     groups: [...merged.values()].sort(sortByFolderOrder(folderOrder.merged)),
     byAccount: Object.fromEntries([...byAccount].map(([id, list]) => [
