@@ -1364,6 +1364,21 @@ async function _renderInner() {
     return;
   }
 
+  // ── 거래가 살아 있는 회사들 ────────────────────────────────
+  //
+  // [대화 진행 중]·[파트너십 확정]은 표로 보는 화면이 아니다. 몇 곳 안 되고,
+  // 알고 싶은 것도 "이 회사와 어디까지 갔나" 하나라서 회사별 카드로 본다.
+  // (stageMap 보다 먼저 가로챈다 — 뒤에 두면 그쪽이 먼저 집어간다)
+  if (state.view === 'pipeline-partner' || state.view === 'pipeline-negotiating') {
+    const isPartner = state.view === 'pipeline-partner';
+    els.viewTitle.textContent = isPartner ? '⭐ 파트너십 확정' : '🤝 대화 진행 중';
+    els.viewSubtitle.textContent = isPartner
+      ? '계약·합의가 끝난 거래처입니다. 회사를 누르면 그동안 오간 대화가 열립니다.'
+      : '조건·일정·가격을 주고받는 중인 곳입니다. 회사를 누르면 대화가 열립니다.';
+    renderRelationshipsPage(isPartner ? 'partner' : 'negotiating');
+    return;
+  }
+
   // ── 새 파이프라인 뷰 (stage 기반) ─────────────────────────────
   const stageMap = {
     'pipeline-import':      { stage: 'imported',    title: '📥 가져오기 (Import)',  sub: '엑셀에서 새로 업로드된 회사들. 검증 진행 대기.' },
@@ -6188,6 +6203,193 @@ document.addEventListener('keydown', (ev) => {
     if (a) { ev.preventDefault(); window.open(a.href, '_blank', 'noopener'); }
   }
 });
+
+// ── 거래가 살아 있는 회사들 (대화 진행 중 · 파트너십 확정) ──────
+//
+// 여기는 발굴한 후보를 거르는 자리가 아니라 **이미 사람이 붙어 있는 곳**이다.
+// 그래서 표가 아니라 회사 카드로 본다 — 몇 곳 안 되고, 회사마다 상태가
+// 제각각이라 한 줄로 줄여 놓으면 정작 필요한 게 안 보인다.
+//
+// 카드에 올리는 것은 "지금 내가 뭘 해야 하나"에 답하는 것만 둔다.
+//   · 답을 기다리고 있나 (회신 필요)
+//   · 마지막으로 말이 오간 게 언제인가
+//   · 지금까지 몇 통 주고받았나
+var _rel = { stage: 'partner', q: '', items: [], open: null, thread: null, busy: false };
+
+async function renderRelationshipsPage(stage) {
+  if (stage && stage !== _rel.stage) { _rel.stage = stage; _rel.open = null; _rel.thread = null; }
+
+  // 회사를 하나 열어둔 상태면 그 화면을 그린다
+  if (_rel.open) return renderRelationshipDetail();
+
+  els.content.innerHTML = `<div class="inline-loader">불러오는 중…</div>`;
+  let d;
+  try {
+    const p = new URLSearchParams({ stage: _rel.stage });
+    if (_rel.q) p.set('q', _rel.q);
+    d = await safeJsonFetch(`/api/leads/relationships?${p}`);
+    if (!d || !d.success) throw new Error(d?.error || '불러오지 못했습니다');
+  } catch (e) {
+    els.content.innerHTML = `
+      <div class="empty-detail" style="padding:40px 24px">
+        <div style="font-size:44px;margin-bottom:8px">⚠️</div>
+        <h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p>
+        <button type="button" id="relRetry"
+          style="margin-top:16px;padding:11px 22px;border:none;border-radius:10px;background:#2563eb;
+                 color:#fff;font-size:13.5px;font-weight:800;cursor:pointer">다시 시도</button>
+      </div>`;
+    els.content.querySelector('#relRetry')?.addEventListener('click', () => renderRelationshipsPage());
+    return;
+  }
+  if (state.view !== 'pipeline-partner' && state.view !== 'pipeline-negotiating') return;
+
+  _rel.items = d.items || [];
+  const s = d.summary || {};
+  const isPartner = _rel.stage === 'partner';
+  const tone = isPartner ? '#7c3aed' : '#0891b2';
+
+  els.content.innerHTML = `
+    <div style="max-width:1180px;margin:0 auto">
+      ${relHeaderHtml(isPartner, s, tone)}
+      ${_rel.items.length
+        ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:13px">
+             ${_rel.items.map((it) => relCardHtml(it, tone)).join('')}
+           </div>`
+        : relEmptyHtml(isPartner)}
+    </div>`;
+
+  bindRelationshipsPage();
+}
+
+function relHeaderHtml(isPartner, s, tone) {
+  return `
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px;
+                padding:18px 22px;border-radius:15px;border:1px solid ${tone}44;
+                background:linear-gradient(135deg,${tone}0f 0%,${tone}05 100%)">
+      <span style="width:54px;height:54px;flex:none;border-radius:15px;display:flex;align-items:center;
+                   justify-content:center;font-size:27px;background:#fff">${isPartner ? '⭐' : '🤝'}</span>
+      <div style="min-width:170px">
+        <div style="font-size:26px;font-weight:800;color:var(--text-primary);line-height:1.1">
+          ${(s.count || 0).toLocaleString()}<span style="font-size:14px;font-weight:600;color:var(--text-tertiary);margin-left:4px">곳</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px">
+          지금까지 주고받은 메일 ${(s.totalMails || 0).toLocaleString()}통
+        </div>
+      </div>
+      ${s.needsReply
+        ? `<div style="padding:9px 15px;border-radius:10px;background:#fef3c7;border:1px solid #fcd34d">
+             <div style="font-size:19px;font-weight:800;color:#b45309;line-height:1">${s.needsReply}</div>
+             <div style="font-size:11.5px;font-weight:700;color:#92400e;margin-top:1px">곳이 답을 기다립니다</div>
+           </div>`
+        : `<div style="font-size:12.5px;color:var(--text-tertiary)">답을 기다리는 곳은 없습니다 👍</div>`}
+
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="relSearch" type="search" placeholder="회사·담당자 검색" value="${escapeAttr(_rel.q)}"
+          style="padding:8px 13px;font-size:13px;border:1px solid var(--border-default);border-radius:9px;
+                 background:var(--bg-surface);color:var(--text-primary);min-width:180px">
+        <!-- 이 앱을 쓰기 전부터 메일로 거래하던 곳은 파이프라인 어디에도 없다.
+             정작 지금 가장 중요한 회사들이라 직접 넣을 수 있어야 한다. -->
+        <button type="button" id="relAddBtn"
+          style="padding:10px 18px;border:none;border-radius:10px;background:${tone};color:#fff;
+                 font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap">+ 업체 직접 추가</button>
+      </div>
+    </div>`;
+}
+
+function relCardHtml(it, tone) {
+  const days = it.lastTouch
+    ? Math.floor((Date.now() - new Date(it.lastTouch).getTime()) / 86400000) : null;
+  const touchLabel = days === null ? '연락 기록 없음'
+    : days === 0 ? '오늘 주고받음'
+    : days === 1 ? '어제 주고받음'
+    : `${days}일 전 주고받음`;
+  // 오래 말이 없으면 눈에 띄게 — 파트너는 방치가 곧 이탈이다
+  const stale = days !== null && days >= 30;
+
+  return `
+    <div class="rel-card" data-lead-id="${escapeAttr(it.leadId)}"
+      style="border:1px solid ${it.needsReply ? '#fcd34d' : 'var(--border-default)'};
+             border-radius:14px;padding:17px 19px;cursor:pointer;background:var(--bg-surface);
+             box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:11px">
+
+      <div style="display:flex;align-items:flex-start;gap:9px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:16px;font-weight:800;color:var(--text-primary);line-height:1.3;
+                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${escapeHtml(it.Company || '(이름 없음)')}
+          </div>
+          <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:3px;
+                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            ${escapeHtml(it.Country || '국가 미상')}${it.BuyerContact ? ' · ' + escapeHtml(it.BuyerContact) : ''}
+          </div>
+        </div>
+        ${it.needsReply
+          ? `<span style="flex:none;background:#fef3c7;color:#92400e;border-radius:99px;padding:3px 10px;
+               font-size:11px;font-weight:800;white-space:nowrap">⚠ 답장 ${it.needsReply}</span>`
+          : ''}
+        ${it.addedManually
+          ? `<span title="화면에서 직접 등록한 회사입니다" style="flex:none;background:var(--bg-surface-alt);
+               color:var(--text-tertiary);border-radius:99px;padding:3px 9px;font-size:10.5px;
+               font-weight:700;white-space:nowrap">직접 등록</span>`
+          : ''}
+      </div>
+
+      <div style="font-size:11.5px;color:var(--text-tertiary);font-family:monospace;
+                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(it.Email || '—')}</div>
+
+      <div style="display:flex;gap:14px;align-items:center;padding-top:10px;
+                  border-top:1px solid var(--border-subtle)">
+        <div>
+          <div style="font-size:17px;font-weight:800;color:${tone};line-height:1">${it.total.toLocaleString()}</div>
+          <div style="font-size:10.5px;color:var(--text-quaternary);margin-top:1px">주고받은 메일</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-tertiary);line-height:1.5">
+          받음 ${it.inCount} · 보냄 ${it.outCount}
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-size:11.5px;font-weight:700;color:${stale ? '#b45309' : 'var(--text-secondary)'}">
+            ${stale ? '⏳ ' : ''}${touchLabel}
+          </div>
+          ${it.nearestDeadline
+            ? `<div style="font-size:10.5px;color:#b45309;margin-top:2px">기한 ${new Date(it.nearestDeadline).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</div>`
+            : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+function relEmptyHtml(isPartner) {
+  return `
+    <div class="empty-detail" style="padding:52px 28px">
+      <div style="font-size:50px;margin-bottom:10px">${isPartner ? '⭐' : '🤝'}</div>
+      <h3>${isPartner ? '확정된 파트너가 아직 없습니다' : '대화 중인 곳이 아직 없습니다'}</h3>
+      <p>${isPartner
+        ? '거래가 확정되면 [대화 진행 중]에서 이쪽으로 옮겨집니다.'
+        : '답장이 오가기 시작한 곳이 여기로 옵니다.'}</p>
+      <p style="margin-top:6px;color:var(--text-tertiary);font-size:12.5px">
+        이 앱을 쓰기 전부터 연락하던 거래처가 있다면 위 <b>[+ 업체 직접 추가]</b> 로 넣어주세요.<br>
+        이미 받아둔 메일이 있으면 등록하면서 자동으로 붙습니다.
+      </p>
+    </div>`;
+}
+
+function bindRelationshipsPage() {
+  els.content.querySelectorAll('.rel-card').forEach((el) => {
+    el.addEventListener('click', () => {
+      _rel.open = el.dataset.leadId;
+      _rel.thread = null;
+      renderRelationshipDetail();
+    });
+  });
+  els.content.querySelector('#relAddBtn')?.addEventListener('click', () => openRelationshipAddModal(_rel.stage));
+
+  const box = els.content.querySelector('#relSearch');
+  let t;
+  box?.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => { _rel.q = box.value.trim(); renderRelationshipsPage(); }, 350);
+  });
+}
 
 // ── 휴지통 ────────────────────────────────────────────────────
 // DB 에서 지우지 않고 trashedAt 만 세팅하므로 언제든 되돌릴 수 있다.

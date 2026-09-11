@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { isMasterUser, masterIds } from '@/lib/masters';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser } from '@/models/AdminUser';
 import crypto from 'crypto';
@@ -14,7 +15,7 @@ async function isMaster(req: Request) {
   
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    return payload.user === (process.env.ADMIN_ID || 'yogico');
+    return isMasterUser(payload.user as string);
   } catch {
     return false;
   }

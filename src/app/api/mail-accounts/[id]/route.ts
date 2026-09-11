@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { isMasterUser } from '@/lib/masters';
 import dbConnect from '@/lib/mongodb';
 import { MailAccount } from '@/models/MailAccount';
 import { encryptSecret, sanitizeMailAccount } from '@/lib/crypto';
@@ -32,7 +33,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const body = await req.json().catch(() => ({}));
 
   await dbConnect();
-  const acc = await MailAccount.findOne({ _id: id, owner: user });
+  const acc = await MailAccount.findOne({ _id: id, ...(isMasterUser(user) ? {} : { owner: user }) });
   if (!acc) return NextResponse.json({ success: false, error: 'not found' }, { status: 404 });
 
   const update: any = {};
@@ -67,7 +68,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   // isDefault=true 로 변경 시 다른 계정 해제
   if (body.isDefault === true) {
-    await MailAccount.updateMany({ owner: user, isDefault: true, _id: { $ne: acc._id } }, { $set: { isDefault: false } });
+    await MailAccount.updateMany({ ...(isMasterUser(user) ? {} : { owner: user }), isDefault: true, _id: { $ne: acc._id } }, { $set: { isDefault: false } });
     update.isDefault = true;
   }
 
@@ -81,11 +82,11 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
   const { id } = await params;
   await dbConnect();
-  const acc = await MailAccount.findOneAndDelete({ _id: id, owner: user });
+  const acc = await MailAccount.findOneAndDelete({ _id: id, ...(isMasterUser(user) ? {} : { owner: user }) });
   if (!acc) return NextResponse.json({ success: false, error: 'not found' }, { status: 404 });
   // default 계정 삭제하면 가장 오래된 것을 새 default 로
   if (acc.isDefault) {
-    const next = await MailAccount.findOne({ owner: user }).sort({ createdAt: 1 });
+    const next = await MailAccount.findOne(isMasterUser(user) ? {} : { owner: user }).sort({ createdAt: 1 });
     if (next) { next.isDefault = true; await next.save(); }
   }
   return NextResponse.json({ success: true });

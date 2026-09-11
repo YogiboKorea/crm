@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { isMasterUser } from '@/lib/masters';
 import dbConnect from '@/lib/mongodb';
 import { MailAccount } from '@/models/MailAccount';
 import { encryptSecret, sanitizeMailAccount } from '@/lib/crypto';
@@ -22,17 +23,31 @@ async function currentUser() {
 }
 
 /**
- * GET  /api/mail-accounts             → 내 계정 목록 (비번 제외)
+ * 이 사람이 볼 수 있는 계정 조건.
+ *
+ * 마스터는 등록된 계정을 전부 본다.
+ * 예전에는 무조건 { owner: 본인 } 이라, admin 이 등록한 발송 계정 두 개가
+ * yogico 로 로그인하면 하나도 안 보였다 — 대표가 쓰는 계정이 둘 다
+ * 마스터인데 "보내는 계정" 칸이 통째로 비어 메일을 못 보내는 상태였다.
+ * 계정 자체는 회사 자산이므로 마스터끼리는 같은 것을 보는 게 맞다.
+ */
+function visibleTo(user: string) {
+  return isMasterUser(user) ? {} : { owner: user };
+}
+
+/**
+ * GET  /api/mail-accounts             → 쓸 수 있는 계정 목록 (비번 제외)
  * POST /api/mail-accounts             → 새 계정 등록 (저장 전 SMTP verify 강제)
  */
 export async function GET() {
   const user = await currentUser();
   if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
   await dbConnect();
-  const list = await MailAccount.find({ owner: user }).sort({ isDefault: -1, createdAt: 1 });
+  const list = await MailAccount.find(visibleTo(user)).sort({ isDefault: -1, createdAt: 1 });
   return NextResponse.json({
     success: true,
     accounts: list.map(sanitizeMailAccount),
+    master: isMasterUser(user),
   });
 }
 
@@ -76,7 +91,9 @@ export async function POST(req: Request) {
 
   // 이 계정이 default 면 기존 default 해제
   if (isDefault === true) {
-    await MailAccount.updateMany({ owner: user, isDefault: true }, { $set: { isDefault: false } });
+    // 기본 계정은 하나뿐이어야 한다. 마스터는 남의 계정도 보므로
+    // 자기 것만 내리면 기본이 두 개가 되어 어느 주소로 나가는지 알 수 없다.
+    await MailAccount.updateMany({ ...visibleTo(user), isDefault: true }, { $set: { isDefault: false } });
   }
   // 사용자의 첫 계정이면 자동으로 default
   const count = await MailAccount.countDocuments({ owner: user });

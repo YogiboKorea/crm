@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { isMasterUser } from '@/lib/masters';
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret');
 
@@ -15,7 +16,7 @@ export async function GET() {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     const username = payload.user as string;
-    const isMaster = username === (process.env.ADMIN_ID || 'yogico');
+    const isMaster = isMasterUser(username);
     
     return NextResponse.json({
       authenticated: true,

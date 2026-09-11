@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { isMasterUser, masterIds } from '@/lib/masters';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser } from '@/models/AdminUser';
 
@@ -13,7 +14,7 @@ async function isMaster(req: Request) {
   
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    return payload.user === (process.env.ADMIN_ID || 'yogico');
+    return isMasterUser(payload.user as string);
   } catch {
     return false;
   }
@@ -30,10 +31,13 @@ export async function DELETE(
 
   try {
     const { username } = await params;
-    const masterId = process.env.ADMIN_ID || 'yogico';
-    
-    if (username === masterId) {
-      return NextResponse.json({ success: false, error: 'Cannot delete the master account' }, { status: 400 });
+    // 마스터는 여럿일 수 있다. 그중 누구도 지울 수 없다 —
+    // 마지막 마스터를 지우면 사용자 관리 화면에 다시 들어갈 방법이 없어진다.
+    if (isMasterUser(username)) {
+      return NextResponse.json({
+        success: false,
+        error: `마스터 계정(${masterIds().join(', ')})은 삭제할 수 없습니다`,
+      }, { status: 400 });
     }
 
     await dbConnect();

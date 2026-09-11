@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { isMasterUser } from '@/lib/masters';
 import dbConnect from '@/lib/mongodb';
 import { MailAccount } from '@/models/MailAccount';
 import { decryptSecret } from '@/lib/crypto';
@@ -25,7 +26,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   await dbConnect();
-  const acc = await MailAccount.findOne({ _id: id, owner: user });
+  const acc = await MailAccount.findOne({ _id: id, ...(isMasterUser(user) ? {} : { owner: user }) });
   if (!acc) return NextResponse.json({ success: false, error: 'not found' }, { status: 404 });
 
   const now = new Date().toISOString();

@@ -50,6 +50,14 @@ export interface ILead extends Document {
   //   failed      : 검증 실패 (컨택 수단 없음 등)
   stage?: 'imported' | 'ai-searched' | 'verifying' | 'verified' | 'queued' | 'contacted' | 'replied' | 'negotiating' | 'partner' | 'archived' | 'failed';
   stageChangedAt?: string;
+  /**
+   * 사람이 화면에서 직접 등록한 회사인가.
+   *
+   * [대화 진행 중]·[파트너십 확정]에는 이미 다른 경로로 연락이 닿아 있던 곳을
+   * 손으로 넣게 된다. 그런 곳은 검증·발송 단계를 거치지 않았으므로,
+   * "왜 이 회사는 근거도 점수도 없지" 를 나중에 설명할 수 있어야 한다.
+   */
+  addedManually?: boolean;
   becamePartnerAt?: string;    // 파트너 성사 시각 (최종 완료 timestamp)
   readyForOutreach?: boolean;  // 발송 승인 게이트 — verified 후 대표가 승인해야 자동 발송 대상
 
@@ -182,6 +190,7 @@ const LeadSchema: Schema = new Schema({
     index: true,
   },
   stageChangedAt: { type: String, default: '' },
+  addedManually: { type: Boolean, default: false },
   becamePartnerAt: { type: String, default: '' },
   readyForOutreach: { type: Boolean, default: false },
 
