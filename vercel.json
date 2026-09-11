@@ -1,5 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "//regions": [
+    "서버를 서울에 둔다. 이게 없으면 Vercel 기본값인 미국 동부(iad1)에서 돈다.",
+    "DB(MongoDB Atlas)는 서울에 있다 — ac-b0y2ng4-shard-*.dmz6oro.mongodb.net → 159.143.252.136 (Seoul, KR).",
+    "미국 동부에서 서울 DB 까지는 한 번 왕복에 약 200ms 다. 화면 하나가 질의를",
+    "대여섯 번 하면 그것만으로 1초가 넘는다. 쓰는 사람도 한국에 있으므로",
+    "브라우저↔서버 구간까지 합치면 왕복이 두 번 태평양을 건넌다.",
+    "icn1 로 옮기면 그 구간이 사라진다 (로컬에서 DB 까지 실측 48ms)."
+  ],
+  "regions": ["icn1"],
+
   "crons": [
     {
       "path": "/api/cron/process-schedules",

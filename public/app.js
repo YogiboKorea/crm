@@ -10077,14 +10077,27 @@ async function fetchScheduledMails(status) {
 async function renderOutboxPage() {
   els.content.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-tertiary)">로드 중...</div>`;
 
-  const [lock, schedData] = await Promise.all([
+  // ── 한 번에 다 부른다 ──
+  //
+  // 예전에는 네 번을 차례로 기다렸다 (묶음 → 양식 → 계정 → 메일러 설정 → 리드).
+  // 서로 필요로 하는 것이 없는데도 앞의 것이 끝나야 다음이 나갔다.
+  // 서버가 서울에 있어도 한 번에 몇십 ms 씩 쌓이고, 리전이 어긋나 있으면
+  // 한 번에 200ms 라 그것만으로 1초가 넘는다.
+  //
+  // 전부 독립이므로 한 묶음으로 보낸다. 느린 하나만큼만 기다리면 된다.
+  const [lock, schedData, queuedRes, contactedRes] = await Promise.all([
     loadOutboundStatus(),
     safeJsonFetch('/api/mail/schedule?status=all&limit=500').catch(() => null),
+    // 이 화면은 baseLeads 에 기대면 안 된다.
+    // 사이드바에서 발송 관리로 바로 들어오면 그 배열이 비어 있어서, 옮겨둔
+    // 곳이 있는데도 화면이 통째로 비어 보였다. 필요한 단계만 직접 가져온다.
+    safeJsonFetch('/api/leads?stage=queued&limit=500').catch(() => null),
+    safeJsonFetch('/api/leads?stage=contacted&limit=500').catch(() => null),
     loadStageCounts().catch(() => null),   // 발송 완료 탭의 "답장 와서 넘어간 곳"
+    state.email.templates.length ? null : loadEmailTemplates().catch(() => {}),
+    (_mailAccounts || []).length ? null : loadMailAccounts().catch(() => {}),
+    refreshMailerEnv().catch(() => {}),
   ]);
-  if (!state.email.templates.length) await loadEmailTemplates().catch(() => {});
-  if (!(_mailAccounts || []).length) await loadMailAccounts().catch(() => {});
-  await refreshMailerEnv().catch(() => {});
 
   const all = (schedData && schedData.items) || [];
   const pending  = all.filter((i) => i.status === 'pending');
@@ -10092,14 +10105,6 @@ async function renderOutboxPage() {
   const failed   = all.filter((i) => i.status === 'failed');
   const canceled = all.filter((i) => i.status === 'canceled');
 
-  // 이 화면은 baseLeads 에 기대면 안 된다.
-  // 사이드바 진입 처리는 pipeline-verifying / pipeline-import 일 때만 loadLeads()
-  // 를 부른다. 그래서 발송 관리로 바로 들어오면 baseLeads 가 비어 있고, 옮겨둔
-  // 곳이 있는데도 화면이 통째로 비어 보였다. 필요한 단계만 직접 가져온다.
-  const [queuedRes, contactedRes] = await Promise.all([
-    safeJsonFetch('/api/leads?stage=queued&limit=2000').catch(() => null),
-    safeJsonFetch('/api/leads?stage=contacted&limit=2000').catch(() => null),
-  ]);
   const queuedLeads = ((queuedRes && queuedRes.data) || []).map((l) => ({ ...l, id: l.leadId }));
   const sentLeads = ((contactedRes && contactedRes.data) || []).map((l) => ({ ...l, id: l.leadId }));
 
