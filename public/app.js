@@ -197,7 +197,13 @@ let isMaster = false;
 let edits = {};
 let customLeads = [];
 let state = {
-  view: "pipeline-import",
+  // 첫 화면 = AI 검증 완료.
+  //
+  // 예전에는 'pipeline-import' 였는데 그 메뉴는 사이드바에서 숨긴 상태라,
+  // 접속하면 **사이드바 어디에도 없는 빈 화면**이 먼저 떴다. 어느 메뉴도
+  // 선택돼 보이지 않아 "지금 뭘 보고 있는 거지" 로 시작하게 된다.
+  // 매일 여는 곳이 [AI 검증 완료] 이므로 거기서 시작한다.
+  view: "pipeline-verified",
   query: "",
   country: "All",
   status: "All",
@@ -527,9 +533,22 @@ async function loadServerPage(stage, page, sub, force, tier) {
   if (q) params.set('q', q);
   if (country) params.set('country', country);
   if (_leadSort === 'reco' || _leadSort === 'country') params.set('sort', _leadSort);
+  // 국가 목록은 단계가 바뀔 때만 다시 센다 — 페이지를 넘길 때마다 집계할 이유가 없다.
+  // 검증 성공에서는 성공한 곳의 국가, 검증 실패로 넘어가면 실패한 곳의 국가가 뜬다.
+  const facetKey = `${stage}::${sub || ''}::${tier || ''}`;
+  const wantCountries = _countryFacet.key !== facetKey;
+  if (wantCountries) params.set('countries', '1');
+
   const res = await fetch(`/api/leads?${params.toString()}`);
   const data = await res.json();
   if (!data.success) throw new Error(data.error || 'load page failed');
+  if (wantCountries && Array.isArray(data.countries)) {
+    _countryFacet = {
+      key: facetKey,
+      list: data.countries.map((c) => c.country).filter(Boolean).sort(localeSort),
+    };
+    renderFilters();   // 국가 칸을 지금 목록 기준으로 다시 채운다
+  }
   _serverPageCache = {
     cacheKey,
     stage, page, sub, tier,
@@ -764,7 +783,9 @@ function bindEvents() {
 
     // 2. Home Button → 기본 랜딩 (가져오기) 로 이동. 전체 리드 fetch 안 함.
     if (event.target.closest("#homeBtn")) {
-      state.view = "pipeline-import";
+      // 로고를 누르면 첫 화면으로. 예전에는 숨겨진 [가져오기] 로 보내서
+      // 사이드바에 아무것도 선택되지 않은 빈 화면이 떴다.
+      state.view = "pipeline-verified";
       resetAllFilters();
       state.selectedLeadIds = new Set();
       resetPagination();
@@ -1288,9 +1309,21 @@ function setDetailWidth(width) {
   document.documentElement.style.setProperty("--detail-width", `${nextWidth}px`);
 }
 
+// 서버에서 받은 국가 목록 (지금 보고 있는 단계 기준).
+// 브라우저가 전체 리드를 안 받게 되면서 국가 칸에 'All' 하나만 남았던 것을 메운다.
+var _countryFacet = { key: '', list: [] };
+
 function renderFilters() {
   const leads = getLeads();
-  const countries = unique(leads.map((lead) => lead.Country)).sort(localeSort);
+  // 서버가 준 목록을 우선 쓴다. 없으면 예전처럼 로컬 배열에서 뽑는다
+  // (검증 대기·가져오기 화면은 여전히 전체를 들고 있다).
+  // ?. 를 쓰는 이유: init() 이 파일 위쪽에서 먼저 돌아서, 아래에 있는
+  // var _countryFacet 의 대입이 아직 실행되기 전에 여기로 들어온다.
+  // (선언은 끌어올려지지만 값은 undefined 다)
+  const facet = _countryFacet?.list || [];
+  const countries = facet.length
+    ? facet
+    : unique(leads.map((lead) => lead.Country)).sort(localeSort);
   const priorities = unique(leads.map((lead) => lead.Priority)).filter(Boolean).sort(localeSort);
 
   // Status·Priority·검증 필터는 화면에서 숨겼다(서버 쿼리에 안 들어가 무동작이었음).
@@ -1346,6 +1379,19 @@ async function _renderInner() {
     const NO_TOOLBAR = ['pipeline-contacted', 'pipeline-partner', 'pipeline-negotiating'];
     const hide = (state.view && state.view.startsWith('tool-')) || NO_TOOLBAR.includes(state.view);
     tb.style.display = hide ? 'none' : '';
+
+    // 검색·국가는 **표를 거르는 도구**라 표 바로 위에 있어야 한다.
+    //
+    // 원래는 페이지 맨 위(제목 바로 아래)에 박혀 있었는데, 그 사이에
+    // [2차 검토] 카드·칩·성공/실패 탭이 끼어들면서 필터와 그 대상(표)이
+    // 한 화면 높이만큼 떨어졌다. 무엇을 거르는 칸인지 보이지 않는다.
+    //
+    // 그 카드들은 #content 바로 앞에 끼워 넣어지므로, 필터를 #content
+    // 바로 앞으로 옮기면 자연히 맨 아래(=표 바로 위)로 내려간다.
+    const contentEl = document.getElementById('content');
+    if (!hide && contentEl && contentEl.previousElementSibling !== tb) {
+      contentEl.parentNode.insertBefore(tb, contentEl);
+    }
   }
   els.navItems.forEach((item) => {
     const itemView = item.dataset.view;
@@ -1877,14 +1923,26 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   const style = STAGE_STYLE[stageInfo.stage] || STAGE_STYLE.imported;
   const iconMatch = stageInfo.title.match(/^([^\s]+)/);
   const icon = iconMatch ? iconMatch[1] : '📊';
-  const filterHint = totalCount !== filteredCount
-    ? `<span style="color:var(--text-tertiary);font-size:12px;margin-left:8px">(전체 ${totalCount}건 중 필터 적용)</span>`
+  // ── 숫자는 서버 집계를 쓴다 ──
+  //
+  // 여기 들어오는 totalCount/filteredCount 는 브라우저가 들고 있는 배열
+  // (baseLeads)에서 센 값이다. 그런데 검증 완료·답장 받음 같은 화면은 목록을
+  // 서버에서 페이지로 받아오므로 그 배열이 비어 있거나 일부만 차 있다.
+  // 그래서 실제로는 541곳인데 배너에 68건이 떴다 — 사이드바 배지와도 어긋나
+  // 어느 쪽이 맞는지 알 수 없었다.
+  //
+  // 사이드바 배지와 같은 곳(stage-counts)을 쓰면 두 숫자가 늘 같다.
+  // 집계가 아직 안 왔으면 숫자를 아예 안 보여준다 — 틀린 수보다 없는 편이 낫다.
+  const serverN = _stageCountsCache?.stages?.[stageInfo.stage];
+  const showN = typeof serverN === 'number' ? serverN : null;
+  const filterHint = (showN !== null && filteredCount !== showN && filteredCount > 0)
+    ? `<span style="color:var(--text-tertiary);font-size:12px;margin-left:8px">(화면에 ${filteredCount}건 표시 중)</span>`
     : '';
   const container = document.getElementById('stageBannerContainer') || (() => {
     const wrap = document.createElement('div');
     wrap.id = 'stageBannerContainer';
     const content = document.getElementById('content');
-    content.parentNode.insertBefore(wrap, content);
+    content.parentNode.insertBefore(wrap, document.getElementById("toolbarSection") || content);
     return wrap;
   })();
 
@@ -1993,11 +2051,13 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
               <div style="font-size:11.5px;font-weight:800;color:#2563eb;letter-spacing:.06em;
                           text-transform:uppercase">오늘 할 일</div>
               <h2 style="margin:3px 0 0;font-size:27px;font-weight:800;color:#0f2d6b;line-height:1.15">
-                직접 검토
+                2차 검토
               </h2>
+              <!-- "아직 안 고른 곳" 으로는 왜 또 봐야 하는지가 안 드러난다.
+                   AI 가 1차로 걸러낸 뒤 사람이 한 번 더 본다는 것이 이 화면의 뜻이다. -->
               <p style="font-size:13px;color:#1e40af;margin:7px 0 0;line-height:1.6">
-                한 회사씩 큰 화면으로 보면서 <b>보낼 곳인지 아닌지만</b> 고릅니다.<br>
-                버튼 하나 누르면 바로 다음 회사로 넘어갑니다.
+                <b>AI 1차 검토가 끝났습니다.</b> 2차 검토를 통해 실제로 보낼 업체를 선정해 주세요.<br>
+                한 회사씩 큰 화면으로 보면서 버튼 하나만 누르면 다음 회사로 넘어갑니다.
               </p>
             </div>
 
@@ -2005,13 +2065,13 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
               <div>
                 <div style="font-size:44px;font-weight:800;color:#1d4ed8;line-height:1">
                   ${notPicked.toLocaleString()}</div>
-                <div style="font-size:12px;font-weight:700;color:#1e40af;margin-top:2px">아직 안 고른 곳</div>
+                <div style="font-size:12px;font-weight:700;color:#1e40af;margin-top:2px">2차 검토 필요</div>
               </div>
               <div style="width:1px;height:46px;background:#93c5fd"></div>
               <div>
                 <div style="font-size:26px;font-weight:800;color:#1e3a8a;line-height:1">
                   ${queuedCount.toLocaleString()}</div>
-                <div style="font-size:12px;font-weight:600;color:#3b82f6;margin-top:2px">보낼 곳으로 고름</div>
+                <div style="font-size:12px;font-weight:600;color:#3b82f6;margin-top:2px">보낼 곳으로 선정</div>
               </div>
             </div>
 
@@ -2022,54 +2082,54 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
                      box-shadow:0 4px 16px rgba(37,99,235,.36);
                      ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}"
               ${emailReadyCount === 0 ? 'disabled' : ''}>
-              직접 검토 시작 →
+              2차 검토 시작 →
             </button>
           </div>
         </div>
 
-        <!-- ② 검토가 끝난 뒤에 하는 일 — 발송. 일부러 작게 둔다. -->
+        <!-- ② 검토가 끝난 뒤 넘어가는 자리.
+             이 버튼은 **메일을 보내지 않는다** — [발송 관리] 화면으로 옮겨갈 뿐이다.
+             그런데 글자가 "메일 보내기" 였어서, 누르면 바로 나가는 줄 알고
+             못 누르는 일이 생겼다. 버튼 글자는 실제로 일어나는 일을 적는다. -->
         <div style="margin-top:9px;padding:13px 18px;border-radius:12px;display:flex;
                     align-items:center;gap:14px;flex-wrap:wrap;
                     background:var(--bg-surface);border:1px solid var(--border-default)">
-          <span style="font-size:19px">✉</span>
-          <div style="flex:1;min-width:200px">
+          <span style="font-size:19px">📨</span>
+          <div style="flex:1;min-width:240px">
             <div style="font-size:13px;font-weight:700;color:var(--text-primary)">
-              고른 곳에 메일 보내기
+              발송 관리로 이동
             </div>
-            <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:1px">
+            <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:2px;line-height:1.6">
+              리스트에 있는 모든 업체를 <b>점검 완료한 뒤</b> 이 버튼을 누르면 발송 관리로 이동합니다.
+              <span style="color:var(--text-quaternary)">누른다고 메일이 나가지 않습니다 — 화면만 옮겨갑니다.</span>
               ${queuedCount
-                ? `발송 리스트에 <b style="color:var(--text-secondary)">${queuedCount.toLocaleString()}곳</b>이 있습니다`
-                : '먼저 위에서 보낼 곳을 골라 주세요'}
+                ? `<br>지금 발송 리스트에 <b style="color:var(--text-secondary)">${queuedCount.toLocaleString()}곳</b>이 있습니다.`
+                : '<br>아직 발송 리스트가 비어 있습니다. 위에서 보낼 곳을 먼저 골라 주세요.'}
             </div>
           </div>
           <button id="openFirstSendBtn" type="button"
+            title="메일을 보내지 않습니다. [발송 관리 → 보낼 메일] 화면으로 이동만 합니다."
             style="font-size:13px;font-weight:700;padding:9px 18px;white-space:nowrap;
                    background:var(--bg-surface);color:#1d4ed8;border:1px solid #2563eb;
                    border-radius:9px;cursor:pointer;
                    ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}"
             ${emailReadyCount === 0 ? 'disabled' : ''}>
-            메일 보내기 →
+            발송 관리 →
           </button>
         </div>
       </div>
     `;
   }
 
-  container.innerHTML = `
-    <div class="stage-banner">
-      <div class="stage-info">
-        <div class="stage-icon" style="background:${style.bg};color:${style.fg};font-size:28px">${icon}</div>
-        <div>
-          <div class="stage-count">${filteredCount}<span style="font-size:14px;font-weight:500;color:var(--text-tertiary);margin-left:6px">건</span></div>
-          <div class="stage-label">${stageInfo.title.replace(/^[^\s]+\s*/, '')} ${filterHint}</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:16px">
-        <div class="stage-hint">${stageInfo.sub}</div>
-      </div>
-    </div>
-    ${heroCard}
-  `;
+  // 단계 배너(아이콘 + 건수 + 설명)는 뺐다.
+  //
+  // 같은 내용이 이미 세 곳에 있다 — 사이드바 배지, 화면 제목, 그 아래 부제.
+  // 게다가 건수는 브라우저 캐시에서 세던 값이라 사이드바와 어긋났다
+  // (541곳인데 68건으로 떴다). 맞는 숫자를 넣어도 같은 말을 네 번 하는 셈이고,
+  // 세로 공간만 차지해 정작 아래 [직접 검토] 카드가 밀려났다.
+  //
+  // 히어로 카드(직접 검토 / 검증 실패 안내)는 그대로 둔다 — 그건 할 일이다.
+  container.innerHTML = heroCard;
 
   // 액션 버튼 핸들러 바인딩
   document.getElementById('runAiVerifyOnVerifyingBtn')?.addEventListener('click', () => runVerifyingStageAi());
@@ -2259,7 +2319,7 @@ function renderVerifyingSubFilterChips(allInStage) {
       banner.parentNode.insertBefore(container, banner.nextSibling);
     } else {
       const content = document.getElementById('content');
-      content.parentNode.insertBefore(container, content);
+      content.parentNode.insertBefore(container, document.getElementById("toolbarSection") || content);
     }
   }
 
@@ -2316,7 +2376,7 @@ function renderVerifiedSubFilterChips(allInStage) {
       banner.parentNode.insertBefore(container, banner.nextSibling);
     } else {
       const content = document.getElementById('content');
-      content.parentNode.insertBefore(container, content);
+      content.parentNode.insertBefore(container, document.getElementById("toolbarSection") || content);
     }
   }
 
@@ -2388,7 +2448,7 @@ function renderVerifiedResultTabs(successCount, failedCount) {
       banner.parentNode.insertBefore(container, banner.nextSibling);
     } else {
       const content = document.getElementById('content');
-      content.parentNode.insertBefore(container, content);
+      content.parentNode.insertBefore(container, document.getElementById("toolbarSection") || content);
     }
   }
   const cur = state.verifiedResultTab || 'success';
@@ -2535,7 +2595,7 @@ function renderVerifiedSubFilterChipsServer(verifiedSub, _failedCount) {
       banner.parentNode.insertBefore(container, banner.nextSibling);
     } else {
       const content = document.getElementById('content');
-      content.parentNode.insertBefore(container, content);
+      content.parentNode.insertBefore(container, document.getElementById("toolbarSection") || content);
     }
   }
   const cur = state.verifiedSubFilter || 'all';
@@ -2603,6 +2663,8 @@ function renderServerPagedTable(pageData, stageInfo) {
   const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
 
   els.content.innerHTML = `
+    <!-- 페이지 넘김을 맨 위로 — 위쪽 안내가 길어 2페이지를 보려면 한참 내려가야 했다 -->
+    ${renderPaginationBar(pageData.page, pageData.totalPages, pageData.total, { compact: true })}
     <div class="bulk-actions">
       <button class="button secondary" data-select-visible type="button">${allVisibleSelected ? "이 페이지 선택 해제" : "이 페이지 전체 선택"}</button>
       <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
@@ -2631,7 +2693,6 @@ function renderServerPagedTable(pageData, stageInfo) {
         추천순 = <b>거래 규모</b>(유통사·체인이 위) + <b>담당자 도달</b>(b2b@·wholesale@ 이 info@ 보다 위)
         + <b>K-뷰티 실적</b>(한국 브랜드를 이미 파는 곳). 각 회사의 근거는 순위 옆에 마우스를 올리면 보입니다.
       </div>` : ''}
-    ${renderPaginationBar(pageData.page, pageData.totalPages, pageData.total, { compact: true })}
     <div class="table-wrap">
       <table>
         <thead>
@@ -3790,6 +3851,11 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
   const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
 
   els.content.innerHTML = `
+    <!-- 페이지 넘김을 맨 위로 올린다.
+         이 화면은 위쪽에 안내 카드·칩·탭이 쌓여 있어서, 2페이지를 보려면
+         그걸 다 지나쳐 내려가야 했다. 목록을 훑는 동안 가장 자주 누르는
+         버튼이라 손이 먼저 닿는 자리에 둔다. (표 아래에도 그대로 있다) -->
+    ${renderPaginationBar(page, totalPages, leads.length, { compact: true })}
     <div class="bulk-actions">
       <button class="button secondary" data-select-visible type="button">${allVisibleSelected ? "이 페이지 선택 해제" : "이 페이지 전체 선택"}</button>
       ${state.view === 'pipeline-verified' ? `
@@ -3818,7 +3884,6 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
         </select>
       </span>
     </div>
-    ${renderPaginationBar(page, totalPages, leads.length, { compact: true })}
     <div class="table-wrap">
       <table>
         <!-- 이 헤더는 rowHtml 이 실제로 그리는 칸과 반드시 같아야 한다.
@@ -8277,9 +8342,20 @@ function getLeads() {
   return baseLeads.filter(lead => !lead.deleted);
 }
 
-/** 상세 팝업이 찾는 범위 — 화면 목록 + 팝업으로 열어본 것 */
+/**
+ * 상세 팝업이 찾는 범위.
+ *
+ * ⚠️ baseLeads 만 보면 안 된다.
+ * 검증 완료·답장 받음 같은 화면은 목록을 **서버에서 페이지로** 받아오고,
+ * 그 결과는 baseLeads 가 아니라 _serverPageCache.leads 에 들어간다.
+ * baseLeads 만 뒤지면 지금 화면에 보이는 회사를 눌러도 못 찾아서
+ * 팝업이 아예 안 뜬다 (첫 로딩에서 전체 리드를 안 받게 한 뒤 드러났다).
+ *
+ * 그래서 세 곳을 다 본다 — 로컬 캐시 · 지금 화면의 서버 페이지 · 팝업으로 열어본 것.
+ */
 function findLeadForPopup(id) {
   return getLeads().find(l => l.id === id)
+      || (_serverPageCache?.leads || []).find(l => l.id === id)
       || _popupLeadCache.find(l => l.id === id);
 }
 
@@ -13249,11 +13325,18 @@ async function moveSelectedToQueue() {
     if (!r?.success) throw new Error(r?.error || '이동 실패');
     state.selectedLeadIds = new Set();
     invalidateServerPage();
+    // ⚠️ 이 줄이 없으면 옮긴 곳이 [검증 성공] 에 그대로 남아 보인다.
+    //
+    // 표는 서버 페이지라 invalidateServerPage 로 새로 받지만,
+    // [검증 성공 541] 탭과 사이드바 배지는 stage-counts 캐시에서 읽는다.
+    // 그쪽을 안 비우면 541 이 그대로 떠서 "옮겼는데 왜 그대로지" 가 된다.
+    await loadStageCounts(true);
     await loadLeads({ force: true });
     alert(
       `📋 ${r.moved}곳을 발송 리스트로 옮겼습니다.` +
       (r.skipped ? `\n(${r.skipped}곳은 제외 — 메일 없음 또는 이미 옮겨진 곳)` : '') +
-      `\n\n발송 리스트 총 ${r.queuedTotal}곳`,
+      `\n\n[검증 성공] 목록에서 빠지고 [발송 관리 → 보낼 메일] 로 들어갔습니다.` +
+      `\n발송 리스트 총 ${r.queuedTotal}곳`,
     );
     render();
   } catch (e) {

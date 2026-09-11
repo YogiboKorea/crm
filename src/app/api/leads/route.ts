@@ -163,6 +163,9 @@ export async function GET(req: Request) {
       });
     }
 
+    // 국가 목록은 달라고 할 때만 센다 — 페이지를 넘길 때마다 집계할 이유가 없다
+    const countryFacet = searchParams.get('countries') === '1';
+
     const skip = (page - 1) * limit;
     const query = Lead.find(filter)
       .sort(sort)
@@ -171,11 +174,28 @@ export async function GET(req: Request) {
       .lean();
     if (!full) query.select(LIST_PROJECTION);
 
-    const [leads, total] = await Promise.all([
+    const [leads, total, countries] = await Promise.all([
       query.exec(),
       // estimatedDocumentCount 는 필터를 못 받아 지운 건까지 센다.
       // 그래서 전체 화면 상단이 6,073 으로 떴다 (실제로 볼 수 있는 건 3,302).
       Lead.countDocuments(filter),
+      // ── 국가 목록 ──
+      // 화면의 [국가] 칸은 브라우저가 들고 있는 전체 리드에서 뽑아 채웠다.
+      // 그런데 첫 화면이 전체를 받지 않게 되면서(3.3MB → 45KB) 그 배열이 비어
+      // 국가 칸에 'All' 하나만 남았다.
+      //
+      // **지금 보고 있는 범위**로 센다 — 검증 성공에서는 성공한 곳의 국가,
+      // 검증 실패로 넘어가면 실패한 곳의 국가가 뜬다. 목록에 없는 나라가
+      // 고를 수 있게 떠 있으면 골라도 0건이 나온다.
+      countryFacet
+        ? Lead.aggregate([
+            { $match: filter },
+            { $group: { _id: '$Country', n: { $sum: 1 } } },
+            { $match: { _id: { $nin: [null, ''] } } },
+            { $sort: { n: -1 } },
+            { $limit: 300 },
+          ])
+        : Promise.resolve([]),
     ]);
 
     return NextResponse.json({
@@ -185,6 +205,7 @@ export async function GET(req: Request) {
       page: stage ? page : 1,
       limit,
       totalPages: stage ? Math.max(1, Math.ceil(total / limit)) : 1,
+      countries: (countries as any[]).map((c) => ({ country: c._id, n: c.n })),
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
