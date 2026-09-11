@@ -127,3 +127,37 @@ for (const [name, fn] of checks) {
   }
 }
 console.log('✅ HTML 생성 함수', checks.length, '개 실행 통과');
+
+// ── CSS 변수 점검 ────────────────────────────────────────────
+//
+// app.js 는 background:var(--surface-1) 처럼 CSS 변수로 색을 쓴다.
+// 그 변수가 :root 에 없으면 값이 "없음"이 되어 배경이 투명해진다.
+// 팝업 카드가 투명해져 뒤 화면과 겹쳐 보이던 문제가 이것이었다.
+// 빌드는 통과하므로(app.js 는 컴파일되지 않는다) 여기서 본다.
+{
+  const css = fs.readFileSync('src/app/styles.css', 'utf8');
+
+  const globalDefs = new Set();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sel = m[1].trim().split('\n').pop().trim();
+    if (!sel.includes(':root') && !/^(html|body)\b/.test(sel)) continue;
+    for (const v of m[2].matchAll(/(--[a-z0-9-]+)\s*:/gi)) globalDefs.add(v[1]);
+  }
+
+  // var(--x, 대체값) 처럼 대체값이 있으면 비어도 괜찮다
+  const missing = new Map();
+  for (const m of src.matchAll(/var\((--[a-z0-9-]+)\s*(,[^)]*)?\)/gi)) {
+    if (globalDefs.has(m[1]) || m[2]) continue;
+    missing.set(m[1], (missing.get(m[1]) || 0) + 1);
+  }
+
+  if (missing.size) {
+    console.log('❌ :root 에 없는 CSS 변수를 대체값 없이 사용 중 — 화면에서 투명/무색으로 보입니다');
+    for (const [v, n] of [...missing].sort((a, b) => b[1] - a[1])) {
+      console.log(`   ${String(n).padStart(4)}곳  ${v}`);
+    }
+    console.log('   → src/app/styles.css 의 :root 에 추가하거나 var(--x, 대체값) 형태로 쓰세요');
+    process.exit(1);
+  }
+  console.log('✅ CSS 변수 모두 :root 에서 해결됨');
+}

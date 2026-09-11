@@ -24,3 +24,26 @@ export function countSince(days = COUNT_PERIOD_DAYS): Date {
 export function periodFilter(field = 'date', days = COUNT_PERIOD_DAYS) {
   return { [field]: { $gte: countSince(days) } };
 }
+
+/**
+ * "오늘" 이 시작되는 시각 — 서울 기준.
+ *
+ * 서버는 Vercel 에서 UTC 로 돈다. 그냥 new Date().setHours(0,0,0,0) 을 쓰면
+ * 서울이 9월 11일 오전인데 서버는 아직 9월 10일이라, 오전에 온 메일이
+ * "오늘"에서 통째로 빠진다. 반대로 저녁 9시 이후에는 내일 것이 섞여 들어온다.
+ *
+ * 쓰는 사람도 받는 메일도 전부 한국 기준이므로 서울 자정을 못박는다.
+ * (한국은 서머타임이 없어 UTC+9 가 연중 고정이다)
+ */
+export const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+export function seoulDayStart(at: Date = new Date()): Date {
+  const seoul = new Date(at.getTime() + KST_OFFSET_MS);      // 서울 시계로 옮겨서
+  seoul.setUTCHours(0, 0, 0, 0);                              // 그 날 자정으로 자르고
+  return new Date(seoul.getTime() - KST_OFFSET_MS);           // 다시 UTC 로 되돌린다
+}
+
+/** 오늘 온 메일 필터 조각 */
+export function todayFilter(field = 'date') {
+  return { [field]: { $gte: seoulDayStart() } };
+}

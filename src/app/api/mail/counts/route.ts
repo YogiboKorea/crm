@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
-import { countSince, COUNT_PERIOD_LABEL, COUNT_PERIOD_DAYS } from '@/lib/mail/period';
+import { countSince, seoulDayStart, COUNT_PERIOD_LABEL, COUNT_PERIOD_DAYS } from '@/lib/mail/period';
 
 export const runtime = 'nodejs';
 
@@ -26,7 +26,15 @@ export async function GET(req: Request) {
     // "밀린 일이 산더미"로 읽히고, 매일 늘어나는 몇 건이 그 안에 묻힌다.
     const since = { date: { $gte: countSince() } };
 
-    const [inbox, needsReply, unlinked, total, deadlines, trash] = await Promise.all([
+    // ── 오늘 온 메일 ──
+    // 다른 배지와 달리 광고·자동발송을 빼지 않고 온 그대로 센다.
+    // "오늘 몇 통 왔나"는 메일함을 열었을 때 실제로 보이는 줄 수와 같아야 한다.
+    // 광고가 몇 통인지는 따로 세어 옆에 적어준다.
+    const todayStart = seoulDayStart();
+    const todayBase = { ...acc, trashedAt: null, direction: 'in' as const, date: { $gte: todayStart } };
+
+    const [inbox, needsReply, unlinked, total, deadlines, trash,
+           today, todayNoise, todayNeedsReply] = await Promise.all([
       // 받은 메일함 배지 — 광고 제외한 수신 메일
       InboundMail.countDocuments({
         ...acc, ...since,
@@ -64,11 +72,27 @@ export async function GET(req: Request) {
       // 휴지통 — 여기는 기간을 걸지 않는다. 배지는 "되돌릴 게 남아 있나"를
       // 알리는 용도라, 두 달 지났다고 숫자에서 사라지면 오분류를 영영 못 찾는다.
       InboundMail.countDocuments({ ...acc, trashedAt: { $ne: null } }),
+
+      // 오늘 온 것 전부
+      InboundMail.countDocuments(todayBase),
+      // 그중 광고·자동발송·뉴스레터 — 숫자 옆에 "이만큼은 볼 것 없음"을 적기 위해
+      InboundMail.countDocuments({ ...todayBase, classification: { $in: NOISE } }),
+      // 그중 오늘 안에 답해야 하는 것
+      InboundMail.countDocuments({
+        ...todayBase,
+        classification: { $nin: NOISE },
+        'analysis.needsReply': true,
+        status: { $in: ['new', 'reviewing'] },
+      }),
     ]);
 
     return NextResponse.json({
       success: true,
-      counts: { inbox, needsReply, unlinked, total, deadlines, trash },
+      counts: {
+        inbox, needsReply, unlinked, total, deadlines, trash,
+        today, todayNoise, todayNeedsReply,
+      },
+      todayStart: todayStart.toISOString(),   // 화면이 같은 기준을 쓰는지 확인용
       period: { days: COUNT_PERIOD_DAYS, label: COUNT_PERIOD_LABEL },
     });
   } catch (e: any) {

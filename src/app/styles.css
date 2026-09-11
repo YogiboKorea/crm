@@ -75,6 +75,25 @@
 
   /* Detail width */
   --detail-width: 380px;
+
+  /* ── 별칭 토큰 ──────────────────────────────────────────────
+     app.js 는 --surface-1 / --border 같은 짧은 이름으로 색을 쓴다.
+     그런데 그 이름들은 #composeModalRoot 안에만 정의돼 있었다.
+     그 바깥(팝업, 카드, 표 머리)에서는 값이 없어 배경이 투명해졌고,
+     "업체 보기" 팝업이 뒤 화면과 겹쳐 보이는 문제로 나타났다.
+     (app.js 기준 --border 61곳 · --surface-1 28곳 · --surface-2 14곳)
+
+     값을 새로 만들지 않고 위 토큰을 가리키게만 한다.
+     그래야 다크모드가 따로 관리되지 않고 저절로 따라온다. */
+  --surface-0: var(--bg-surface);
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-surface-hover);
+  --border: var(--border-default);
+  --muted: var(--text-tertiary);
+  --accent: var(--brand);
+  /* --brand-primary 는 일부러 두지 않는다. 쓰는 7곳이 모두
+     var(--brand-primary, #4338ca) 처럼 대체값을 갖고 있어 지금도 제 색이 나온다.
+     여기서 정의하면 그 7곳 색만 조용히 바뀐다. */
 }
 
 /* ── Dark mode ──────────────────────────────────────────────── */
@@ -1079,18 +1098,55 @@ th.sortable:hover { color: var(--text-primary); }
   gap: var(--sp-3);
   min-width: 220px;
 }
+/* 로고를 감싸고 도는 고리 — 기다리는 동안 볼 것이 있어야 한다.
+   로고 자체는 돌리지 않는다(글자가 거꾸로 서면 읽기 나쁘다). 고리만 돈다. */
 #globalBlocker .blocker-spinner {
-  width: 36px;
-  height: 36px;
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#globalBlocker .blocker-spinner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
   border: 3px solid var(--border-subtle);
   border-top-color: var(--brand);
-  border-radius: 50%;
-  animation: cd-spin 0.7s linear infinite;
+  border-right-color: var(--brand);
+  animation: cd-spin 0.9s cubic-bezier(.5, .1, .5, .9) infinite;
+}
+/* 안쪽 로고 — 살짝 커졌다 작아지며 숨 쉬듯 */
+#globalBlocker .blocker-spinner::after {
+  content: '';
+  width: 34px;
+  height: 34px;
+  background: url('/assets/logo.png') center/contain no-repeat;
+  animation: cd-breathe 1.8s ease-in-out infinite;
+}
+@keyframes cd-breathe {
+  0%, 100% { transform: scale(1);    opacity: .85; }
+  50%      { transform: scale(1.08); opacity: 1; }
 }
 #globalBlocker .blocker-text {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
+  letter-spacing: -.01em;
+}
+/* 점 세 개가 순서대로 차오른다 — 멈춘 게 아니라는 신호 */
+#globalBlocker .blocker-text::after {
+  content: '';
+  animation: cd-dots 1.4s steps(4, end) infinite;
+}
+@keyframes cd-dots {
+  0%   { content: ''; }
+  25%  { content: '.'; }
+  50%  { content: '..'; }
+  75%  { content: '...'; }
 }
 
 @keyframes cd-spin { to { transform: rotate(360deg); } }
@@ -1192,6 +1248,46 @@ body.modal-open {
   padding-right: var(--scrollbar-w, 0px);
 }
 
+/* ── 메일 상세 — 받은 편지 | 답장 좌우 배치 ────────────────────
+   예전에는 위아래였다. 답장을 쓰려면 편지에서 스크롤을 내려야 해서,
+   MOQ·단가·담당자 이름처럼 편지에서 그대로 옮겨 적을 것을 확인하려면
+   올렸다 내렸다를 반복해야 했다.
+
+   그냥 반씩 자르지는 않는다. 답장 칸은 그 안이 이미 2단
+   (영문 초안 | 한글 대역본)이라, 반으로 자르면 영문 쓰는 칸이
+   1/4 폭이 되어 오히려 더 쓰기 어려워진다.
+   그래서 좌우로 나누는 동안에는 답장 안쪽 2단을 위아래로 편다 —
+   한글 대역본은 확인용이라 나란히 있을 필요가 없다. */
+/* 좁은 화면 기본값 = 예전 그대로 위아래 */
+.mail-split { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: auto; }
+.mail-split > .mail-read, .mail-split > .mail-reply { min-width: 0; }
+
+/* 폭이 나올 때만 좌우로 나눈다 */
+@media (min-width: 1101px) {
+  .mail-split {
+    flex-direction: row;
+    min-height: 0;        /* 없으면 flex 자식이 안 줄어들어 안쪽 스크롤이 안 생긴다 */
+    overflow: hidden;
+  }
+  .mail-split > .mail-read,
+  .mail-split > .mail-reply {
+    flex: 1 1 50%;
+    overflow-y: auto;     /* 편지와 답장이 각자 스크롤한다 */
+  }
+  .mail-split > .mail-reply {
+    border-left: 1px solid var(--border-default);
+    background: #fff;
+  }
+  /* 위아래였을 때 쓰던 구분선 — 좌우에서는 왼쪽 테두리가 그 일을 한다 */
+  .mail-split > .mail-reply > div { border-top: none !important; }
+
+  /* 답장 안쪽 2단을 위아래로 편다.
+     아래 값들은 마크업에 style="" 로 박혀 있어 !important 가 없으면 안 먹는다. */
+  .mail-split .reply-2col { grid-template-columns: 1fr !important; }
+  .mail-split #convReplyBody { max-height: none !important; min-height: 200px !important; }
+  .mail-split #convDraftKo { max-height: none !important; min-height: 92px !important; }
+}
+
 /* 메일 전체 보기 — 팝업을 화면 전체로 */
 #mailDetailRoot.mail-full { padding: 0 !important; }
 #mailDetailRoot.mail-full > div {
@@ -1236,3 +1332,31 @@ body.modal-open {
   display: block;
   max-width: 100%;
 }
+
+/* ── 상세 팝업 검토 바 ──────────────────────────────────────
+   팝업을 닫지 않고 판정하고 다음 회사로 넘어가기 위한 컨트롤.
+   418곳을 하나씩 열고 닫으면 검토를 중간에 포기하게 된다. */
+.el-nav-btn {
+  height: 30px; padding: 0 11px; line-height: 1;
+  font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  border: 1px solid var(--border-default); border-radius: 8px;
+  background: var(--bg-surface); color: var(--text-secondary);
+  cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+}
+.el-nav-btn:hover:not(:disabled) {
+  background: var(--brand-soft, #eef2ff);
+  border-color: var(--brand, #c7d2fe);
+  color: var(--brand-text, #4338ca);
+}
+.el-nav-btn:disabled { opacity: .35; cursor: default; }
+
+.el-judge {
+  font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  padding: 8px 13px; border-radius: 9px; cursor: pointer;
+  transition: filter .12s, transform .06s;
+}
+.el-judge:hover { filter: brightness(.96); }
+.el-judge:active { transform: translateY(1px); }
+.el-judge-go { border: 1px solid #86efac; background: #f0fdf4; color: #15803d; }
+.el-judge-no { border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; }
+.el-judge:disabled { opacity: .5; cursor: default; }

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
+import { seoulDayStart } from '@/lib/mail/period';
+import { learnSenderGroups, suggestGroupBySender } from '@/lib/mail/groups';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +31,30 @@ const LIST_PROJECTION = {
   'analysis.usage': 0,
 };
 
+/**
+ * 폴더가 안 붙은 메일에 "이 발신자는 전에 여기 넣으셨습니다" 를 달아준다.
+ *
+ * 목록에서 바로 폴더를 지정할 수 있게 되면서 필요해졌다. 폴더가 스무 개쯤
+ * 되면 매번 목록을 훑어 고르는 것이 일이 된다. 같은 곳에서 온 메일을
+ * 예전에 어디 넣었는지는 이미 DB 가 알고 있으므로 그걸 맨 위에 올려준다.
+ *
+ * 자동으로 넣지는 않는다 — 애매한 것을 전부 자동 배치했다가 1통짜리 폴더가
+ * 무더기로 생긴 적이 있다. 제안만 하고 누르는 것은 사람이 한다.
+ *
+ * 미분류가 한 건도 없으면 학습 질의 자체를 돌리지 않는다.
+ */
+async function attachGroupSuggestions(items: any[]): Promise<any[]> {
+  if (!items.some((m) => !m?.group)) return items;
+  let learned = null;
+  try {
+    learned = await learnSenderGroups();
+  } catch {
+    return items;   // 제안은 거들 뿐이라 실패해도 목록은 그대로 내보낸다
+  }
+  return items.map((m) =>
+    m?.group ? m : { ...m, groupSuggest: suggestGroupBySender(m, learned) });
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -56,10 +82,23 @@ export async function GET(req: Request) {
     // 계정 개념이 생기기 전 메일은 accountId='main' 으로 저장돼 있다.
     if (accountId && accountId !== 'all') query.accountId = accountId;
 
+    // ── 오늘 온 메일 ──
+    // 폴더와 섞이지 않는 별도의 축이다. 폴더는 "어느 거래처인가",
+    // 이건 "언제 왔는가" 라서 둘을 겹쳐 걸면 오늘 온 것을 통째로 볼 수 없다.
+    // 그래서 today=1 이면 폴더 조건은 무시한다 — 대신 목록의 각 줄에
+    // 그 메일이 어느 폴더로 들어갔는지 태그가 붙는다.
+    const today = searchParams.get('today') === '1';
+    if (today) {
+      query.date = { $gte: seoulDayStart() };
+      query.direction = 'in';
+    }
+
     // 거래처(폴더) 필터 — '__none__' 은 아직 분류 안 된 것
     const group = searchParams.get('group');
-    if (group === '__none__') query.group = { $in: [null, ''] };
-    else if (group) query.group = group;
+    if (!today) {
+      if (group === '__none__') query.group = { $in: [null, ''] };
+      else if (group) query.group = group;
+    }
 
     if (classification) query.classification = { $in: classification.split(',') };
     if (status) query.status = { $in: status.split(',') };
@@ -89,7 +128,11 @@ export async function GET(req: Request) {
         InboundMail.find(query, LIST_PROJECTION).sort({ date: -1 }).skip(skip).limit(limit).lean(),
         InboundMail.countDocuments(query),
       ]);
-      return NextResponse.json({ success: true, items, total, page, limit, mode: 'flat' });
+      return NextResponse.json({
+        success: true,
+        items: await attachGroupSuggestions(items),
+        total, page, limit, mode: 'flat',
+      });
     }
 
     // ── 스레드 단위 ──
@@ -129,13 +172,13 @@ export async function GET(req: Request) {
     return NextResponse.json({
       success: true,
       mode: 'thread',
-      items: rows.map((r: any) => ({
+      items: await attachGroupSuggestions(rows.map((r: any) => ({
         ...r.latest,
         threadKey: r._id,
         threadCount: r.count,
         threadFirstDate: r.firstDate,
         threadDeadline: r.nearestDeadline || null,
-      })),
+      }))),
       total: res?.total?.[0]?.n || 0,
       page,
       limit,

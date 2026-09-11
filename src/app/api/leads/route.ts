@@ -70,6 +70,8 @@ export async function GET(req: Request) {
     // 이게 없던 동안에는 검색하면 화면이 통째로 '전체 리드'로 튕겨서,
     // 검증 완료 409건을 보다가 갑자기 보관함까지 섞인 6,073건을 보게 됐다.
     const q = (searchParams.get('q') || '').trim();
+    // 국가 — 화면 필터에 있는데 서버가 안 받아서 골라도 아무 일이 없었다
+    const country = (searchParams.get('country') || '').trim();
 
     // 지운 건은 어느 화면에도 나오면 안 된다.
     // 이게 없던 동안에는 중복 정리로 deleted=true 를 붙인 2,771건이 보관함
@@ -77,6 +79,7 @@ export async function GET(req: Request) {
     // (화면 쪽에서 l.deleted 로 한 번 더 거르는 곳이 있지만, 서버가 내려보내면
     //  total 과 페이지 수가 이미 틀어져 "50건씩 122페이지" 같은 값이 나온다.)
     const filter: any = { deleted: { $ne: true } };
+    const and: any[] = [];
     if (q) {
       const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [
@@ -84,9 +87,21 @@ export async function GET(req: Request) {
         { BuyerContact: rx }, { BrandsChannels: rx }, { WebsiteContact: rx },
       ];
     }
+    if (country && country !== 'All') filter.Country = country;
     if (stage === '__failed') {
-      filter.stage = 'archived';
-      filter['verification.aiVerdict'] = 'not-buyer';
+      // 검증 실패는 두 갈래로 쌓여 있다. 하나만 보여주면 배지(841)와 목록이 어긋난다.
+      //   · stage 'failed'                     790건 — 대부분 보낼 메일 주소가 없어 걸러진 것
+      //     ("Contact form on site" 332 · "Not found publicly" 161 · 빈칸 103 …)
+      //     AI 판정으로는 759건이 오히려 beauty-buyer 다.
+      //   · archived + aiVerdict 'not-buyer'    51건 — AI 가 K-뷰티 무관으로 본 것
+      // 사이드바 배지는 원래 둘을 합쳐 세고 있었는데 목록은 뒤쪽만 보여줘서,
+      // 790건이 숫자에만 있고 어느 화면에서도 열리지 않았다.
+      const failedOr = [
+        { stage: 'failed' },
+        { stage: 'archived', 'verification.aiVerdict': 'not-buyer' },
+      ];
+      if (filter.$or) { and.push({ $or: filter.$or }); delete filter.$or; }
+      and.push({ $or: failedOr });
     } else if (stage) {
       filter.stage = stage;
     }
@@ -111,6 +126,8 @@ export async function GET(req: Request) {
       }
     }
 
+    if (and.length) filter.$and = [...(filter.$and || []), ...and];
+
     await dbConnect();
 
     // ── tier 필터 (verified 전용, 계산 필드라 별도 처리) ──
@@ -131,6 +148,18 @@ export async function GET(req: Request) {
         page,
         limit,
         totalPages: Math.max(1, Math.ceil(total / limit)),
+      });
+    }
+
+    // idsOnly — 상세 팝업에서 "다음 업체"로 넘길 순서를 받아가는 용도.
+    // 418건을 전부 훑으려면 목록이 필요한데, 표시용 필드까지 다 내리면
+    // 수 MB 가 오간다. 식별자만 순서대로 준다.
+    if (searchParams.get('idsOnly') === '1') {
+      const rows = await Lead.find(filter, { leadId: 1 }).sort(sort).limit(20000).lean();
+      return NextResponse.json({
+        success: true,
+        ids: rows.map((r: any) => ({ leadId: r.leadId, _id: String(r._id) })),
+        total: rows.length,
       });
     }
 

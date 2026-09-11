@@ -14,6 +14,9 @@ export interface IEmailSchedule extends Document {
   sentAt?: Date;
   attempts: number;
   lastError?: string;
+  // 왜 취소됐는지. 사람이 발송함에서 직접 취소한 것과, 리드를 [검증 실패]로
+  // 옮기면서 함께 끊긴 것은 나중에 보면 구별이 안 된다. 그 이유를 남긴다.
+  canceledReason?: string;
   batchId?: string;            // 예약 배치 ID (한 번에 여러 대상 예약 시 그룹핑)
   // ── 자동 재발송(팔로우업) ──────────────────────────────
   // 이 예약이 몇 번째 메일인가. 1 = 첫 발송, 2·3 = 답이 없어 다시 보내는 것.
@@ -43,6 +46,7 @@ const EmailScheduleSchema = new Schema<IEmailSchedule>({
   sentAt: { type: Date },
   attempts: { type: Number, default: 0 },
   lastError: { type: String, default: '' },
+  canceledReason: { type: String, default: '' },
   batchId: { type: String, default: '' },
   attemptNo: { type: Number, default: 1 },
   followUp: { type: Boolean, default: false },

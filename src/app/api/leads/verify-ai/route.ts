@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: '잘못된 요청 본문' }, { status: 400 });
   }
 
-  const scope: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'maybe-recheck' | 'leadIds' = body?.scope || 'suspicious';
+  const scope: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'maybe-recheck' | 'leadIds' | 'legacy' = body?.scope || 'suspicious';
   const leadIds: string[] | undefined = body?.leadIds;
   const limit = Math.min(Math.max(parseInt(body?.limit, 10) || 20, 1), 50);
   const excludeKorea: boolean = body?.excludeKorea !== false;
@@ -72,6 +72,15 @@ export async function POST(req: Request) {
       // 자동 검증 끝났고(verifiedAt 있음) AI 검증 안 된(aiVerifiedAt 비어있음) 의심 케이스
       filter['verification.verifiedAt'] = { $exists: true, $ne: '' };
       filter['verification.score'] = { $gte: 3, $lte: 4 };
+      filter.$or = [
+        { 'verification.aiVerifiedAt': { $exists: false } },
+        { 'verification.aiVerifiedAt': '' },
+      ];
+    } else if (scope === 'legacy') {
+      // 엑셀로 직접 올린 것 중 AI 판정을 안 받은 것.
+      // AI 서칭으로 들어온 건(importBatch = ai-search-*)은 제 갈래가 따로 있다.
+      filter.importBatch = { $not: /^ai-search-/ };
+      filter.deleted = { $ne: true };
       filter.$or = [
         { 'verification.aiVerifiedAt': { $exists: false } },
         { 'verification.aiVerifiedAt': '' },

@@ -60,8 +60,8 @@ export default function Home() {
             </button>
             */}
             {/* 첫 화면 = 검증 완료. 클라이언트가 매일 여는 곳이 여기다. */}
-            <button className="nav-item active" data-view="pipeline-verified" type="button" title="검증 완료 — 승인 후 메일 발송할 대상 리드">
-              <span className="nav-icon">✅</span><span className="nav-label">검증 완료</span>
+            <button className="nav-item active" data-view="pipeline-verified" type="button" title="AI 검증 완료 — AI 판정을 통과해 메일을 보낼 수 있는 곳. 여기서 보낼 곳을 골라 발송 리스트로 옮깁니다">
+              <span className="nav-icon">✅</span><span className="nav-label">AI 검증 완료</span>
               <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
             <button className="nav-item" data-view="pipeline-contacted" type="button" title="발송 관리 — 보낼 메일 · 예약된 메일 · 나간 메일을 단계별로 봅니다">
@@ -119,7 +119,26 @@ export default function Home() {
 
             <div className="nav-divider"></div>
 
-            {/* ══════════ 그룹 C · 설정 · 도구 ══════════ */}
+            {/* ══════════ 그룹 C · import 하여 올린 데이터 ══════════
+                엑셀로 직접 올린 데이터는 AI 가 발굴한 리드와 성격이 다르다.
+                출처가 다르고, 검증도 따로 돌려야 하고, "내가 올린 그 파일"을
+                다시 찾아보는 일이 잦다. 설정·도구 안에 묻어두면 도구 하나로
+                보여 "내가 올린 게 어디 갔지"가 된다. 그래서 자기 구역으로 뺐다. */}
+            <div className="nav-section-label">📥 import 하여 올린 데이터</div>
+            <button className="nav-item" data-view="tool-legacy" type="button" title="올린 업체 목록 — 엑셀로 올린 업체. 올린 날짜별 폴더로 나뉘어 있습니다. 여기서 AI 검증과 직접 검토를 돌려 보낼 곳을 고릅니다">
+              <span className="nav-icon">📚</span><span className="nav-label">올린 업체 목록</span>
+              <span className="nav-badge" data-nav-badge="legacy"></span>
+            </button>
+            <button className="nav-item" id="navImportCsv" data-view="tool-legacy-import" type="button" title="엑셀·CSV 올리기 — 업체 목록 파일을 올립니다. 올린 데이터는 위 [올린 업체 목록]에서 관리됩니다">
+              <span className="nav-icon">⬆</span><span className="nav-label">엑셀·CSV 올리기</span>
+            </button>
+            <button className="nav-item" data-view="tool-import-history" type="button" title="올린 기록 — 언제 무엇을 올렸는지. 잘못 올린 파일은 통째로 되돌릴 수 있습니다">
+              <span className="nav-icon">📋</span><span className="nav-label">올린 기록</span>
+            </button>
+
+            <div className="nav-divider"></div>
+
+            {/* ══════════ 그룹 D · 설정 · 도구 ══════════ */}
             <div className="nav-section-label">⚙ 설정 · 도구</div>
             {/* 예약 발송 관리 · 메일 수신 설정은 숨김 — 둘 다 한 번 맞춰두면
                 다시 들어갈 일이 없는 화면이다 (IMAP 연결은 이미 설정 완료).
@@ -136,19 +155,11 @@ export default function Home() {
             <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 발송에 쓸 SMTP 계정과 서명 정보 등록">
               <span className="nav-icon">📬</span><span className="nav-label">메일 계정</span>
             </button>
-            <button className="nav-item" data-view="tool-legacy" type="button" title="올린 데이터 — 엑셀로 올린 업체 목록. 올린 날짜별 폴더로 나뉘어 있고, 보낼 만한 곳을 골라 검증 완료로 되돌릴 수 있습니다">
-              <span className="nav-icon">📚</span><span className="nav-label">올린 데이터</span>
-            </button>
             {/* 추천 리스트는 숨김 — 고정 시드 54개짜리 구버전 기능이라,
                 웹에서 실시간으로 발굴하는 [🤖 AI 서칭] 이 대체한다.
                 되살리려면 이 주석을 풀면 된다.
             <button className="nav-item" data-view="tool-recommended" type="button" title="추천 리스트 — K-beauty B2B 시드 (웹 발굴) 를 내 리드로 추가">
               <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>
-            </button>
-            */}
-            {/* Import History 도 숨김 — CSV 가져오기를 숨겼으니 짝이 되는 화면도 뺀다.
-            <button className="nav-item" data-view="tool-import-history" type="button" title="Import History — CSV 배치 기록 조회 및 롤백">
-              <span className="nav-icon">📋</span><span className="nav-label">Import History</span>
             </button>
             */}
             <button className="nav-item" data-view="tool-user-guide" type="button" title="사용 설명서 — 처음 쓰시는 분을 위한 단계별 가이드">
@@ -164,14 +175,21 @@ export default function Home() {
               <p id="viewSubtitle">Search, qualify, and manage outreach.</p>
             </div>
             <div className="top-actions">
+              {/* [+ 리드 추가]·[🔍 검증]·[⬆ Import] 는 숨겼다.
+                  리드 발굴과 검증은 개발자 쪽에서 워크플로우로 돌려 결과만 넣어
+                  주기로 했다. 클라이언트가 쓸 일이 없는데 화면 맨 위에 계속 떠
+                  있으면 "이걸 눌러야 하나" 하는 고민만 만든다.
+                  기능은 그대로 살아 있어 주석만 풀면 돌아온다.
               <button id="addLeadBtn" className="button" type="button">+ 리드 추가</button>
               <button id="importCsvBtn" className="button secondary" type="button">⬆ Import</button>
               <button id="verifyLeadsBtn" className="button secondary" type="button">🔍 검증</button>
-              <button id="exportCsvBtn" className="button secondary" type="button">⬇ Export</button>
+              */}
+              <button id="exportCsvBtn" className="button secondary" type="button"
+                title="지금 보고 있는 화면을 엑셀(CSV)로 내려받습니다">⬇ 엑셀로 내려받기</button>
               <button id="themeToggleBtn" className="theme-toggle" type="button" title="다크/라이트 모드">🌙</button>
               <button id="settingsBtn" className="button secondary" type="button" style={{ display: 'none' }}>설정</button>
               <form action="/api/auth/logout" method="POST" style={{ display: 'inline' }}>
-                <button type="submit" className="button ghost">Logout</button>
+                <button type="submit" className="button ghost">로그아웃</button>
               </form>
               <button id="markContactedBtn" style={{ display: 'none' }} type="button"></button>
               <button id="undoContactedBtn" style={{ display: 'none' }} type="button"></button>
@@ -180,31 +198,28 @@ export default function Home() {
 
           <section id="toolbarSection" className="toolbar" aria-label="Lead filters">
             <label className="search-box">
-              <span>Search</span>
-              <input id="searchInput" type="search" placeholder="company, country, brand, contact" />
+              <span>검색</span>
+              <input id="searchInput" type="search" placeholder="회사명 · 국가 · 이메일 · 브랜드" />
             </label>
             <label>
-              <span>Country</span>
+              <span>국가</span>
               <select id="countryFilter"></select>
             </label>
-            <label>
-              <span>Status</span>
-              <select id="statusFilter"></select>
-            </label>
-            <label>
-              <span>Priority</span>
-              <select id="priorityFilter"></select>
-            </label>
-            <label>
-              <span>검증</span>
-              <select id="verifyFilter">
-                <option value="All">All</option>
-                <option value="passed">✅ 통과 (4/4)</option>
-                <option value="suspicious">⚠ 의심 (2~3점)</option>
-                <option value="invalid">❌ 무효 (0~1점)</option>
-                <option value="unverified">⏳ 미검증</option>
-              </select>
-            </label>
+            {/* Status · Priority · 검증 필터는 숨겼다.
+                지금 화면은 전부 서버에서 단계별로 페이지를 받아오는데 이 셋은
+                서버 쿼리에 들어가지 않아서, 골라도 목록이 그대로였다.
+                "눌러도 아무 일이 없는 칸"이 셋이나 있으면 나머지 필터까지
+                못 믿게 된다. 값과 코드는 남아 있어 주석만 풀면 돌아온다.
+            <label><span>Status</span><select id="statusFilter"></select></label>
+            <label><span>Priority</span><select id="priorityFilter"></select></label>
+            <label><span>검증</span><select id="verifyFilter">
+              <option value="All">All</option>
+              <option value="passed">✅ 통과 (4/4)</option>
+              <option value="suspicious">⚠ 의심 (2~3점)</option>
+              <option value="invalid">❌ 무효 (0~1점)</option>
+              <option value="unverified">⏳ 미검증</option>
+            </select></label>
+            */}
           </section>
 
           <section id="statsGrid" className="stats-grid" aria-label="Summary"></section>
@@ -256,9 +271,21 @@ export default function Home() {
               <h3 id="el-title" style={{ margin: 0 }}>바이어 상세</h3>
               <p id="el-meta" style={{ margin: '4px 0 0', fontSize: '13px', color: '#68726c' }}></p>
             </div>
-            {/* Favorite 는 뺐다 — 즐겨찾기로 뭘 하는 화면이 없어서 눌러도
-                아무 데도 모이지 않았다. 기능(toggleFavorite)은 살아 있다. */}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+            {/* 팝업을 닫지 않고 여기서 판정하고 다음 회사로 넘어간다.
+                418곳을 하나씩 열고 닫으면 검토 자체를 포기하게 된다.
+                (Favorite 은 뺐다 — 즐겨찾기를 모아 보는 화면이 없었다) */}
+            <div id="el-review" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div id="el-navBox" style={{ display: 'none', alignItems: 'center', gap: '5px' }}>
+                <button id="el-prev" className="el-nav-btn" type="button" title="이전 업체 (← 키)">‹ 이전</button>
+                <span id="el-navPos" style={{ fontSize: '12px', fontWeight: 700, color: '#68726c', minWidth: '74px', textAlign: 'center' }}></span>
+                <button id="el-next" className="el-nav-btn" type="button" title="다음 업체 (→ 키)">다음 ›</button>
+              </div>
+              <div id="el-judgeBox" style={{ display: 'none', gap: '6px' }}>
+                <button id="el-toQueue" className="el-judge el-judge-go" type="button"
+                  title="이 업체에 메일을 보냅니다 — 발송 리스트로 옮깁니다. 지금 나가지는 않습니다">✉ 메일 보낼곳으로 선정</button>
+                <button id="el-toFailed" className="el-judge el-judge-no" type="button"
+                  title="이 업체는 대상이 아닙니다 — 검증 실패로 옮깁니다">🚫 검증실패 업체로 선정</button>
+              </div>
               <button id="editModalCloseBtn" className="modal-close" type="button">&#x2715;</button>
             </div>
           </div>
@@ -268,9 +295,16 @@ export default function Home() {
             <div className="el-actions" id="el-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '18px' }}>
               <a id="el-website" href="#" target="_blank" rel="noreferrer" className="button ghost" style={{ display: 'none' }}>🌐 웹사이트</a>
               <a id="el-linkedin" href="#" target="_blank" rel="noreferrer" className="button ghost" style={{ display: 'none' }}>LinkedIn</a>
-              <a id="el-email-btn" href="#" className="button ghost" style={{ display: 'none' }}>✉ 메일 보내기</a>
               <a id="el-phone-btn" href="#" className="button ghost" style={{ display: 'none' }}>📞 전화</a>
+              {/* [✉ 메일 보내기]·[삭제] 는 뺐다.
+                  메일 보내기는 이 CRM 의 발송이 아니라 PC 메일 프로그램을 여는
+                  mailto 링크였다. 위쪽 [✉ 메일 보낼곳으로 선정] 과 뜻이 겹쳐
+                  "여기서 보내는 건가" 하는 오해를 만든다.
+                  삭제는 되돌릴 수 없는데 상세를 보다가 바로 옆에 있어 위험했다.
+                  아닌 곳은 [🚫 검증실패 업체로 선정] 으로 빼면 된다 (되돌릴 수 있다).
+              <a id="el-email-btn" href="#" className="button ghost" style={{ display: 'none' }}>✉ 메일 보내기</a>
               <button id="el-deleteBtn" className="button ghost" style={{ color: '#9f3333', borderColor: '#9f3333' }} type="button">삭제</button>
+              */}
             </div>
 
             {/*
@@ -688,7 +722,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=a093b605" strategy="afterInteractive" />
+      <Script src="/app.js?v=4d1be721" strategy="afterInteractive" />
     </>
   );
 }
