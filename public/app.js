@@ -1878,44 +1878,89 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     // 지금 의미 있는 수는 "발송 리스트로 옮긴 곳"뿐이라 그것만 쓴다.
     const queuedCount = (_stageCountsCache?.stages?.queued) || 0;
 
+    // 아직 안 고른 곳 — 직접 검토가 할 일이 남아 있는지
+    const notPicked = Math.max(0, emailReadyCount - queuedCount);
+
+    // 두 가지를 한 줄에 나란히 두지 않는다.
+    //
+    // [직접 검토]와 [메일 보내기]는 같은 크기의 선택지가 아니다.
+    // 검토는 **매일 하는 일**이고, 발송은 검토가 끝난 뒤 한 번 누르는 일이다.
+    // 나란히 두면 둘 중 뭘 먼저 해야 하는지가 화면에 안 나타나고,
+    // 검토를 건너뛰고 바로 보내버리는 일이 생긴다 (보낸 건 되돌릴 수 없다).
+    //
+    // 그래서 검토를 큰 카드로 위에 두고, 발송은 그 아래 한 줄로 내렸다.
     heroCard = `
       <div class="verify-hero" style="margin-top:12px">
-        <div class="verify-hero-card" style="
-          padding:20px;border-radius:16px;
-          background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
-          border:1px solid #93c5fd;display:flex;align-items:center;gap:20px;
-        ">
-          <div style="font-size:40px">📧</div>
-          <div style="flex:1">
-            <div style="font-size:12px;color:#1e40af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">발송 가능</div>
-            <div style="font-size:24px;font-weight:800;color:#1e3a8a;line-height:1.1;margin-top:2px">
-              ${emailReadyCount.toLocaleString()}<span style="font-size:14px;font-weight:600;color:#3b82f6;margin-left:4px">건</span>
+
+        <!-- ① 오늘 할 일 — 직접 검토 -->
+        <div style="padding:26px 30px;border-radius:18px;position:relative;overflow:hidden;
+                    background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+                    border:1px solid #93c5fd;box-shadow:0 4px 20px rgba(37,99,235,.13)">
+          <div style="display:flex;align-items:center;gap:26px;flex-wrap:wrap">
+            <div style="width:72px;height:72px;flex:none;border-radius:20px;display:flex;
+                        align-items:center;justify-content:center;font-size:36px;
+                        background:#fff;box-shadow:0 2px 10px rgba(37,99,235,.18)">🔎</div>
+
+            <div style="flex:1;min-width:230px">
+              <div style="font-size:11.5px;font-weight:800;color:#2563eb;letter-spacing:.06em;
+                          text-transform:uppercase">오늘 할 일</div>
+              <h2 style="margin:3px 0 0;font-size:27px;font-weight:800;color:#0f2d6b;line-height:1.15">
+                직접 검토
+              </h2>
+              <p style="font-size:13px;color:#1e40af;margin:7px 0 0;line-height:1.6">
+                한 회사씩 큰 화면으로 보면서 <b>보낼 곳인지 아닌지만</b> 고릅니다.<br>
+                버튼 하나 누르면 바로 다음 회사로 넘어갑니다.
+              </p>
             </div>
-            <p style="font-size:12px;color:#1e3a8a;margin:6px 0 0;line-height:1.5">
-              이 중 <b>${queuedCount.toLocaleString()}곳</b>을 발송 리스트로 옮겼습니다
-            </p>
+
+            <div style="display:flex;align-items:center;gap:26px;flex-wrap:wrap">
+              <div>
+                <div style="font-size:44px;font-weight:800;color:#1d4ed8;line-height:1">
+                  ${notPicked.toLocaleString()}</div>
+                <div style="font-size:12px;font-weight:700;color:#1e40af;margin-top:2px">아직 안 고른 곳</div>
+              </div>
+              <div style="width:1px;height:46px;background:#93c5fd"></div>
+              <div>
+                <div style="font-size:26px;font-weight:800;color:#1e3a8a;line-height:1">
+                  ${queuedCount.toLocaleString()}</div>
+                <div style="font-size:12px;font-weight:600;color:#3b82f6;margin-top:2px">보낼 곳으로 고름</div>
+              </div>
+            </div>
+
+            <button id="startReviewBtn" type="button"
+              title="한 회사씩 카드로 보며 보낼 곳인지 아닌지만 고릅니다"
+              style="margin-left:auto;font-size:16px;font-weight:800;padding:17px 34px;white-space:nowrap;
+                     background:#2563eb;color:#fff;border:none;border-radius:13px;cursor:pointer;
+                     box-shadow:0 4px 16px rgba(37,99,235,.36);
+                     ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}"
+              ${emailReadyCount === 0 ? 'disabled' : ''}>
+              직접 검토 시작 →
+            </button>
           </div>
-          <!-- 예전 [⚡ 빠른 검토] 는 분류 탭(리테일 체인·유통사·브랜드…)으로 나눠
-               보여주는 별도 화면이었다. 분류를 고르는 일이 하나 더 늘 뿐이고,
-               대기열 기준이 readyForOutreach 라 418곳 중 9곳만 나오고 있었다.
-               지금은 그 카드 화면을 그대로 쓰되 분류 탭만 뺐다 — AI 가 이미
-               한 번 걸러 놓은 목록이라 사람이 할 일은 고르는 것 하나다. -->
-          <button id="startReviewBtn" type="button"
-            title="한 회사씩 카드로 보며 보낼 곳인지 아닌지만 고릅니다"
-            style="
-            font-size:14px;font-weight:700;padding:12px 18px;white-space:nowrap;
-            background:#fff;color:#1d4ed8;border:1px solid #2563eb;border-radius:10px;cursor:pointer;
-            ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-          " ${emailReadyCount === 0 ? 'disabled' : ''}>
-            🔎 직접 검토 시작
-          </button>
-          <button id="openFirstSendBtn" type="button" style="
-            font-size:14px;font-weight:700;padding:12px 20px;white-space:nowrap;
-            background:#2563eb;color:white;border:none;border-radius:10px;cursor:pointer;
-            box-shadow:0 2px 8px rgba(37,99,235,0.3);
-            ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}
-          " ${emailReadyCount === 0 ? 'disabled' : ''}>
-            ✉ 메일 보내기
+        </div>
+
+        <!-- ② 검토가 끝난 뒤에 하는 일 — 발송. 일부러 작게 둔다. -->
+        <div style="margin-top:9px;padding:13px 18px;border-radius:12px;display:flex;
+                    align-items:center;gap:14px;flex-wrap:wrap;
+                    background:var(--bg-surface);border:1px solid var(--border-default)">
+          <span style="font-size:19px">✉</span>
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:13px;font-weight:700;color:var(--text-primary)">
+              고른 곳에 메일 보내기
+            </div>
+            <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:1px">
+              ${queuedCount
+                ? `발송 리스트에 <b style="color:var(--text-secondary)">${queuedCount.toLocaleString()}곳</b>이 있습니다`
+                : '먼저 위에서 보낼 곳을 골라 주세요'}
+            </div>
+          </div>
+          <button id="openFirstSendBtn" type="button"
+            style="font-size:13px;font-weight:700;padding:9px 18px;white-space:nowrap;
+                   background:var(--bg-surface);color:#1d4ed8;border:1px solid #2563eb;
+                   border-radius:9px;cursor:pointer;
+                   ${emailReadyCount === 0 ? 'opacity:0.4;cursor:not-allowed' : ''}"
+            ${emailReadyCount === 0 ? 'disabled' : ''}>
+            메일 보내기 →
           </button>
         </div>
       </div>
@@ -5525,8 +5570,23 @@ async function renderLegacyPage() {
   let d;
   try {
     d = await safeJsonFetch(`/api/leads/legacy?${p}`);
+    // safeJsonFetch 는 500 에도 예외를 던지지 않고 본문을 그대로 준다.
+    // 이 줄이 없으면 아래 d.items.map 에서 TypeError 가 나고, 화면에는
+    // "불러오는 중…" 만 남아 고장 원인을 알 수 없다.
+    if (!d || !d.success) throw new Error(d?.error || '올린 데이터를 불러오지 못했습니다');
   } catch (e) {
-    els.content.innerHTML = `<div class="empty-detail"><h3>불러오기 실패</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+    els.content.innerHTML = `
+      <div class="empty-detail" style="padding:40px 24px">
+        <div style="font-size:44px;margin-bottom:8px">⚠️</div>
+        <h3>불러오기 실패</h3>
+        <p>${escapeHtml(String(e.message || e))}</p>
+        <p style="margin-top:6px;color:var(--text-tertiary);font-size:12.5px">
+          올린 데이터는 그대로 있습니다. 잠시 뒤 다시 시도해 주세요.</p>
+        <button type="button" id="lgRetry"
+          style="margin-top:16px;padding:11px 22px;border:none;border-radius:10px;background:#2563eb;
+                 color:#fff;font-size:13.5px;font-weight:800;cursor:pointer">다시 시도</button>
+      </div>`;
+    els.content.querySelector('#lgRetry')?.addEventListener('click', () => renderLegacyPage());
     return;
   }
 
@@ -5887,13 +5947,13 @@ async function renderReviewPage() {
   const picked = _review.decided.get(lead.leadId) || '';
   const atFirst = _review.idx === 0;
   const row = (label, value) => value
-    ? `<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border-default)">
-         <span style="width:76px;flex:none;font-size:12px;color:var(--text-tertiary);font-weight:700">${label}</span>
-         <span style="font-size:13.5px;color:var(--text-primary);word-break:break-word">${value}</span>
+    ? `<div style="display:flex;gap:16px;padding:11px 0;border-bottom:1px solid var(--border-default)">
+         <span style="width:88px;flex:none;font-size:13px;color:var(--text-tertiary);font-weight:700">${label}</span>
+         <span style="font-size:15px;color:var(--text-primary);word-break:break-word;line-height:1.55">${value}</span>
        </div>` : '';
 
   els.content.innerHTML = `
-    <div style="max-width:720px;margin:0 auto">
+    <div style="max-width:960px;margin:0 auto">
       <!-- 나가는 길. 이 화면은 목록을 덮고 뜨는데 [이전]/[다음]은 회사를
            넘기는 버튼이라, 이게 없으면 검토를 그만두고 싶어도 사이드바를
            다시 누르는 수밖에 없었다. 그것도 어디서 들어왔는지는 안 남는다. -->
@@ -5925,23 +5985,24 @@ async function renderReviewPage() {
         &nbsp;|&nbsp; 실패로 빼도 지워지지 않습니다. [❌ 검증 실패]에서 되돌릴 수 있습니다.
       </div>
 
-      <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:16px;
-                  padding:24px 26px;box-shadow:0 2px 10px rgba(0,0,0,0.05)">
-        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:4px">
-          <h2 style="margin:0;font-size:23px;font-weight:800;color:var(--text-primary);line-height:1.25;flex:1">
+      <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:20px;
+                  padding:34px 38px;box-shadow:0 4px 24px rgba(15,23,42,0.07)">
+        <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:6px;flex-wrap:wrap">
+          <h2 style="margin:0;font-size:32px;font-weight:800;color:var(--text-primary);line-height:1.2;
+                     flex:1;min-width:260px;word-break:break-word">
             ${escapeHtml(lead.Company || '(회사명 없음)')}
           </h2>
-          <span style="flex:none;padding:4px 11px;background:var(--bg-surface-alt);border-radius:99px;
-                       font-size:12px;font-weight:700;color:var(--text-secondary)">${escapeHtml(lead.Country || '—')}</span>
-          ${lead.Category ? `<span style="flex:none;padding:4px 11px;background:#eef2ff;border-radius:99px;
-                       font-size:12px;font-weight:700;color:#4338ca">${escapeHtml(REVIEW_CATEGORY[lead.Category] || lead.Category)}</span>` : ''}
-          ${lead.recoScore ? `<span title="발송 우선순위 점수" style="flex:none;padding:4px 10px;background:#ecfdf5;
-                       border-radius:99px;font-size:12px;font-weight:800;color:#047857">추천 ${lead.recoScore}</span>` : ''}
+          <span style="flex:none;padding:6px 14px;background:var(--bg-surface-alt);border-radius:99px;
+                       font-size:13px;font-weight:700;color:var(--text-secondary)">${escapeHtml(lead.Country || '—')}</span>
+          ${lead.Category ? `<span style="flex:none;padding:6px 14px;background:#eef2ff;border-radius:99px;
+                       font-size:13px;font-weight:700;color:#4338ca">${escapeHtml(REVIEW_CATEGORY[lead.Category] || lead.Category)}</span>` : ''}
+          ${lead.recoScore ? `<span title="발송 우선순위 점수" style="flex:none;padding:6px 13px;background:#ecfdf5;
+                       border-radius:99px;font-size:13px;font-weight:800;color:#047857">추천 ${lead.recoScore}</span>` : ''}
         </div>
         ${site ? `<a href="${escapeAttr(urlFor(site))}" target="_blank" rel="noreferrer"
-             style="font-size:13px;color:#2563eb;text-decoration:none;word-break:break-all">${escapeHtml(site)} ↗</a>` : ''}
+             style="font-size:14.5px;color:#2563eb;text-decoration:none;word-break:break-all">${escapeHtml(site)} ↗</a>` : ''}
 
-        <div style="margin-top:16px">
+        <div style="margin-top:22px">
           ${row('이메일', escapeHtml(lead.Email || ''))}
           ${row('업종', escapeHtml(lead.TypeKo || lead.Type || ''))}
           ${row('전화', escapeHtml(lead.Phone || ''))}
@@ -5949,21 +6010,22 @@ async function renderReviewPage() {
         </div>
 
         ${lead.Evidence || lead.EvidenceKo ? `
-          <div style="margin-top:16px;padding:13px 15px;background:var(--bg-surface-alt);border-radius:10px">
-            <div style="font-size:10.5px;font-weight:800;color:var(--text-tertiary);
-                        text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">왜 이 회사인가</div>
+          <div style="margin-top:22px;padding:18px 21px;background:var(--bg-surface-alt);border-radius:13px;
+                      border-left:4px solid #2563eb">
+            <div style="font-size:11.5px;font-weight:800;color:#2563eb;
+                        letter-spacing:.5px;margin-bottom:8px">왜 이 회사인가</div>
             <!-- 한국어본이 있으면 그것을 보여준다. 쓰는 사람이 전부 한국인이라
                  영문을 매번 번역 버튼으로 여는 건 손이 많이 간다. -->
-            <div style="font-size:13px;line-height:1.65;color:var(--text-secondary);white-space:pre-wrap">${escapeHtml(String(lead.EvidenceKo || lead.Evidence).slice(0, 700))}</div>
+            <div style="font-size:14.5px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap">${escapeHtml(String(lead.EvidenceKo || lead.Evidence).slice(0, 700))}</div>
             ${lead.EvidenceKo ? '' : translateBtnHtml(String(lead.Evidence).slice(0, 700), { inline: true })}
-            ${lead.Sources ? `<div style="margin-top:8px;font-size:11.5px;color:var(--text-quaternary);word-break:break-all">
+            ${lead.Sources ? `<div style="margin-top:11px;font-size:12px;color:var(--text-quaternary);word-break:break-all">
               출처 · ${escapeHtml(String(lead.Sources).slice(0, 300))}</div>` : ''}
           </div>` : ''}
 
         ${(lead.recoReasons || []).length ? `
-          <div style="margin-top:12px;display:flex;gap:5px;flex-wrap:wrap">
-            ${lead.recoReasons.map((r) => `<span style="padding:3px 9px;background:var(--bg-surface-alt);
-              border-radius:99px;font-size:11px;color:var(--text-secondary)">${escapeHtml(r)}</span>`).join('')}
+          <div style="margin-top:15px;display:flex;gap:6px;flex-wrap:wrap">
+            ${lead.recoReasons.map((r) => `<span style="padding:5px 12px;background:var(--bg-surface-alt);
+              border-radius:99px;font-size:12.5px;color:var(--text-secondary)">${escapeHtml(r)}</span>`).join('')}
           </div>` : ''}
 
         <!-- 이미 고른 회사로 되돌아온 경우 — 무엇으로 골랐는지 먼저 알려준다.
@@ -5982,15 +6044,15 @@ async function renderReviewPage() {
         <!-- 버튼 글자를 결과 그대로 적는다. "승인/제외" 로는 누른 뒤 이 회사가
              어디로 가는지 알 수 없어서, 목록 이름을 그대로 쓴다. -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:${picked ? '10px' : '20px'}">
-          <button type="button" id="rvReject" style="padding:14px;border-radius:11px;
+          <button type="button" id="rvReject" style="padding:19px;border-radius:13px;
             border:1px solid ${picked === 'failed' ? '#b91c1c' : '#fca5a5'};
             background:${picked === 'failed' ? '#fee2e2' : '#fef2f2'};
-            box-shadow:${picked === 'failed' ? 'inset 0 0 0 1px #b91c1c' : 'none'};
-            color:#b91c1c;font-size:14px;font-weight:800;cursor:pointer">🚫 검증실패 업체로 선정 <span style="opacity:.6;font-weight:500">←</span></button>
-          <button type="button" id="rvApprove" style="padding:14px;border-radius:11px;border:none;
+            box-shadow:${picked === 'failed' ? 'inset 0 0 0 2px #b91c1c' : 'none'};
+            color:#b91c1c;font-size:16px;font-weight:800;cursor:pointer">🚫 검증실패 업체로 선정 <span style="opacity:.6;font-weight:500">←</span></button>
+          <button type="button" id="rvApprove" style="padding:19px;border-radius:13px;border:none;
             background:${picked === 'queued' ? '#1d4ed8' : '#2563eb'};
-            box-shadow:${picked === 'queued' ? 'inset 0 0 0 2px #93c5fd' : '0 2px 8px rgba(37,99,235,.3)'};
-            color:#fff;font-size:14px;font-weight:800;cursor:pointer">✉ 메일 보낼곳으로 선정 <span style="opacity:.7;font-weight:500">→</span></button>
+            box-shadow:${picked === 'queued' ? 'inset 0 0 0 3px #93c5fd' : '0 4px 14px rgba(37,99,235,.34)'};
+            color:#fff;font-size:16px;font-weight:800;cursor:pointer">✉ 메일 보낼곳으로 선정 <span style="opacity:.7;font-weight:500">→</span></button>
         </div>
 
         <!-- 앞뒤로 넘기기. 고르지 않고 넘어가는 [다음 ›] 은 예전의 "건너뛰기" 와
@@ -6389,9 +6451,17 @@ async function openMailDetailModal(mailId) {
                   font-size:12.5px;color:#334155;line-height:1.7;white-space:pre-wrap;max-height:320px;overflow:auto">${escapeHtml(m.translation.body)}</div>
     </details>` : '';
 
+  // 인용문이 무엇인지 한 줄 붙인다.
+  // 메일에 답장하면 원래 편지가 아래에 그대로 딸려오는데, 그게 본문인 줄 알고
+  // 다시 읽으면 "같은 말을 또 하네" 가 된다. 접어 두되 왜 접혀 있는지는 적는다.
   const quoteBlock = m.hasQuoted ? `
     <details style="margin-top:10px">
-      <summary style="cursor:pointer;font-size:11.5px;color:#64748b">▼ 인용된 이전 대화 보기</summary>
+      <summary style="cursor:pointer;font-size:11.5px;color:#64748b">
+        ▼ 인용된 이전 대화 보기
+        <span style="color:#94a3b8;font-weight:400">
+          — 이 메일 아래에 딸려온 <b>지난번 주고받은 내용</b>입니다. 새로 온 말이 아니라 접어 뒀습니다.
+        </span>
+      </summary>
       <pre style="margin-top:8px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;
                   font-size:11px;color:#64748b;white-space:pre-wrap;word-break:break-word;
                   max-height:280px;overflow:auto">${escapeHtml(m.bodyFull)}</pre>
@@ -6453,7 +6523,9 @@ async function openMailDetailModal(mailId) {
       <div class="mail-split">
         <div class="mail-read" style="padding:16px 20px;background:#fcfcfd">
           ${aiBlock}
-          <div style="font-size:13.5px;color:#1e293b;line-height:1.75;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.body || '(본문 없음)')}</div>
+          <!-- 편지 본문은 이 화면에서 가장 오래 읽는 글자다. 목록의 글자 크기에
+               맞춰 13.5px 로 두었더니 영문 편지를 훑기가 눈에 부담이 됐다. -->
+          <div style="font-size:15.5px;color:#1e293b;line-height:1.85;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.body || '(본문 없음)')}</div>
           <!-- 이미 AI 분석으로 번역본이 있으면(transBlock) 굳이 또 부르지 않는다 -->
           ${m.translation?.body ? '' : translateBtnHtml(m.body || '')}
           ${quoteBlock}
@@ -6868,9 +6940,12 @@ async function openConversationModal(leadId) {
 
     const quoteId = `conv-quote-${i}`;
     const quoteBlock = (!out && t.hasQuoted && t.bodyFull)
-      ? `<button type="button" class="conv-quote-toggle" data-quote-target="${quoteId}"
-                style="margin-top:8px;background:none;border:none;color:#64748b;font-size:11px;
+      ? `<div style="margin-top:8px;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+           <button type="button" class="conv-quote-toggle" data-quote-target="${quoteId}"
+                style="background:none;border:none;color:#64748b;font-size:11px;
                        cursor:pointer;padding:0;text-decoration:underline">▼ 인용된 이전 대화 보기</button>
+           <span style="font-size:10.5px;color:#94a3b8">— 답장에 딸려온 지난번 내용입니다</span>
+         </div>
          <pre id="${quoteId}" hidden style="margin:8px 0 0;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;
                     border-radius:6px;font-size:11px;color:#64748b;white-space:pre-wrap;
                     word-break:break-word;max-height:220px;overflow:auto">${escapeHtml(t.bodyFull)}</pre>`
@@ -6972,6 +7047,38 @@ async function openConversationModal(leadId) {
  * 받은 메일이 없으면 답할 대상이 없으므로 표시하지 않는다
  * (새 메일 발송은 발송함 화면의 몫).
  */
+/**
+ * 답장에 쓸 글꼴 목록.
+ *
+ * 메일은 받는 사람 컴퓨터에서 그려진다. 웹폰트를 링크로 걸어도 지메일·아웃룩이
+ * 걷어내므로, **상대 컴퓨터에 이미 깔려 있는 글꼴**만 뜻이 있다.
+ * 그래서 목록은 윈도우·맥 기본 글꼴과 무료로 풀린 나눔 계열로만 짰다.
+ *
+ * stack 에 대체 글꼴을 줄줄이 적는 이유도 같다 — 나눔고딕이 없는 컴퓨터에서는
+ * 맑은 고딕으로, 그것도 없으면 기본 고딕으로 떨어진다.
+ */
+var REPLY_FONTS = [
+  // 한글
+  { label: '맑은 고딕',    stack: "'Malgun Gothic','맑은 고딕','Apple SD Gothic Neo',sans-serif" },
+  { label: '나눔고딕',     stack: "'NanumGothic','나눔고딕','Malgun Gothic',sans-serif" },
+  { label: '나눔바른고딕', stack: "'NanumBarunGothic','나눔바른고딕','Malgun Gothic',sans-serif" },
+  { label: '나눔명조',     stack: "'NanumMyeongjo','나눔명조','Batang',serif" },
+  { label: '굴림',         stack: "'Gulim','굴림',sans-serif" },
+  { label: '돋움',         stack: "'Dotum','돋움',sans-serif" },
+  { label: '바탕',         stack: "'Batang','바탕',serif" },
+  { label: '궁서',         stack: "'Gungsuh','궁서',serif" },
+  // 영문
+  { label: 'Arial',           stack: "Arial,Helvetica,sans-serif" },
+  { label: 'Calibri',         stack: "Calibri,'Segoe UI',sans-serif" },
+  { label: 'Segoe UI',        stack: "'Segoe UI',Tahoma,sans-serif" },
+  { label: 'Verdana',         stack: "Verdana,Geneva,sans-serif" },
+  { label: 'Tahoma',          stack: "Tahoma,Geneva,sans-serif" },
+  { label: 'Trebuchet MS',    stack: "'Trebuchet MS',sans-serif" },
+  { label: 'Georgia',         stack: "Georgia,serif" },
+  { label: 'Times New Roman', stack: "'Times New Roman',Times,serif" },
+  { label: 'Courier New',     stack: "'Courier New',monospace" },
+];
+
 function replyBoxHtml(lastInbound) {
   if (!lastInbound || !lastInbound._id) return '';
   const subj = String(lastInbound.subject || '');
@@ -7011,11 +7118,25 @@ function replyBoxHtml(lastInbound) {
         <div>
           <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center;background:#f1f5f9;
                       border:1px solid #cbd5e1;border-bottom:none;border-radius:8px 8px 0 0;padding:5px 6px">
+            <!-- 글꼴 — 메일에서 실제로 뜨는 것만 넣는다.
+                 웹폰트(구글 폰트를 링크로 불러오는 방식)는 지메일·아웃룩이
+                 걷어내기 때문에, 아무리 예쁘게 골라도 받는 쪽에서는 기본 글꼴로
+                 보인다. 그래서 컴퓨터에 이미 깔려 있는 글꼴만 골랐다.
+                 나눔 계열은 무료로 풀린 글꼴이고 한국에서는 대부분 깔려 있다.
+                 각 항목을 그 글꼴로 그려서 고르기 전에 모양을 보게 한다. -->
+            <select id="convFontFamily" title="글꼴 — 받는 사람 화면에서도 이대로 보입니다" style="${tb};padding:4px;max-width:150px">
+              <option value="">글꼴</option>
+              ${REPLY_FONTS.map((f) => `
+                <option value="${escapeAttr(f.stack)}" style="font-family:${f.stack}">
+                  ${escapeHtml(f.label)} (ABCD 가나다)
+                </option>`).join('')}
+            </select>
             <select id="convFontSize" title="글자 크기" style="${tb};padding:4px">
               <option value="">크기</option>
-              <option value="12">12px</option><option value="13">13px</option>
-              <option value="14">14px</option><option value="16">16px</option>
+              <option value="13">13px</option><option value="14">14px</option>
+              <option value="15">15px · 보통</option><option value="16">16px</option>
               <option value="18">18px</option><option value="20">20px</option>
+              <option value="24">24px</option>
             </select>
             <button type="button" data-rcmd="bold" style="${tb};font-weight:800" title="굵게"><b>B</b></button>
             <button type="button" data-rcmd="italic" style="${tb};font-style:italic" title="기울임"><i>I</i></button>
@@ -7032,12 +7153,12 @@ function replyBoxHtml(lastInbound) {
           <div id="convReplyBody" contenteditable="true"
             data-placeholder="답장 내용을 입력하세요. 서명은 자동으로 붙습니다."
             style="width:100%;min-height:210px;max-height:44vh;overflow-y:auto;padding:11px 13px;
-                   font-size:13.5px;line-height:1.7;border:1px solid #cbd5e1;border-radius:0 0 8px 8px;
+                   font-size:15px;line-height:1.8;border:1px solid #cbd5e1;border-radius:0 0 8px 8px;
                    background:#ffffff;color:#0f172a;outline:none"></div>
         </div>
 
         <div id="convDraftKo" style="padding:11px 13px;background:#f8fafc;border:1px solid #e2e8f0;
-             border-radius:8px;font-size:12.5px;color:#334155;line-height:1.65;min-height:236px;
+             border-radius:8px;font-size:14px;color:#334155;line-height:1.75;min-height:236px;
              max-height:calc(44vh + 30px);overflow-y:auto">
           <div style="font-size:10.5px;font-weight:800;color:#64748b;margin-bottom:6px">
             KR 한글 대역본 <span style="font-weight:400">· 검토용 · 발송되지 않음</span>
@@ -7114,6 +7235,23 @@ function bindConversationReply(leadId, rootId) {
   keep(fs);
   fs?.addEventListener('change', (e) => {
     if (e.target.value) wrapSel('fontSize', e.target.value + 'px');
+    e.target.selectedIndex = 0;
+  });
+
+  // 글꼴 — 고른 글자가 있으면 그 부분만, 없으면 본문 전체에 건다.
+  // 크기(wrapSel)와 달리 글꼴은 "이 편지는 이 글꼴로" 쓰는 경우가 대부분이라,
+  // 아무것도 선택하지 않고 골랐을 때 아무 일도 안 일어나면 고장으로 보인다.
+  const ff = root.querySelector('#convFontFamily');
+  keep(ff);
+  ff?.addEventListener('change', (e) => {
+    const stack = e.target.value;
+    if (stack) {
+      const sel = window.getSelection();
+      const hasPick = sel && !sel.isCollapsed && sel.rangeCount
+        && rbody && rbody.contains(sel.getRangeAt(0).commonAncestorContainer);
+      if (hasPick) wrapSel('fontFamily', stack);
+      else if (rbody) rbody.style.fontFamily = stack;   // 전체에 적용
+    }
     e.target.selectedIndex = 0;
   });
 
@@ -8223,12 +8361,16 @@ function renderTemplateListPage(templates) {
                   <span style="font-size:11px;color:var(--text-quaternary);white-space:nowrap">
                     ${fmt(t.updatedAt)} 수정
                   </span>
+                  <!-- [복사] 는 뺐다. 양식은 몇 개 안 되고 그때그때 고쳐 쓰는 것이라,
+                       복사본이 쌓이면 발송할 때 "어느 게 최신이지" 가 된다.
+                       변형이 필요하면 [수정] 으로 고치면 된다.
+                       (핸들러 .tpl-copy 는 남겨 뒀다 — 되살리려면 버튼만 다시 넣으면 된다) -->
                   <div style="display:flex;gap:6px">
-                    <button type="button" class="tpl-copy" data-tpl-id="${escapeAttr(t._id)}"
-                      title="이 양식을 복사해 새로 만듭니다"
-                      style="font-size:11.5px;font-weight:600;padding:6px 12px;
-                             border:1px solid var(--border-default);border-radius:8px;
-                             background:var(--bg-surface);color:var(--text-secondary);cursor:pointer">복사</button>
+                    <button type="button" class="tpl-edit" data-tpl-id="${escapeAttr(t._id)}"
+                      title="이 양식의 제목·본문을 고칩니다"
+                      style="font-size:11.5px;font-weight:700;padding:6px 14px;
+                             border:1px solid #2563eb;border-radius:8px;
+                             background:var(--bg-surface);color:#1d4ed8;cursor:pointer">✏ 수정</button>
                     <button type="button" class="tpl-del" data-tpl-id="${escapeAttr(t._id)}"
                       title="이 양식을 삭제합니다"
                       style="font-size:11.5px;font-weight:600;padding:6px 12px;
@@ -8244,8 +8386,9 @@ function renderTemplateListPage(templates) {
         <div style="margin-top:16px;padding:13px 17px;background:var(--bg-surface-alt);
                     border:1px solid var(--border-subtle);border-radius:11px;
                     font-size:12px;color:var(--text-tertiary);line-height:1.7">
-          💡 비슷한 문구가 필요하면 <b style="color:var(--text-secondary)">복사</b> 로 변형본을 만드세요.
-          담당자마다, 상황마다 다른 양식을 따로 두고 발송할 때 고르면 됩니다.
+          💡 양식은 <b style="color:var(--text-secondary)">[✏ 수정]</b> 으로 언제든 고칠 수 있습니다.
+          상황마다 다른 문구가 필요하면 <b style="color:var(--text-secondary)">[+ 새 양식 작성]</b> 으로 하나 더 만들어 두고,
+          발송할 때 골라 쓰면 됩니다.
         </div>
       `}
     </div>`;
@@ -8266,10 +8409,19 @@ function renderTemplateListPage(templates) {
 
   document.getElementById('tplNewBtn')?.addEventListener('click', () => openTemplateEditor(null));
 
+  // 카드 아무 데나 눌러도 열리고, [✏ 수정] 을 눌러도 같은 곳이 열린다.
+  // 카드 클릭만으로는 "눌러도 되는 건가" 를 모르는 사람이 있어 버튼도 같이 둔다.
   els.content.querySelectorAll('.tpl-card').forEach((el) => {
     el.addEventListener('click', (e) => {
       if (e.target.closest('.tpl-del') || e.target.closest('.tpl-copy')) return;
       openTemplateEditor(el.dataset.tplId);
+    });
+  });
+
+  els.content.querySelectorAll('.tpl-edit').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openTemplateEditor(b.dataset.tplId);
     });
   });
 
@@ -9194,6 +9346,48 @@ async function renderOutboxPage() {
     document.querySelector('.nav-item[data-view="pipeline-verified"]')?.click());
 
   document.getElementById('outboxSendBtn')?.addEventListener('click', () => runOutboxCampaign(ready, lock));
+
+  // 예약분을 지금 처리 — 크론이 하루 한 번이라 테스트 때 기다릴 수 없어 둔다
+  document.getElementById('outboxRunDue')?.addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    if (!confirm(
+      '예약 시각이 이미 지난 건을 지금 내보냅니다.\n\n' +
+      '아직 시각이 안 된 건은 그대로 둡니다.\n' +
+      '하루 상한과 발송 간격은 그대로 적용됩니다.\n\n진행할까요?',
+    )) return;
+    b.disabled = true;
+    const was = b.textContent;
+    b.textContent = '⏳ 내보내는 중…';
+    try {
+      const r = await safeJsonFetch('/api/cron/process-schedules');
+      if (!r || r.success === false) throw new Error(r?.error || '처리 실패');
+
+      // 응답은 { processed, due, results:[{id, ok, error}], sentToday, dailyCap, stoppedFor }
+      const res = r.results || [];
+      const ok = res.filter((x) => x && x.ok).length;
+      const ng = res.filter((x) => x && !x.ok);
+
+      alert(
+        `예약 처리 결과\n\n` +
+        `시각이 된 건    ${r.due ?? 0}건\n` +
+        `처리한 건       ${r.processed ?? 0}건\n` +
+        `  → 보냄        ${ok}건\n` +
+        `  → 실패        ${ng.length}건\n` +
+        `오늘 누적       ${r.sentToday ?? 0} / ${r.dailyCap ?? '-'}통\n` +
+        (r.stoppedFor === 'daily-cap' ? '\n※ 하루 상한에 걸려 멈췄습니다.\n' : '') +
+        (r.stoppedFor === 'time-budget' ? '\n※ 시간이 길어져 멈췄습니다. 다시 누르면 이어서 나갑니다.\n' : '') +
+        (r.skipped === 'daily-cap' ? '\n※ 오늘 상한을 이미 채워 한 통도 나가지 않았습니다.\n' : '') +
+        (ng.length ? `\n실패 사유\n${ng.slice(0, 5).map((x) => ' · ' + (x.error || '알 수 없음')).join('\n')}\n` : '') +
+        `\n[✅ 발송 완료] 탭에서 확인하세요.`,
+      );
+    } catch (err) {
+      alert(`예약 처리 실패: ${(err && err.message) || err}`);
+    } finally {
+      b.disabled = false;
+      b.textContent = was;
+      renderOutboxPage();
+    }
+  });
   document.getElementById('outboxHowBtn')?.addEventListener('click', () => openSendLogicModal(lock));
   document.getElementById('obGoTemplates')?.addEventListener('click', () => {
     state.email.mode = 'list';
@@ -9944,6 +10138,16 @@ function outboxScheduledHtml(pending, failed, canceled) {
                   font-size:12.5px;color:#78350f;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <b>대기 중 ${pending.length.toLocaleString()}건</b>
         <span>${days.length}개 날짜</span>
+        <!-- 예약을 실제로 내보내는 건 하루 한 번 도는 크론이다(Vercel 무료 플랜은
+             하루 1회까지만 된다). 몇 분 뒤로 잡아놓고 나가는지 보고 싶을 때
+             하루를 기다릴 수는 없으므로, 지금 돌려보는 버튼을 둔다.
+             예약 시각이 지난 것만 나간다 — 아직 안 된 것은 그대로 남는다. -->
+        <button type="button" id="outboxRunDue" style="margin-left:auto;font-size:11.5px;font-weight:700;
+                padding:6px 13px;border-radius:8px;border:1px solid #b45309;background:#fff;
+                color:#b45309;cursor:pointer"
+          title="예약 시각이 이미 지난 건을 지금 내보냅니다. 아직 시각이 안 된 건은 그대로 둡니다.">
+          ⏱ 지금 예약분 내보내기
+        </button>
         <span style="margin-left:auto;font-size:11px">시각이 되면 자동으로 [발송 완료]로 넘어갑니다 · 취소는 회사 옆 ✕</span>
       </div>
       ${days.map(([key, list]) => `

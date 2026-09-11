@@ -43,7 +43,18 @@ const REAL_EMAIL = { Email: { $regex: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ } };
  *                dev7561@gmail.com 이 이집트·키프로스·부르키나파소 회사에 동시에 달려 있었다.
  *                회사는 진짜지만 주소가 그 회사 것이 아니므로 보내면 엉뚱한 사람에게 간다.
  */
-const NOT_HIDDEN = { dupHiddenAt: { $exists: false }, badEmailAt: { $exists: false } };
+/**
+ * legacyHiddenAt — [AI 검증 완료]에 같은 업체가 이미 있어서 이쪽에서 감춘 것.
+ *
+ * 같은 회사가 두 곳에 뜨면 두 번 판단하게 되고, 더 나쁘게는 한쪽에서 "보낼 곳",
+ * 다른 쪽에서 "검증 실패"로 골라 서로 엇갈린다. 뒤 단계인 검증 완료 쪽을 남긴다.
+ * (scripts/dedup-verified-vs-legacy.mjs — 이메일 일치 우선, 그다음 회사명+국가)
+ */
+const NOT_HIDDEN = {
+  dupHiddenAt: { $exists: false },
+  badEmailAt: { $exists: false },
+  legacyHiddenAt: { $exists: false },
+};
 
 const LIST_PROJECTION = {
   leadId: 1, Company: 1, Country: 1, Email: 1, WebsiteContact: 1, Phone: 1,
@@ -77,6 +88,10 @@ export async function GET(req: Request) {
                 { $regexMatch: { input: { $ifNull: ['$Email', ''] }, regex: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ } },
                 { $eq: [{ $type: '$dupHiddenAt' }, 'missing'] },
                 { $eq: [{ $type: '$badEmailAt' }, 'missing'] },
+                // 검증 완료에 같은 업체가 있어 감춘 것도 숫자에서 뺀다.
+                // 목록에서는 안 보이는데 폴더 숫자에만 남으면, 열어봤을 때
+                // "3건이라더니 왜 1건이지" 가 된다.
+                { $eq: [{ $type: '$legacyHiddenAt' }, 'missing'] },
               ] }, 1, 0] },
             },
             archived: { $sum: { $cond: [{ $eq: ['$stage', 'archived'] }, 1, 0] } },

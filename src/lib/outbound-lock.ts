@@ -18,23 +18,26 @@
  *   · 연결 테스트      /api/mail/test
  *   · 내부 브리핑      /api/mail/briefing  (우리 주소로만 간다)
  *
- * ── 되살리기 ──
- * 1) 아래 OUTBOUND_LOCKED 를 false 로 바꾸고
- * 2) .env.local 의 MAIL_DRY_RUN 을 0 으로 한 뒤 개발 서버 재시작
- *    (스위치는 이 파일 하나뿐이다 — 예전에 send/route.ts 에도 따로 있었는데
- *     한쪽만 내려놓고 껐다고 착각하는 일이 생겨 여기로 합쳤다)
+ * ── 현재 상태: 열림 (2026-09-11 해제) ──
+ * 사용자 요청으로 수신자 제한을 풀었다. 이제 검증 완료 업체로 실제 발송이
+ * 가능하다. 대신 아래 안전장치는 그대로 남아 있다.
  *
- * ⚠️ 그 전에 반드시: 하루 발송 상한과 발송 간격을 넣을 것.
- *    현재 발송 루프에는 둘 다 없어 400통이 한 번에 나간다. yogico.kr 로
- *    실거래 메일(Schestowitz·Blue Marble 등)도 나가므로, 스팸 판정을 받으면
- *    그 메일들까지 상대 스팸함으로 들어간다.
+ *   · 하루 상한   DAILY_SEND_CAP (기본 20통)
+ *   · 발송 간격   SEND_INTERVAL_MS (기본 8초)
+ *   · 같은 곳 재발송  lib/send-limits.ts — 최대 3회, 48시간 간격
+ *   · 발송 리스트  사람이 queued 로 옮긴 곳에만 나간다
+ *
+ * ── 다시 잠그려면 ──
+ * 코드를 고치지 않아도 된다. 환경변수 OUTBOUND_LOCKED=1 만 넣고 서버를
+ * 다시 띄우면 그 즉시 테스트 주소(fe@yogico.kr) 외에는 전부 막힌다.
+ * 급할 때 코드 수정·배포를 기다릴 필요가 없게 하려고 이렇게 뒀다.
  */
-export const OUTBOUND_LOCKED = true;
+export const OUTBOUND_LOCKED = process.env.OUTBOUND_LOCKED === '1';
 
 /** 잠겨 있을 때 화면·로그에 그대로 쓰는 문구 */
 export const OUTBOUND_LOCK_MESSAGE =
   '아웃바운드 메일 발송이 잠겨 있습니다 (테스트 중). ' +
-  '해제하려면 src/lib/outbound-lock.ts 의 OUTBOUND_LOCKED 를 false 로 바꾸세요.';
+  '해제하려면 환경변수 OUTBOUND_LOCKED 를 지우고 서버를 다시 띄우세요.';
 
 /* ═══════════════════════════════════════════════════════════════════
    테스트 수신 허용 목록 — 잠금을 유지한 채 우리 주소로만 실제 발송한다.

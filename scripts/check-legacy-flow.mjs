@@ -26,7 +26,9 @@ const NOT_KOREA = { Country: { $not: /korea|^kr$|대한민국|한국/i } };
 const REAL_EMAIL = { Email: { $regex: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ } };
 
 // ── 1. [🧠 AI 검증 시작] — /api/leads/verify-ai/count?scope=legacy
-const aiFilter = { ...NOT_AI_SEARCH, ...NO_AI, ...NOT_KOREA, ...ALIVE };
+// [AI 검증 완료]에 같은 업체가 있어 감춘 것은 양쪽 모두에서 뺀다
+const NOT_HIDDEN = { legacyHiddenAt: { $exists: false } };
+const aiFilter = { ...NOT_AI_SEARCH, ...NO_AI, ...NOT_KOREA, ...ALIVE, ...NOT_HIDDEN };
 const aiTarget = await L.countDocuments(aiFilter);
 const aiKorea = await L.countDocuments({ ...NOT_AI_SEARCH, ...NO_AI, ...ALIVE, Country: /korea|^kr$|대한민국|한국/i });
 const usd = aiTarget * 0.0005;
@@ -46,6 +48,7 @@ const rvFilter = {
   ...REAL_EMAIL,
   // AI 가 무관으로 본 것은 [검증 실패] 화면과 겹치므로 뺀다
   'verification.aiVerdict': { $ne: 'not-buyer' },
+  ...NOT_HIDDEN,
 };
 const rvTotal = await L.countDocuments(rvFilter);
 console.log('\n🔎 직접 검토 시작 (올린 데이터)');

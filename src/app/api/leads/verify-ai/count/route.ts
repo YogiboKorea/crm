@@ -35,8 +35,14 @@ const ALIVE = { deleted: { $ne: true } };
 const SCOPES: Record<string, any> = {
   'verifying-stage': { stage: 'verifying', ...NO_AI },
   'imported': { stage: 'imported', ...NO_AI },
-  // 엑셀로 올린 것 — AI 서칭으로 들어온 건(ai-search-*)은 제외한다
-  'legacy': { importBatch: { $not: /^ai-search-/ }, ...NO_AI },
+  // 엑셀로 올린 것 — AI 서칭으로 들어온 건(ai-search-*)은 제외한다.
+  // [AI 검증 완료]에 같은 업체가 있어 감춘 것도 뺀다 (POST 쪽과 같은 조건이어야
+  // 버튼에 적힌 수와 실제로 도는 수가 맞는다).
+  'legacy': {
+    importBatch: { $not: /^ai-search-/ },
+    legacyHiddenAt: { $exists: false },
+    ...NO_AI,
+  },
   'all-unverified': { ...NO_AI },
 };
 

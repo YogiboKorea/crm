@@ -81,6 +81,9 @@ export async function POST(req: Request) {
       // AI 서칭으로 들어온 건(importBatch = ai-search-*)은 제 갈래가 따로 있다.
       filter.importBatch = { $not: /^ai-search-/ };
       filter.deleted = { $ne: true };
+      // [AI 검증 완료]에 같은 업체가 이미 있어 감춘 것은 검증하지 않는다.
+      // 같은 회사를 두 번 판정하는 셈이고, 건당 요금이 나가는 일이다.
+      filter.legacyHiddenAt = { $exists: false };
       filter.$or = [
         { 'verification.aiVerifiedAt': { $exists: false } },
         { 'verification.aiVerifiedAt': '' },

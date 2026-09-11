@@ -60,6 +60,8 @@ function sourceFilter(source?: string) {
       // (archived + not-buyer), 여기에도 띄우면 같은 회사를 두 곳에서
       // 두 번 판단하게 된다.
       'verification.aiVerdict': { $ne: 'not-buyer' },
+      // [AI 검증 완료]에 같은 업체가 이미 있어 감춘 것도 뺀다 (같은 이유).
+      legacyHiddenAt: { $exists: false },
     };
   }
   return { stage: 'verified' };

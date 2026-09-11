@@ -722,7 +722,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=4d1be721" strategy="afterInteractive" />
+      <Script src="/app.js?v=75cfdc99" strategy="afterInteractive" />
     </>
   );
 }
