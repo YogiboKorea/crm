@@ -2667,8 +2667,22 @@ function renderServerPagedTable(pageData, stageInfo) {
     ${renderPaginationBar(pageData.page, pageData.totalPages, pageData.total, { compact: true })}
     <div class="bulk-actions">
       <button class="button secondary" data-select-visible type="button">${allVisibleSelected ? "이 페이지 선택 해제" : "이 페이지 전체 선택"}</button>
+      <!-- ⚠️ 이 두 버튼이 여기 없었다.
+           검증 완료는 목록을 서버 페이지로 받는데, 옮기기 버튼은 예전(로컬 배열)
+           표에만 있었다. 그래서 행을 체크해도 **할 수 있는 일이 [Delete Selected]
+           뿐**이었다 — 정작 이 화면의 본래 목적(보낼 곳 고르기)을 못 했다. -->
+      ${stageInfo.stage === 'verified' ? `
+        <button class="button primary" id="moveToQueueBtn" type="button" ${state.selectedLeadIds.size ? '' : 'disabled'}
+          title="고른 곳을 [발송 관리 → 보낼 메일] 로 옮깁니다. 옮겨야 발송 대상이 됩니다."
+          style="${state.selectedLeadIds.size ? '' : 'opacity:.45;cursor:default'}">
+          📨 발송 관리로 이동 (${state.selectedLeadIds.size})
+        </button>
+        <button class="button secondary" id="moveAllToQueueBtn" type="button"
+          title="지금 검증 완료에 남아 있는 곳을 전부 발송 관리로 옮깁니다 (검색·국가로 좁혀 놨으면 그 범위만)">
+          ⇢ 남은 전체 옮기기
+        </button>` : ''}
       <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
-        Delete Selected (${state.selectedLeadIds.size})
+        🗑 목록에서 빼기 (${state.selectedLeadIds.size})
       </button>
       <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary);display:inline-flex;align-items:center;gap:10px">
         <label style="display:inline-flex;align-items:center;gap:5px">
@@ -3920,6 +3934,10 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
     }
     render();
   });
+
+  // 발송 관리로 옮기기 — 이 표에도 버튼이 생겼으니 여기서 묶어준다
+  els.content.querySelector("#moveToQueueBtn")?.addEventListener("click", moveSelectedToQueue);
+  els.content.querySelector("#moveAllToQueueBtn")?.addEventListener("click", moveAllToQueue);
 
   // 페이지네이션 클릭
   els.content.querySelectorAll('.page-btn').forEach((btn) => {
@@ -8345,6 +8363,33 @@ function getLeads() {
 }
 
 /**
+ * 지금 화면이 알고 있는 리드 전부.
+ *
+ * getLeads() 는 baseLeads(브라우저가 통째로 받아둔 배열)만 본다. 그런데
+ * 검증 완료·검증 실패·답장 받음·대화 진행 중·파트너십은 목록을 **서버에서
+ * 페이지로** 받아오고, 그 결과는 baseLeads 가 아니라 _serverPageCache 에 들어간다.
+ *
+ * 첫 로딩에서 전체 리드(3.3MB)를 안 받게 바꾼 뒤, baseLeads 만 보던 기능들이
+ * 줄줄이 조용히 멈췄다 — 팝업 저장, 선택 삭제, 중복 판정, 미리보기 회사 목록…
+ * 오류도 안 나고 알림도 없어서 "눌렀는데 왜 그대로지" 로만 보인다.
+ *
+ * 목록을 만들거나 리드를 찾을 때는 이걸 쓴다.
+ * (한 건만 찾을 때는 findLeadForPopup 이 같은 범위를 훑는다)
+ */
+function allKnownLeads() {
+  const out = [];
+  const seen = new Set();
+  for (const src of [baseLeads, _serverPageCache?.leads || [], _popupLeadCache || []]) {
+    for (const l of src) {
+      if (!l || l.deleted || seen.has(l.id)) continue;
+      seen.add(l.id);
+      out.push(l);
+    }
+  }
+  return out;
+}
+
+/**
  * 상세 팝업이 찾는 범위.
  *
  * ⚠️ baseLeads 만 보면 안 된다.
@@ -9341,10 +9386,31 @@ async function renderB2BEmailManager() {
   }
 
   // 미리보기용 샘플 리드 후보 (승인/컨택중 등에서 100건만)
-  const previewCandidates = baseLeads.filter(l =>
-    (l.stage === 'verified' && l.readyForOutreach) ||
-    l.stage === 'contacted' || l.stage === 'replied' || l.stage === 'negotiating'
+  // 미리보기에 쓸 실제 회사들.
+  //
+  // baseLeads 만 보면 이 화면에서는 늘 비어서, 회사 고르는 칸에
+  // '— 예시 회사 —' 한 줄만 뜨고 [회사명] 이 항상 'Acme Beauty Co.' 로 치환됐다.
+  // 진짜로 어떻게 나갈지를 못 보는 셈이라 미리보기의 뜻이 없어진다.
+  //
+  // readyForOutreach 조건도 뺐다. 그 플래그는 검증 완료 전 건에 켜져 있거나
+  // 비어 있어서 기준이 되지 못한다 — 지금은 '어느 단계에 있는가' 로만 고른다.
+  let previewCandidates = allKnownLeads().filter(l =>
+    ['verified', 'queued', 'contacted', 'replied', 'negotiating', 'partner'].includes(l.stage)
   ).slice(0, 100);
+
+  // 이 화면은 리드를 따로 받지 않는다. 다른 화면을 거치지 않고 바로 들어오면
+  // 고를 회사가 하나도 없으므로, 미리보기에 쓸 만큼만(30곳) 가볍게 받아온다.
+  if (!previewCandidates.length) {
+    try {
+      const r = await safeJsonFetch('/api/leads?stage=verified&limit=30');
+      if (r && r.success) {
+        previewCandidates = (r.data || []).map((l) => ({ ...l, id: l.leadId }));
+        // 팝업·다른 화면에서도 찾히도록 곁방 캐시에 얹어 둔다
+        const known = new Set(_popupLeadCache.map((l) => l.id));
+        for (const l of previewCandidates) if (!known.has(l.id)) _popupLeadCache.push(l);
+      }
+    } catch { /* 미리보기는 거들 뿐이라 실패해도 화면은 그대로 */ }
+  }
 
   // ── 목록(게시판) 모드 ───────────────────────────────────
   // 예전에는 첫 템플릿을 자동으로 열어 그 하나만 편집하게 했다. 그러면 양식을
@@ -12642,7 +12708,11 @@ function getFilteredLeads() {
 }
 
 async function updateLead(id, key, value) {
-  const current = getLeads().find((item) => item.id === id);
+  // ⚠️ getLeads()(=baseLeads) 만 보면 안 된다.
+  // 검증 완료·검증 실패·답장 받음·올린 데이터는 목록이 서버 페이지라 그 배열이
+  // 비어 있고, 그러면 여기서 조용히 return 되어 **PUT 이 아예 안 나갔다**.
+  // 팝업에서 이메일·메모를 고치고 [저장 및 닫기] 를 눌러도 사라졌다.
+  const current = findLeadForPopup(id);
   if (!current) return;
   const payload = { [key]: value };
   if (key === "status" && value === "Contacted" && current?.status !== "Contacted") {
@@ -12670,7 +12740,7 @@ async function updateLead(id, key, value) {
 }
 
 async function toggleFavorite(id) {
-  const lead = getLeads().find((item) => item.id === id);
+  const lead = findLeadForPopup(id);   // 서버 페이지 화면에서도 찾히게
   if (!lead) return;
   lead.favorite = !Boolean(lead.favorite);
   render();
@@ -12686,13 +12756,13 @@ async function markSelectedContacted() {
 
 async function undoSelectedContacted() {
   if (!state.selectedId) return;
-  const lead = getLeads().find((item) => item.id === state.selectedId);
+  const lead = findLeadForPopup(state.selectedId);
   if (!lead || lead.status !== "Contacted") return;
   updateLead(state.selectedId, "status", lead.previousStatus || "New");
 }
 
 function updateActionButtons() {
-  const lead = getLeads().find((item) => item.id === state.selectedId);
+  const lead = findLeadForPopup(state.selectedId);
   // 방어: 버튼이 없을 수 있음 (숨김 처리된 legacy 버튼)
   if (els.markContacted) els.markContacted.disabled = !lead || lead.status === "Contacted";
   if (els.undoContacted) els.undoContacted.disabled = !lead || lead.status !== "Contacted";
@@ -13377,20 +13447,46 @@ async function moveSelectedToQueue() {
 async function deleteSelectedLeads() {
   const ids = [...state.selectedLeadIds];
   if (!ids.length) return;
-  const ok = window.confirm("Delete " + ids.length + " selected leads from the CRM view?");
+
+  // ⚠️ getLeads()(=baseLeads) 만 보면 안 된다.
+  // 검증 완료·검증 실패·답장 받음 같은 화면은 목록이 서버 페이지라 그 배열이
+  // 비어 있었고, 그래서 **확인창까지 띄우고 DELETE 는 한 건도 안 나갔다**.
+  // 체크만 풀려서 "지웠는데 왜 남아 있지" 가 됐다.
+  const targets = ids.map((id) => findLeadForPopup(id)).filter(Boolean);
+  if (!targets.length) {
+    alert('고른 업체를 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+    return;
+  }
+
+  const ok = window.confirm(
+    `고른 ${targets.length}곳을 목록에서 지웁니다.\n\n` +
+    `DB 에서 완전히 지우는 것이 아니라 화면에서만 빠집니다.\n진행할까요?`,
+  );
   if (!ok) return;
 
-  for(const id of ids) {
-    const lead = getLeads().find(l => l.id === id);
-    if(lead) {
+  const results = await Promise.all(targets.map(async (lead) => {
+    if (!lead._id) return false;
+    try {
+      const r = await fetch('/api/leads/' + lead._id, { method: 'DELETE' });
+      if (!r.ok) return false;
       lead.deleted = true;
-      if(lead._id) fetch('/api/leads/' + lead._id, { method: 'DELETE' });
-    }
-  }
+      return true;
+    } catch { return false; }
+  }));
+
+  const done = results.filter(Boolean).length;
+  const failed = results.length - done;
+
   state.selectedLeadIds.clear();
-  state.selectedId = getLeads()[0]?.id || null;
+  state.selectedId = null;
+  // 목록은 서버에서 다시 받아야 지운 행이 사라진다.
+  // 이게 없으면 30초 캐시가 그대로 다시 그려져 지운 것이 남아 보인다.
+  invalidateServerPage();
+  await loadStageCounts(true);
   renderFilters();
   render();
+
+  if (failed) alert(`${done}곳을 지웠습니다. ${failed}곳은 지우지 못했습니다.`);
 }
 
 function loadStore() {
@@ -13819,7 +13915,8 @@ function showImportPreview(leads) {
 function _isDuplicate(lead) {
   const co = (lead.Company || '').trim().toLowerCase();
   const ct = (lead.Country || '').trim().toLowerCase();
-  return baseLeads.some(b =>
+  // 서버 페이지로 받은 것까지 봐야 중복이 잡힌다
+  return allKnownLeads().some(b =>
     (b.Company || '').trim().toLowerCase() === co &&
     (b.Country || '').trim().toLowerCase() === ct
   );
