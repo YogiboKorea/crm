@@ -2082,6 +2082,10 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     //
     // 그래서 검토를 큰 카드로 위에 두고, 발송은 그 아래 한 줄로 내렸다.
     heroCard = `
+      <!-- ⓪ 업체 정보 요청 — 평소엔 한 줄로 접혀 있다.
+           펼친 채로 두면 오늘 할 일인 [2차 검토] 카드가 아래로 밀려난다. -->
+      ${infoReqCardHtml()}
+
       <div class="verify-hero" style="margin-top:12px">
 
         <!-- ① 오늘 할 일 — 직접 검토 -->
@@ -2186,6 +2190,7 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
   container.innerHTML = heroCard;
 
   // 액션 버튼 핸들러 바인딩
+  bindInfoReqCard(container);
   document.getElementById('runAiVerifyOnVerifyingBtn')?.addEventListener('click', () => runVerifyingStageAi());
   document.getElementById('runCrawlOnVerifyingBtn')?.addEventListener('click', () => runCrawlEmails('verifying-no-email'));
   document.getElementById('runCrawlOnVerifiedBtn')?.addEventListener('click', () => runCrawlEmails('verified-no-email'));
@@ -7105,6 +7110,221 @@ function openRelationshipAddModal(stage) {
 // 이 데이터에는 사람이 고른 것과 정리 스크립트가 옮긴 것이 섞여 있다.
 // 필드만으로는 안 갈린다 — 9/8 에 한꺼번에 들어간 1,647곳에도 사유가 없다.
 // 날짜로 묶으면 "오늘 내가 한 것" 이 맨 위에 그대로 올라온다.
+// ═══ 업체 정보 요청 ═══════════════════════════════════════════
+//
+// "이 업체들에 대해 이런 것까지 알고 싶다" 를 화면에서 직접 받는다.
+//
+// 왜 이 화면인가:
+// 목록에는 회사명·국가·이메일·홈페이지와 AI 가 왜 골랐는지가 들어 있다.
+// 그런데 실제로 영업하는 사람이 보고 싶은 것은 따로 있다 — 누구 앞으로
+// 보내야 하는지, 이미 한국 화장품을 수입하는지 같은 것들이다.
+// 그건 업체를 보고 있는 순간에만 떠오르므로, 업체 목록 바로 위에서 받는다.
+//
+// 평소에는 한 줄로 접어 둔다. 펼친 채로 두면 정작 오늘 할 일인
+// [2차 검토] 카드가 아래로 밀려난다.
+var _infoReq = { items: [], open: false, busy: false, loaded: false };
+
+/** 무엇을 적으면 되는지 보여주는 보기 — 눌러서 넣는다 */
+const INFO_REQ_EXAMPLES = [
+  '담당자 이름·직책',
+  '이미 수입 중인 K-뷰티 브랜드',
+  '회사 규모 (직원 수·매출)',
+  '매장 수 · 온라인몰 주소',
+  '최소 주문 수량(MOQ)',
+  '전시회 참가 이력',
+  '인스타·SNS 규모',
+  '대표 전화번호',
+];
+
+function infoReqCardHtml() {
+  const open = _infoReq.open;
+  const list = _infoReq.items || [];
+  const openCnt = list.filter((r) => r.status !== 'done').length;
+
+  const head = `
+    <button type="button" id="infoReqToggle"
+      style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;cursor:pointer;
+             padding:12px 16px;border:1px dashed var(--border-default);border-radius:12px;
+             background:var(--bg-surface);color:inherit;font:inherit">
+      <span style="font-size:17px">📋</span>
+      <span style="flex:1;min-width:0">
+        <span style="font-size:13px;font-weight:700;color:var(--text-primary)">
+          이 업체들, 어떤 정보가 더 필요하세요?
+        </span>
+        <span style="display:block;font-size:11.5px;color:var(--text-tertiary);margin-top:2px">
+          적어 주시면 업체별로 찾아서 채워 드립니다${openCnt ? ` · <b style="color:#b45309">처리 대기 ${openCnt}건</b>` : ''}
+        </span>
+      </span>
+      <span style="font-size:12px;color:var(--text-tertiary);white-space:nowrap">
+        ${open ? '접기 ▴' : '적기 ▾'}
+      </span>
+    </button>`;
+
+  if (!open) return `<div style="margin-top:12px">${head}</div>`;
+
+  const chips = INFO_REQ_EXAMPLES.map((t) => `
+    <button type="button" class="info-req-chip" data-text="${escapeAttr(t)}"
+      style="font-size:11.5px;padding:5px 11px;border-radius:99px;cursor:pointer;
+             border:1px solid var(--border-default);background:var(--bg-surface-alt);
+             color:var(--text-secondary)">+ ${escapeHtml(t)}</button>`).join('');
+
+  const rows = list.length ? list.map((r) => {
+    const done = r.status === 'done';
+    const when = String(r.createdAt || '').slice(0, 10).replace(/-/g, '.');
+    return `
+      <div style="display:flex;gap:10px;padding:10px 12px;border-radius:9px;
+                  background:${done ? 'transparent' : 'var(--bg-surface-alt)'};
+                  border:1px solid var(--border-subtle);margin-bottom:6px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;line-height:1.65;white-space:pre-wrap;
+                      color:${done ? 'var(--text-quaternary)' : 'var(--text-primary)'};
+                      ${done ? 'text-decoration:line-through' : ''}">${escapeHtml(r.body || '')}</div>
+          <div style="font-size:10.5px;color:var(--text-quaternary);margin-top:5px">
+            ${when}${r.createdBy ? ' · ' + escapeHtml(r.createdBy) : ''}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <button type="button" class="info-req-done" data-id="${escapeAttr(r._id)}"
+            data-next="${done ? 'open' : 'done'}"
+            style="font-size:11px;padding:4px 9px;border-radius:7px;cursor:pointer;
+                   border:1px solid var(--border-default);background:var(--bg-surface);
+                   color:var(--text-secondary);white-space:nowrap">
+            ${done ? '↩ 되돌리기' : '✓ 처리함'}
+          </button>
+          <button type="button" class="info-req-del" data-id="${escapeAttr(r._id)}"
+            style="font-size:11px;padding:4px 9px;border-radius:7px;cursor:pointer;
+                   border:1px solid var(--border-subtle);background:transparent;
+                   color:var(--text-quaternary);white-space:nowrap">삭제</button>
+        </div>
+      </div>`;
+  }).join('') : `<div style="font-size:12px;color:var(--text-quaternary);padding:6px 2px">
+      아직 남긴 요청이 없습니다.</div>`;
+
+  return `
+    <div style="margin-top:12px">
+      ${head}
+      <div style="margin-top:8px;padding:18px 20px;border-radius:12px;
+                  background:var(--bg-surface);border:1px solid var(--border-default)">
+
+        <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.8">
+          지금 목록에는 <b>회사명 · 국가 · 이메일 · 홈페이지</b>와
+          AI 가 왜 이 회사를 골랐는지가 들어 있습니다.<br>
+          영업하실 때 <b>이것만으로 부족한 것</b>을 적어 주세요. 적어 주신 항목을
+          업체별로 찾아서 채워 드립니다.
+          <span style="color:var(--text-quaternary)">
+            한 줄이어도 괜찮습니다 — 정확한 표현보다 "무엇이 있어야 연락하기 편한가" 가 중요합니다.
+          </span>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:13px 0 9px">${chips}</div>
+
+        <textarea id="infoReqBody" rows="4"
+          placeholder="예) 메일을 받을 담당자 이름과 직책을 알고 싶습니다. 이미 한국 화장품을 수입하고 있는지, 어떤 브랜드를 취급하는지도 함께 알면 좋겠습니다."
+          style="width:100%;box-sizing:border-box;padding:11px 13px;font:inherit;font-size:12.5px;
+                 line-height:1.7;border:1px solid var(--border-default);border-radius:9px;
+                 background:var(--bg-surface-alt);color:var(--text-primary);resize:vertical"></textarea>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap">
+          <button type="button" id="infoReqSave"
+            style="font-size:12.5px;font-weight:700;padding:9px 18px;border-radius:9px;cursor:pointer;
+                   border:none;background:#2563eb;color:#fff"
+            ${_infoReq.busy ? 'disabled' : ''}>
+            ${_infoReq.busy ? '저장 중…' : '요청 남기기'}
+          </button>
+          <span id="infoReqMsg" style="font-size:11.5px;color:var(--text-tertiary)"></span>
+        </div>
+
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-subtle)">
+          <div style="font-size:11px;font-weight:800;color:var(--text-tertiary);
+                      letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">
+            남긴 요청 ${list.length ? `(${list.length})` : ''}
+          </div>
+          ${rows}
+        </div>
+      </div>
+    </div>`;
+}
+
+/** 목록을 받아 온다. safeJsonFetch 는 4xx/5xx 에도 던지지 않으므로 success 를 직접 본다. */
+async function loadInfoRequests(force) {
+  if (_infoReq.loaded && !force) return;
+  const d = await safeJsonFetch('/api/info-requests');
+  if (!d || !d.success) { _infoReq.items = []; _infoReq.loaded = true; return; }
+  _infoReq.items = d.items || [];
+  _infoReq.loaded = true;
+}
+
+function bindInfoReqCard(root) {
+  const scope = root || document;
+
+  scope.querySelector('#infoReqToggle')?.addEventListener('click', async () => {
+    _infoReq.open = !_infoReq.open;
+    if (_infoReq.open) await loadInfoRequests(true);
+    render();
+  });
+
+  // 보기 칩 — 누르면 적는 칸에 한 줄로 붙는다.
+  // 넣고 나서 커서를 칸 끝으로 옮겨, 바로 이어 쓸 수 있게 한다.
+  scope.querySelectorAll('.info-req-chip').forEach((b) => {
+    b.addEventListener('click', () => {
+      const ta = document.getElementById('infoReqBody');
+      if (!ta) return;
+      const t = b.getAttribute('data-text') || '';
+      ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, '') + '\n' : '') + '- ' + t;
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+    });
+  });
+
+  scope.querySelector('#infoReqSave')?.addEventListener('click', async () => {
+    const ta = document.getElementById('infoReqBody');
+    const msg = document.getElementById('infoReqMsg');
+    const text = (ta?.value || '').trim();
+    if (!text) {
+      if (msg) { msg.textContent = '내용을 적어 주세요'; msg.style.color = '#b91c1c'; }
+      ta?.focus();
+      return;
+    }
+    _infoReq.busy = true;
+    if (msg) { msg.textContent = '저장 중…'; msg.style.color = 'var(--text-tertiary)'; }
+    const d = await safeJsonFetch('/api/info-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: text, scope: 'verified' }),
+    });
+    _infoReq.busy = false;
+    if (!d || !d.success) {
+      if (msg) { msg.textContent = (d && d.error) || '저장하지 못했습니다'; msg.style.color = '#b91c1c'; }
+      return;
+    }
+    await loadInfoRequests(true);
+    render();
+  });
+
+  scope.querySelectorAll('.info-req-done').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const d = await safeJsonFetch('/api/info-requests', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: b.getAttribute('data-id'), status: b.getAttribute('data-next') }),
+      });
+      if (!d || !d.success) { alert((d && d.error) || '바꾸지 못했습니다'); return; }
+      await loadInfoRequests(true);
+      render();
+    });
+  });
+
+  scope.querySelectorAll('.info-req-del').forEach((b) => {
+    b.addEventListener('click', async () => {
+      if (!confirm('이 요청을 지울까요?')) return;
+      const d = await safeJsonFetch('/api/info-requests?id=' + encodeURIComponent(b.getAttribute('data-id')), { method: 'DELETE' });
+      if (!d || !d.success) { alert((d && d.error) || '지우지 못했습니다'); return; }
+      await loadInfoRequests(true);
+      render();
+    });
+  });
+}
+
 var _dec = { days: 0, stage: '', items: [], byDay: [], counts: {}, busy: false };
 
 const DEC_STAGE = {
