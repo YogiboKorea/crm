@@ -348,6 +348,29 @@ async function ingestFolder(
         if (rule.confident) stat.ruleFiltered++;
       }
 
+      // ── 광고·자동발송은 전용 폴더로 ──
+      //
+      // 이것들은 거래처 폴더 어디에도 안 들어가서 [미분류]에 계속 쌓인다.
+      // 그러면 "미분류에 진짜 볼 것이 있나" 를 볼 때마다 광고를 헤집게 된다.
+      // 지우지 않고 한 폴더로 모으면 미분류에는 판단이 필요한 것만 남는다.
+      //
+      // 이미 폴더가 정해진 것은 건드리지 않는다 — 거래처가 보낸 뉴스레터가
+      // 그 거래처 폴더에 들어가 있으면 그대로 두는 편이 맞다.
+      //
+      // ⚠️ 분류(ruleClassify) 뒤에 와야 한다. 그 전에는 classification 이 없다.
+      if (!doc.group && AD_CLASSES.includes(doc.classification as any)) {
+        doc.group = AD_FOLDER;
+        doc.groupBy = 'auto-ad';
+        // 폴더가 바뀌었으니 스레드 키도 다시 만든다.
+        // 안 그러면 같은 대화가 폴더별로 쪼개진다 (위 threadKey 주석 참고).
+        doc.threadKey = threadKey({
+          subject: doc.subject,
+          messageId: doc.messageId,
+          group: doc.group,
+          from: doc.from,
+        });
+      }
+
       // 로컬 1차 분석 — API 호출 없이(무료) 답변필요·기한 후보를 잡아둔다
       const la = localAnalyze({
         subject: parsed.subject,
@@ -415,6 +438,16 @@ async function ingestFolder(
  * ⚠️ 계정 연결은 **한 번만** 연다. 폴더마다 새로 붙으면 서버가 연달아 붙는 것을
  *    막아 뒤쪽 폴더가 통째로 실패한다 (실측: 이카운트에서 12개 폴더 'Command failed').
  */
+/**
+ * 광고·자동발송을 모아두는 폴더.
+ *
+ * 거래처 폴더가 아니라 "볼 것 없는 것" 을 치워두는 자리다.
+ * 지우지 않으므로 언제든 열어볼 수 있고, 대신 [미분류] 에는
+ * 사람이 판단해야 할 메일만 남는다.
+ */
+export const AD_FOLDER = '광고·자동발송';
+const AD_CLASSES = ['ad', 'system', 'newsletter'] as const;
+
 export async function runIngest(opts: IngestOptions = {}): Promise<IngestResult> {
   const startedAt = new Date();
   await dbConnect();

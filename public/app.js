@@ -6612,9 +6612,7 @@ async function renderRelationshipDetail() {
       <div style="font-size:12px;font-weight:800;color:var(--text-tertiary);letter-spacing:.04em;
                   margin:22px 2px 10px">💬 주고받은 대화 · ${timeline.length}건</div>
       ${timeline.length
-        ? `<div style="display:flex;flex-direction:column;gap:10px">
-             ${timeline.slice().reverse().map(relTimelineItemHtml).join('')}
-           </div>`
+        ? relTimelineHtml(timeline)
         : `<div style="padding:36px 24px;text-align:center;background:var(--bg-surface);
                        border:1px dashed var(--border-default);border-radius:12px;
                        color:var(--text-tertiary);font-size:13px">
@@ -6629,6 +6627,14 @@ async function renderRelationshipDetail() {
   });
   els.content.querySelectorAll('.rel-stage-move').forEach((b) => {
     b.addEventListener('click', () => moveRelationshipStage(leadId, b.dataset.to, company));
+  });
+
+  // 이전 대화 펼치기 — 한 번 펼치면 다시 접지 않는다.
+  // 읽는 중에 접히면 보던 자리를 잃는다.
+  els.content.querySelector('#relMoreBtn')?.addEventListener('click', (e) => {
+    const box = document.getElementById('relMoreBox');
+    if (box) box.removeAttribute('hidden');
+    e.currentTarget.remove();
   });
   els.content.querySelectorAll('.rel-quote').forEach((b) => {
     b.addEventListener('click', () => {
@@ -6681,10 +6687,11 @@ function relDetailHeadHtml(company, lead, card, tone) {
         ${_rel.stage !== 'partner' ? `<button type="button" class="rel-stage-move" data-to="partner"
           style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
                  border:1px solid #7c3aed;background:#7c3aed;color:#fff">⭐ 파트너십 확정으로</button>` : ''}
-        <button type="button" class="rel-stage-move" data-to="archived"
-          style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
-                 border:1px solid var(--border-default);background:var(--bg-surface);
-                 color:var(--text-tertiary)">📦 보관함으로</button>
+        <!-- [📦 보관함으로] 는 뺐다.
+             사이드바에 보관함 메뉴가 없어서, 옮기고 나면 그 회사를 다시 볼
+             방법이 없다. 어디로 가는지 볼 수 없는 곳으로 보내는 버튼은
+             되돌릴 수 없는 것과 같다.
+             (보관함 화면을 살리면 이 버튼도 같이 되살리면 된다) -->
       </div>
     </div>`;
 }
@@ -6715,6 +6722,67 @@ function relDetailFactsHtml(lead, card) {
                   letter-spacing:.04em;margin-bottom:6px">회사 정보</div>
       ${body}
     </div>`;
+}
+
+/**
+ * 대화 타임라인 — 최근 것만 펼치고 나머지는 접는다.
+ *
+ * 왜 전부 펼치지 않는가:
+ * 파트너 한 곳에 메일이 30통씩 쌓여 있다. 그걸 다 늘어놓으면 화면이 수십 번
+ * 스크롤이 되고, 정작 알고 싶은 "지금 어디까지 왔나" 는 맨 위 한 통에 있다.
+ * 지난 대화는 필요할 때만 펼치면 된다.
+ *
+ * 위에 요약 줄을 둔다 — 처음 연락한 날, 오간 통수, 지금 누구 차례인가.
+ * 대화를 읽지 않고도 상태를 알 수 있어야 한다.
+ */
+var REL_RECENT_N = 3;
+
+function relTimelineHtml(timeline) {
+  const newest = timeline.slice().reverse();      // 최근 것이 위로
+  const head = newest.slice(0, REL_RECENT_N);
+  const rest = newest.slice(REL_RECENT_N);
+
+  // 마지막이 상대 메일이면 우리가 답할 차례다
+  const last = newest[0];
+  const ourTurn = last && last.direction === 'in';
+  const firstAt = timeline[0]?.at;
+  const days = firstAt
+    ? Math.max(0, Math.floor((Date.now() - new Date(firstAt).getTime()) / 86400000)) : null;
+  const inN = timeline.filter((t) => t.direction === 'in').length;
+  const outN = timeline.length - inN;
+
+  return `
+    <!-- 한눈 요약 — 대화를 읽지 않고도 상태를 알 수 있게 -->
+    <div style="padding:13px 17px;border-radius:11px;margin-bottom:11px;
+                background:${ourTurn ? '#fffbeb' : 'var(--bg-surface-alt)'};
+                border:1px solid ${ourTurn ? '#fcd34d' : 'var(--border-default)'};
+                display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <span style="font-size:17px">${ourTurn ? '⚠' : '✓'}</span>
+      <div style="flex:1;min-width:220px;font-size:12.5px;line-height:1.7;
+                  color:${ourTurn ? '#78350f' : 'var(--text-secondary)'}">
+        <b>${ourTurn ? '우리가 답할 차례입니다' : '상대 답을 기다리는 중입니다'}</b>
+        <span style="opacity:.85">
+          · 마지막 ${last?.at ? new Date(last.at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' }) : '—'}
+          ${days !== null ? ` · ${days}일째 이어진 대화` : ''}
+          · 받음 ${inN} / 보냄 ${outN}
+        </span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${head.map(relTimelineItemHtml).join('')}
+    </div>
+
+    ${rest.length ? `
+      <button type="button" id="relMoreBtn"
+        style="width:100%;margin-top:10px;padding:11px;border-radius:10px;cursor:pointer;
+               border:1px dashed var(--border-strong);background:var(--bg-surface);
+               color:var(--text-secondary);font-size:12.5px;font-weight:700">
+        ▼ 이전 대화 ${rest.length}통 더 보기
+      </button>
+      <div id="relMoreBox" hidden style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+        ${rest.map((t, i) => relTimelineItemHtml(t, i + REL_RECENT_N)).join('')}
+      </div>` : ''}`;
 }
 
 function relTimelineItemHtml(t, i) {
