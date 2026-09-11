@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
+import { replyWindowFilter, replySince } from '@/lib/mail/period';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,11 +19,19 @@ export const dynamic = 'force-dynamic';
  * 카드마다 따로 조회하면 5곳이면 15번을 부르게 되므로 여기서 한 번에 엮는다.
  */
 
-/** 이 회사가 지금 우리 쪽 답을 기다리고 있나 */
+/**
+ * 이 회사가 지금 우리 쪽 답을 기다리고 있나.
+ *
+ * 기간을 거는 이유는 메일함 배지와 같다 — 2주가 지난 건은 답할 일이 아니거나
+ * 이미 다른 경로로 정리된 것이다. 카드에 "답장 3" 이 몇 달째 붙어 있으면
+ * 그 숫자를 아무도 안 보게 된다. 화면마다 기준이 다르면 더 나쁘므로
+ * lib/mail/period.ts 의 같은 값을 쓴다.
+ */
 const NEEDS_REPLY = {
   'analysis.needsReply': true,
   status: { $in: ['new', 'reviewing'] },
   trashedAt: null,
+  ...replyWindowFilter(),
 };
 
 export async function GET(req: Request) {
@@ -68,6 +77,8 @@ export async function GET(req: Request) {
                 { $and: [
                   { $eq: ['$analysis.needsReply', true] },
                   { $in: ['$status', ['new', 'reviewing']] },
+                  // 위 NEEDS_REPLY 와 같은 기간 — 오래된 건은 세지 않는다
+                  { $gte: ['$date', replySince()] },
                 ] },
                 1, 0,
               ],

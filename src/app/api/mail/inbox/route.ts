@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
-import { seoulDayStart } from '@/lib/mail/period';
+import { seoulDayStart, replyWindowFilter, REPLY_WINDOW_DAYS } from '@/lib/mail/period';
 import { learnSenderGroups, suggestGroupBySender } from '@/lib/mail/groups';
 
 export const runtime = 'nodejs';
@@ -102,7 +102,18 @@ export async function GET(req: Request) {
 
     if (classification) query.classification = { $in: classification.split(',') };
     if (status) query.status = { $in: status.split(',') };
-    if (needsReply === '1') query['analysis.needsReply'] = true;
+    // 회신 필요 — 배지와 **같은 기간**을 써야 한다.
+    // 한쪽만 기간을 걸면 "배지 12건인데 목록은 40건" 이 되어
+    // 어느 쪽이 맞는지 알 수 없어진다 (검증실패 841 vs 51 과 같은 종류의 사고).
+    // status 조건도 배지와 맞춘다 — 이미 답한 건은 셋 다에서 빠져야 한다.
+    if (needsReply === '1') {
+      query['analysis.needsReply'] = true;
+      query.status = { $in: ['new', 'reviewing'] };
+      query.direction = 'in';
+      // today=1 이 이미 date 를 잡고 있으면 건드리지 않는다.
+      // 덮어쓰면 "오늘 온 것 중 답할 것"이 "최근 2주"로 넓어진다.
+      if (!query.date) Object.assign(query, replyWindowFilter());
+    }
     if (leadId) query.leadId = leadId;
     else if (linked === '1') query.leadId = { $nin: ['', null] };
     else if (linked === '0') query.$or = [{ leadId: '' }, { leadId: { $exists: false } }];

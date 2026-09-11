@@ -60,7 +60,10 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const scope = searchParams.get('scope') || 'verifying-stage';
-    const base = SCOPES[scope];
+    const batch = (searchParams.get('batch') || '').trim();
+    const base = SCOPES[scope]
+      ? (scope === 'legacy' && batch ? { ...SCOPES[scope], importBatch: batch } : SCOPES[scope])
+      : null;
     if (!base) {
       return NextResponse.json(
         { success: false, error: `알 수 없는 scope: ${scope}` }, { status: 400 },

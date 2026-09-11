@@ -26,6 +26,32 @@ export function periodFilter(field = 'date', days = COUNT_PERIOD_DAYS) {
 }
 
 /**
+ * 회신 필요로 띄우는 기간.
+ *
+ * 왜 전체 기간(2개월)보다 짧은가:
+ * 2주가 지나도록 답하지 않은 건은 사실상 답할 일이 아니거나 다른 경로로
+ * 이미 정리된 것이다. 그런데 목록에 계속 남아 있으면 두 가지가 생긴다.
+ *   · 숫자가 줄지 않아 "밀린 일이 산더미" 로 읽힌다
+ *   · 한참 지난 건을 골라 뒤늦게 답장을 보내는 사고가 난다
+ * 상대는 이미 잊었거나 다른 곳과 진행 중인데 2주 전 문의에 답이 오면
+ * 관리가 안 되는 회사로 보인다.
+ *
+ * 지워지는 것이 아니다 — 받은 메일함과 검색에서는 그대로 보인다.
+ * "지금 답해야 할 것" 이라는 목록에서만 빠진다.
+ */
+export const REPLY_WINDOW_DAYS = Number(process.env.REPLY_WINDOW_DAYS) || 14;
+
+/** 회신 필요 기준 시각 (이 시점 이후 받은 것만 센다) */
+export function replySince(): Date {
+  return new Date(Date.now() - REPLY_WINDOW_DAYS * 86400000);
+}
+
+/** 몽고 필터 조각 — 회신 필요 목록·배지가 **모두** 이걸 써야 숫자가 맞는다 */
+export function replyWindowFilter(field = 'date') {
+  return { [field]: { $gte: replySince() } };
+}
+
+/**
  * "오늘" 이 시작되는 시각 — 서울 기준.
  *
  * 서버는 Vercel 에서 UTC 로 돈다. 그냥 new Date().setHours(0,0,0,0) 을 쓰면

@@ -1325,14 +1325,27 @@ async function _renderInner() {
   const leads = getFilteredLeads();
   // 매 render 마다 stage 배너/서브필터 chip 초기화 — 각 페이지에서 필요 시 다시 그려짐
   clearStageBanner();
+  // 화면을 옮길 때 앞 화면이 붙여둔 조각을 전부 걷어낸다.
+  //
+  // 이 세 줄은 #content 바깥(형제 노드)에 붙는 것들이라 els.content.innerHTML
+  // 로는 안 지워진다. 하나만 빠뜨려도 다른 화면 맨 위에 그대로 남는다 —
+  // 실제로 clearVerifiedSubFilterChips 가 빠져 있어서 [메일 양식] 위에
+  // "아직 안 옮김 541 · 이메일 없음 68" 이 계속 떠 있었다.
   clearVerifyingSubFilterChips();
+  clearVerifiedSubFilterChips();
   clearVerifiedResultTabs();
 
-  // 리드 리스트 아닌 tool 페이지에서는 상단 필터 toolbar 숨김
+  // 상단 필터 toolbar 는 **표로 보는 화면**에서만 쓸모가 있다.
+  //
+  // tool-* 화면은 원래 숨겼는데, 카드로 보는 화면들(발송 관리·파트너십·
+  // 대화 진행 중)은 pipeline-* 이라 그대로 떠 있었다. 그 화면들은 자기
+  // 검색창을 따로 갖고 있어서 **검색창이 두 개**로 보이고, 위쪽 것은 눌러도
+  // 카드가 안 걸러진다 — 고장난 것처럼 보인다.
   const tb = document.getElementById('toolbarSection');
   if (tb) {
-    const isToolPage = state.view && state.view.startsWith('tool-');
-    tb.style.display = isToolPage ? 'none' : '';
+    const NO_TOOLBAR = ['pipeline-contacted', 'pipeline-partner', 'pipeline-negotiating'];
+    const hide = (state.view && state.view.startsWith('tool-')) || NO_TOOLBAR.includes(state.view);
+    tb.style.display = hide ? 'none' : '';
   }
   els.navItems.forEach((item) => {
     const itemView = item.dataset.view;
@@ -5460,10 +5473,13 @@ var _legacy = { batch: '', page: 1, q: '', country: '', sel: new Set() };
 // 목록으로 세면 화면에 뜬 한 페이지만 세어져서, 800건인데 50건이라고 적힌다.
 var _legacyCounts = null;
 
-function legacyActionBarHtml() {
+function legacyActionBarHtml(batch) {
   const c = _legacyCounts;
   const aiN = c ? c.target : null;
   const cost = c ? c.cost : null;
+  // 배치 안에서는 그 파일 안의 업체만 다룬다는 걸 글자로 못박는다 —
+  // 같은 버튼인데 범위가 다르면 눌러보고 나서야 알게 된다.
+  const scopeNote = batch ? '이 파일 안에서만' : '올린 데이터 전체에서';
 
   const card = (id, icon, title, desc, accent, disabled) => `
     <button type="button" id="${id}" ${disabled ? 'disabled' : ''}
@@ -5482,15 +5498,15 @@ function legacyActionBarHtml() {
 
   return `
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-      ${card('lgImportBtn', '⬆', '엑셀·CSV 올리기',
+      ${batch ? '' : card('lgImportBtn', '⬆', '엑셀·CSV 올리기',
         '업체 목록 파일을 올립니다. 올린 날짜별 폴더로 들어갑니다.', '#2563eb', false)}
       ${card('lgAiVerifyBtn', '🧠', 'AI 검증 시작',
         aiN === null ? '대상을 세는 중…'
           : aiN === 0 ? '검증할 곳이 없습니다 — 모두 끝났습니다'
-          : `아직 안 본 <b style="color:var(--text-primary)">${aiN.toLocaleString()}곳</b>을 한 번에 · 약 ₩${cost.krw.toLocaleString()}`,
+          : `${scopeNote} 아직 안 본 <b style="color:var(--text-primary)">${aiN.toLocaleString()}곳</b> · 약 ₩${cost.krw.toLocaleString()}`,
         '#7c3aed', aiN === 0)}
       ${card('lgDirectReviewBtn', '🔎', '직접 검토 시작',
-        '한 회사씩 카드로 보며 보낼 곳인지 고릅니다.', '#059669', false)}
+        `${scopeNote} 한 회사씩 카드로 보며 보낼 곳인지 고릅니다.`, '#059669', false)}
     </div>`;
 }
 
@@ -5580,6 +5596,7 @@ async function runLegacyAiVerify() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scope: 'legacy', limit: 20, excludeKorea: true, autoMoveStage: true,
+          batch: _legacy.batch || undefined,
         }),
       });
       if (!r || !r.success) throw new Error(r?.error || 'AI 검증 실패');
@@ -5619,7 +5636,9 @@ async function runLegacyAiVerify() {
 /** 작업 줄 숫자 — 서버에서 받아 그 부분만 다시 그린다 */
 async function loadLegacyCounts() {
   try {
-    const r = await safeJsonFetch('/api/leads/verify-ai/count?scope=legacy');
+    const p = new URLSearchParams({ scope: 'legacy' });
+    if (_legacy.batch) p.set('batch', _legacy.batch);   // 파일 안에 있으면 그 파일만
+    const r = await safeJsonFetch('/api/leads/verify-ai/count?' + p);
     if (r && r.success) _legacyCounts = r;
   } catch (e) {
     console.warn('[legacy] AI 검증 대상 조회 실패', e);
@@ -5629,7 +5648,7 @@ async function loadLegacyCounts() {
 function bindLegacyActionBar() {
   document.getElementById('lgImportBtn')?.addEventListener('click', () => openImportCsvModal());
   document.getElementById('lgAiVerifyBtn')?.addEventListener('click', () => runLegacyAiVerify());
-  document.getElementById('lgDirectReviewBtn')?.addEventListener('click', () => startDirectReview('legacy'));
+  document.getElementById('lgDirectReviewBtn')?.addEventListener('click', () => startDirectReview('legacy', _legacy.batch));
 }
 
 async function renderLegacyPage() {
@@ -5672,7 +5691,7 @@ async function renderLegacyPage() {
       return m ? `${m[1]}-${m[2]}-${m[3]}` : '날짜 미상';
     };
     els.content.innerHTML = `
-      ${legacyActionBarHtml()}
+      ${legacyActionBarHtml('')}
       <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:13px;
                   padding:17px 20px;margin-bottom:15px">
         <div style="font-size:15px;font-weight:800;color:var(--text-primary);margin-bottom:5px">
@@ -5749,6 +5768,7 @@ async function renderLegacyPage() {
   }).join('');
 
   els.content.innerHTML = `
+    ${legacyActionBarHtml(_legacy.batch)}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
       <button class="button secondary" id="lgBack" type="button">← 배치 목록</button>
       <input id="lgSearch" type="search" placeholder="회사·이메일 검색" value="${escapeAttr(_legacy.q)}"
@@ -5823,8 +5843,20 @@ async function renderLegacyPage() {
     syncBtn();
   });
 
+  bindLegacyActionBar();
+  // 이 파일 안의 대상 수를 다시 받는다 — 배치마다 숫자가 다르다
+  loadLegacyCounts().then(() => {
+    if (state.view !== 'tool-legacy' || !_legacy.batch) return;
+    const bar = els.content.firstElementChild;
+    if (!bar) return;
+    bar.outerHTML = legacyActionBarHtml(_legacy.batch);
+    bindLegacyActionBar();
+  });
+
   els.content.querySelector('#lgBack').addEventListener('click', () => {
-    _legacy.batch = ''; _legacy.sel.clear(); renderLegacyPage();
+    _legacy.batch = ''; _legacy.sel.clear();
+    _legacyCounts = null;    // 범위가 전체로 바뀌므로 숫자를 다시 받는다
+    renderLegacyPage();
   });
   let t;
   els.content.querySelector('#lgSearch').addEventListener('input', (e) => {
@@ -5893,7 +5925,7 @@ async function renderLegacyPage() {
 // 다시 온다. 건너뛰기는 DB 를 건드리지 않아 서버 대기열이 그대로이고 정렬도
 // 고정이기 때문이다. 판정을 하나도 안 하면 같은 카드 30장을 영원히 돌게 된다.
 // 판정한 건은 대기열에서 빠져 뒤가 당겨지므로, 건너뛴 수만큼만 밀어준다.
-var _review = { queue: [], idx: 0, skip: 0, source: '', from: '', remaining: 0, queued: 0, failed: 0, decided: new Map(), busy: false };
+var _review = { queue: [], idx: 0, skip: 0, source: '', batch: '', from: '', remaining: 0, queued: 0, failed: 0, decided: new Map(), busy: false };
 
 // 분류 이름 — 화면은 한글, 값은 DB 그대로 (Lead.Category)
 var REVIEW_CATEGORY = {
@@ -5918,7 +5950,9 @@ function reviewScopeParams() {
   //
   // source 는 어느 풀을 검토하는지 — [AI 검증 완료] 인지 [올린 데이터] 인지.
   // 올린 데이터에서 들어오면 검색·국가는 따라가지 않는다(그 화면의 조건이 아니다).
-  if (_review.source === 'legacy') return { source: 'legacy' };
+  if (_review.source === 'legacy') {
+    return _review.batch ? { source: 'legacy', batch: _review.batch } : { source: 'legacy' };
+  }
   return {
     q: (state.query || '').trim(),
     country: state.country && state.country !== 'All' ? state.country : '',
@@ -5932,6 +5966,7 @@ async function loadReviewBatch(wrapped) {
   if (scope.q) p.set('q', scope.q);
   if (scope.country) p.set('country', scope.country);
   if (scope.source) p.set('source', scope.source);
+  if (scope.batch) p.set('batch', scope.batch);
 
   const d = await safeJsonFetch(`/api/leads/review?${p}`);
   // safeJsonFetch 는 4xx·5xx 에도 예외를 던지지 않고 본문을 그대로 준다.
@@ -9675,6 +9710,7 @@ async function loadMailAccounts(force) {
  * 어긋나면 설명서를 믿지 않게 되므로, 지금 있는 화면만 순서대로 다시 적는다.
  */
 function renderUserGuidePage() {
+  // 화면 하나 = 카드 하나. 순서가 곧 일하는 순서다.
   const stepCard = (n, icon, title, lead, doList, note, tone) => `
     <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:14px;
                 padding:20px 22px;display:flex;gap:16px;align-items:flex-start;
@@ -9701,147 +9737,133 @@ function renderUserGuidePage() {
       </div>
     </div>`;
 
-  const navChip = (label) =>
-    `<b style="background:var(--brand-soft,#eef2ff);color:var(--brand-text,#4338ca);
-      padding:2px 8px;border-radius:6px;font-size:12px;white-space:nowrap">${label}</b>`;
-
   els.content.innerHTML = `
-    <div style="max-width:900px;margin:0 auto;padding-bottom:40px">
+    <div style="max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:13px">
 
-      <!-- 한눈에 보는 흐름 -->
-      <div style="background:linear-gradient(135deg,#eef2ff 0%,#e0e7ff 100%);
-                  border:1px solid #c7d2fe;border-radius:16px;padding:22px 24px;margin-bottom:18px">
-        <h2 style="margin:0 0 6px;font-size:19px;font-weight:800;color:#312e81">
-          업체 하나가 거쳐 가는 길
+      <!-- 한 줄 요약 — 이 앱이 무엇을 하는가 -->
+      <div style="padding:24px 26px;border-radius:16px;
+                  background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd">
+        <h2 style="margin:0 0 8px;font-size:21px;font-weight:800;color:#0f2d6b">
+          해외 바이어를 찾아 메일을 보내고, 답장을 관리하는 곳입니다
         </h2>
-        <div style="font-size:13px;color:#3730a3;line-height:1.7;margin-bottom:16px">
-          왼쪽 사이드바가 곧 순서입니다. 위에서 아래로 내려갑니다.
+        <div style="font-size:13.5px;color:#1e40af;line-height:1.85">
+          왼쪽 메뉴가 <b>일하는 순서대로</b> 놓여 있습니다. 위에서 아래로 내려가면 됩니다.<br>
+          <b>고른 곳에만 메일이 나갑니다.</b> 목록에 있다고 저절로 나가지 않습니다.
         </div>
-        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px;font-weight:700">
-          <span style="background:#fff;color:#166534;padding:7px 13px;border-radius:9px;
-                       border:1px solid #86efac">✅ 검증 완료</span>
-          <span style="color:#6366f1">→</span>
-          <span style="background:#fff;color:#075985;padding:7px 13px;border-radius:9px;
-                       border:1px solid #7dd3fc">📋 발송 리스트</span>
-          <span style="color:#6366f1">→</span>
-          <span style="background:#fff;color:#b45309;padding:7px 13px;border-radius:9px;
-                       border:1px solid #fcd34d">📅 예약 발송</span>
-          <span style="color:#6366f1">→</span>
-          <span style="background:#fff;color:#1e40af;padding:7px 13px;border-radius:9px;
-                       border:1px solid #93c5fd">📨 발송 완료</span>
-          <span style="color:#6366f1">→</span>
-          <span style="background:#fff;color:#3730a3;padding:7px 13px;border-radius:9px;
-                       border:1px solid #a5b4fc">💬 답장 받음</span>
-        </div>
-        <div style="margin-top:14px;font-size:12.5px;color:#3730a3;line-height:1.7">
-          가운데 셋(발송 리스트 · 예약 발송 · 발송 완료)은 ${navChip('📨 발송 관리')} 안의 탭입니다.
+        <div style="margin-top:13px;padding:11px 15px;background:#fff;border-radius:10px;
+                    font-size:12.5px;color:#1e3a8a;line-height:1.8">
+          업체 모으기 → <b>AI 검증</b> → <b>직접 검토</b>(사람이 고름) → 발송 리스트 →
+          메일 발송 → 답장 받음 → 대화 진행 → 파트너십
         </div>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:12px">
+      ${stepCard(1, '📥', 'import 하여 올린 데이터 — 업체를 모읍니다',
+        '엑셀·CSV로 업체 목록을 올리는 곳입니다. 올린 파일은 <b>날짜별 폴더</b>로 들어가고 사라지지 않습니다.',
+        `<b>[⬆ 엑셀·CSV 올리기]</b> — 파일을 올립니다.<br>
+         <b>[🧠 AI 검증 시작]</b> — 올린 업체가 진짜 K-뷰티 바이어인지 AI가 판단합니다.
+           통과하면 <b>[AI 검증 완료]</b>, 무관하면 <b>[보관함]</b>으로 갑니다.<br>
+         <b>[🔎 직접 검토 시작]</b> — 한 회사씩 카드로 보며 직접 고릅니다.`,
+        'AI 검증은 <b>누를 때만 요금이 나갑니다.</b> 버튼에 대상 건수와 예상 금액이 적혀 있으니 보고 누르시면 됩니다. 저절로 나가는 일은 없습니다.')}
 
-        ${stepCard(1, '✅', '검증 완료 — 보낼 곳을 고릅니다',
-          '검증을 통과해 <b>메일을 보낼 수 있는</b> 업체 목록입니다. 매일 여기서 시작합니다.',
-          `· 회사를 클릭하면 <b>상세 정보</b>가 열립니다 — 업종·홈페이지·검증 근거를 보고 판단하세요.<br>
-           · 아닌 곳은 이동 버튼으로 <b>🚫 검증 실패</b> 또는 <b>📦 보관함</b> 으로 빼세요.<br>
-           · 보낼 곳은 왼쪽 체크박스를 누른 뒤 <b>[📋 발송 리스트로 옮기기]</b>.<br>
-           · 위쪽 <b>정렬</b>을 <b>추천순</b>으로 두면 가능성 높은 곳부터 나옵니다.`,
-          '옮기지 않은 곳에는 <b>메일이 절대 나가지 않습니다.</b> 여기서 고른 것만 발송 대상이 됩니다.')}
+      ${stepCard(2, '✅', 'AI 검증 완료 — 보낼 곳을 고릅니다',
+        'AI 판정을 통과해 <b>메일을 보낼 수 있는</b> 업체들입니다. 여기 있다고 메일이 나가는 것은 아닙니다.',
+        `<b>[직접 검토 시작]</b> — 한 회사씩 크게 보면서 둘 중 하나를 누릅니다.<br>
+         &nbsp;&nbsp;· <b>✉ 메일 보낼곳으로 선정</b> → 발송 리스트로<br>
+         &nbsp;&nbsp;· <b>🚫 검증실패 업체로 선정</b> → 검증 실패로<br>
+         키보드로도 됩니다 — <b>→</b> 보낼곳 · <b>←</b> 검증실패 · <b>Backspace</b> 이전 회사 · <b>Esc</b> 나가기<br>
+         잘못 눌렀으면 <b>[‹ 이전]</b>으로 돌아가 다시 고르면 바뀝니다.`,
+        '검증 실패로 빼도 <b>지워지지 않습니다.</b> [🚫 검증 실패] 화면에 그대로 있고 언제든 되돌릴 수 있습니다.')}
 
-        ${stepCard(2, '📝', '메일 양식 — 보낼 문구를 만듭니다',
-          `${navChip('⚙ 설정·도구 → 📝 메일 양식')} 에서 관리합니다. 상황별로 여러 개 만들어 두고 골라 씁니다.`,
-          `· <b>[+ 새 양식 작성]</b> 으로 새 문구를 만듭니다.<br>
-           · 회사명 자리에 <code style="background:#eef2ff;padding:1px 6px;border-radius:4px;color:#4338ca;font-weight:700">[회사명]</code> 을 넣으면 각 회사 이름으로 바뀝니다.<br>
-           · 비슷한 문구가 필요하면 <b>복사</b> 로 변형본을 만드세요.<br>
-           · 용도(첫 소개 / 팔로우업 / 재접촉)를 정해 두면 목록에서 구분됩니다.`,
-          '서명은 자동으로 붙습니다. 보내는 계정에 저장된 이름·직함·연락처가 들어갑니다.')}
+      ${stepCard(3, '📨', '발송 관리 — 메일을 보냅니다',
+        '탭 세 개가 <b>메일의 일생</b>입니다. 왼쪽에서 오른쪽으로 흘러갑니다.',
+        `<b>✉️ 보낼 메일</b> — 고른 곳이 모입니다. 양식과 보내는 주소를 정하고 발송합니다.<br>
+         <b>📅 예약 발송</b> — 잡아둔 예약이 시각 순서대로 있습니다.
+           답장이 오면 자동으로 빠집니다.<br>
+         <b>✅ 발송 완료</b> — 실제로 나간 것들입니다.<br><br>
+         <b>[❓ 발송 로직]</b> 을 누르면 메일이 나가는 순서를 그림으로 볼 수 있습니다.`,
+        '한 번에 쏟지 않습니다. <b>하루 정해진 통수까지, 한 통과 다음 통 사이 몇 초를 쉬면서</b> 나갑니다. 수백 통이 한꺼번에 나가면 받는 쪽이 광고로 보고 스팸함으로 넘기는데, 그러면 <b>진행 중인 거래 메일까지</b> 같이 스팸이 됩니다.')}
 
-        ${stepCard(3, '✉️', '보낼 메일 — 문구를 확인하고 보냅니다',
-          `${navChip('📨 발송 관리')} → <b>보낼 메일</b> 탭. 옮겨둔 업체가 여기 모입니다.`,
-          `· 왼쪽에서 <b>양식</b>과 <b>보내는 계정</b>을 고릅니다.<br>
-           · 오른쪽에 <b>실제로 나갈 모습</b>이 회사명이 바뀐 채로 보입니다. 회사를 바꿔 가며 확인하세요.<br>
-           · 문구를 그 자리에서 고칠 수 있습니다 (이번 발송에만 적용).<br>
-           · 아래에서 <b>나눠 보내기</b>와 <b>자동 재발송</b>을 정합니다.<br>
-           · <b>[보내기]</b> 를 누르면 예약으로 깔립니다.`,
-          '표에서 회사를 클릭하면 상세가 열립니다. 보내기 전에 마지막으로 걸러낼 수 있습니다.')}
+      ${stepCard(4, '📬', '받은 메일함 — 답장을 봅니다',
+        '이카운트 메일함에서 가져온 수신 메일입니다. <b>앱을 열 때 자동으로</b> 새 메일을 당겨옵니다.',
+        `<b>📨 오늘 온 메일</b> — 맨 위 큰 카드. 폴더 구분 없이 오늘 온 것만 모아 봅니다.
+           제목 앞 <b>📁 태그</b>가 그 메일이 들어간 거래처 폴더입니다.<br>
+         <b>폴더 지정</b> — 제목 앞 <b>[❔ 폴더 지정]</b> 을 누르면 그 자리에서 거래처 폴더에 넣습니다.
+           같은 곳에서 온 메일을 전에 넣어둔 폴더가 있으면 <b>추천</b>으로 먼저 뜹니다.<br>
+         <b>답장</b> — 메일을 열면 <b>왼쪽에 받은 편지, 오른쪽에 답장 칸</b>이 나란히 있습니다.
+           한국어로 요지만 적고 <b>[🧠 초안 생성]</b> 을 누르면 AI가 상대 언어로 초안을 써 줍니다.`,
+        '초안 생성은 <b>자동으로 발송되지 않습니다.</b> 내용을 고치고 [보내기]를 눌러야 나갑니다. 한글 대역본이 같이 나와 무슨 내용인지 확인할 수 있습니다.')}
 
-        ${stepCard(4, '📅', '예약 발송 — 언제 누구에게 나갈지',
-          '누른 즉시 나가지 않습니다. 날짜별로 쌓이고, 시각이 되면 자동으로 나갑니다.',
-          `· 어느 회사에 며칠 나갈지 <b>날짜별로 묶여</b> 보입니다.<br>
-           · 나가기 전이면 <b>[취소]</b> 로 뺄 수 있습니다.<br>
-           · 나가지 못한 건은 <b>⚠️ 사유</b>와 함께 아래에 남습니다.`,
-          '메일은 <b>하루 최대 20통</b>, 한 통과 다음 통 사이 <b>8초</b>를 쉬며 나갑니다. ' +
-          '한꺼번에 보내면 스팸으로 걸려, 같은 주소로 나가는 실제 거래 메일까지 스팸함으로 갑니다.')}
+      ${stepCard(5, '💬', '답장 받음 → 대화 진행 중 → 파트너십 확정',
+        '답장이 온 곳은 <b>자동으로</b> [답장 받음]으로 옮겨집니다. 그다음부터는 사람이 단계를 옮깁니다.',
+        `<b>💬 답장 받음</b> — 답이 온 곳. 회사명 옆 <b>[💬 대화 전체]</b> 로 주고받은 내용을 봅니다.<br>
+         <b>🤝 대화 진행 중 · ⭐ 파트너십 확정</b> — 회사별 <b>카드</b>로 봅니다.
+           카드를 누르면 그 회사와 오간 <b>대화 전체와 진행 상황</b>이 열립니다.<br>
+         <b>[+ 업체 직접 추가]</b> — 이 앱을 쓰기 전부터 메일로 거래하던 곳을 직접 넣습니다.
+           넣으면 <b>이미 받아둔 메일이 자동으로 붙어</b> 대화 이력이 바로 보입니다.`,
+        '직접 추가한 곳에는 <b>콜드메일이 나가지 않습니다.</b> 이미 연락이 닿은 곳이라 처음 보내는 소개 메일을 받으면 곤란하기 때문입니다.')}
 
-        ${stepCard(5, '📨', '발송 완료 — 며칠에 몇 번째로 보냈나',
-          '실제로 나간 곳입니다. 날짜별로 묶여 있고, 업체마다 몇 번째 메일인지 표시됩니다.',
-          `· <b>메일 1회 발송 → 2회 → 3회</b> 로 색이 진해집니다 (최대 3회).<br>
-           · 답이 없으면 <b>무응답 N일</b> 로 표시됩니다.<br>
-           · 위쪽 요약에서 <b>2번 보냈는데 무응답</b> · <b>3번 다 씀</b> 을 한눈에 봅니다.`,
-          '답장이 오면 그 업체는 <b>자동으로 [💬 답장 받음] 으로 옮겨가고 여기서 사라집니다.</b> ' +
-          '더 이상 광고 메일이 나가지 않습니다.')}
+      ${stepCard(6, '📝', '메일 양식 — 보낼 문구를 정합니다',
+        '보낼 메일의 제목과 본문을 미리 만들어 두는 곳입니다. 발송할 때 골라 씁니다.',
+        `<b>[+ 새 양식 작성]</b> 으로 만들고, <b>[✏ 수정]</b> 으로 고칩니다.<br>
+         <b>[회사명]</b> 처럼 대괄호로 적어두면 <b>회사마다 그 회사 이름으로 바뀌어</b> 나갑니다.<br>
+         발송 화면 오른쪽에서 회사를 바꿔 가며 <b>실제로 갈 모습</b>을 미리 볼 수 있습니다.`,
+        '양식을 고치면 <b>다음 발송부터</b> 적용됩니다. 이미 예약된 메일은 예약 당시 문구로 나갑니다.')}
 
-        ${stepCard(6, '💬', '답장 받음 — 답하고, 아닌 곳은 뺍니다',
-          '상대가 답장을 보낸 곳입니다. 여기서부터는 사람이 직접 대응합니다.',
-          `· <b>[💬 답장 N통 보기]</b> 로 주고받은 내용을 열고 <b>회신</b>합니다.<br>
-           · 얘기가 되겠으면 <b>🤝 대화 진행 중</b> → 계약되면 <b>⭐ 파트너십 확정</b>.<br>
-           · 우리랑 안 맞으면 <b>🚫 컨택 실패</b> 로 뺍니다.<br>
-           · 지금은 아니지만 나중에 볼 곳은 <b>📦 보관함</b>.`,
-          null,
-          'linear-gradient(135deg,#6366f1,#4f46e5)')}
-
-        ${stepCard(7, '📬', '메일함 — 들어온 메일을 봅니다',
-          `사이드바 ${navChip('📬 메일함')} 은 회사 단위가 아니라 <b>메일 단위</b>로 봅니다. 최근 2개월 기준입니다.`,
-          `· <b>받은 메일함</b> — 거래처 폴더별로 나눠 봅니다. 광고·자동발송은 접힙니다.<br>
-           · <b>회신 필요</b> — 상대가 물었는데 아직 답 안 한 메일.<br>
-           · <b>기한 관리</b> — 본문에서 자동으로 찾아낸 회신 기한. 지난 것부터 나옵니다.`,
-          `여기 숫자는 ${navChip('📬 메일 계정')} 에서 지정한 <b>대표 계정</b> 기준입니다. ` +
-          '대표 계정을 바꾸면 메일함이 통째로 그 계정 것으로 바뀝니다.')}
-      </div>
-
-      <!-- 안전장치 -->
-      <div style="margin-top:18px;background:var(--bg-surface);border:1px solid var(--border-default);
-                  border-radius:14px;padding:20px 22px">
-        <h3 style="margin:0 0 12px;font-size:15.5px;font-weight:800;color:var(--text-primary)">
-          🛡 잘못 나가지 않게 막아둔 것들
-        </h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:11px">
-          ${[
-            ['골라야만 나갑니다', '검증 완료에서 발송 리스트로 옮긴 곳에만 메일이 갑니다.'],
-            ['같은 곳에 최대 3회', '첫 메일 + 재발송 2번. 그 이상은 자동으로 막힙니다.'],
-            ['48시간 간격', '마지막 발송 후 이틀이 지나지 않으면 다시 나가지 않습니다.'],
-            ['답장 오면 즉시 중단', '답장이 온 업체에는 광고 메일이 더 나가지 않습니다.'],
-            ['하루 20통', '한꺼번에 쏟지 않습니다. 남은 것은 다음 날로 넘어갑니다.'],
-            ['메일 주소 없으면 제외', '보낼 수 없는 곳은 발송 리스트로 옮겨지지 않습니다.'],
-          ].map(([t, d]) => `
-            <div style="background:var(--bg-surface-alt);border:1px solid var(--border-subtle);
-                        border-radius:10px;padding:12px 14px">
-              <div style="font-size:12.5px;font-weight:800;color:var(--text-primary);margin-bottom:4px">${t}</div>
-              <div style="font-size:12px;color:var(--text-tertiary);line-height:1.65">${d}</div>
-            </div>`).join('')}
-        </div>
-      </div>
-
-      <!-- 지금 테스트 중 -->
+      <!-- 지금 발송이 열려 있는가 -->
       <div id="guideLockBox" style="margin-top:14px"></div>
 
+      <!-- 안전장치 -->
+      <div style="background:var(--bg-surface);border:1px solid var(--border-default);
+                  border-radius:14px;padding:20px 22px">
+        <h3 style="margin:0 0 6px;font-size:15.5px;font-weight:800;color:var(--text-primary)">
+          🛡 저절로 사고가 나지 않게 해둔 것
+        </h3>
+        <div style="font-size:12.5px;color:var(--text-tertiary);margin-bottom:12px">
+          아래는 화면에서 끌 수 없습니다. 실수로 눌러도 이 선을 넘지 않습니다.
+        </div>
+        ${[
+          ['고른 곳에만 나갑니다', '[발송 리스트]로 옮긴 업체에만 메일이 나갑니다. 검증 완료에 있는 나머지는 눌러도 나가지 않습니다.'],
+          ['하루 통수 제한', '하루에 정해진 통수를 넘지 않습니다. 남은 것은 다음 날로 넘어갑니다.'],
+          ['한 통씩 쉬어 가며', '한 통과 다음 통 사이에 간격을 둡니다. 한꺼번에 쏟으면 스팸으로 걸립니다.'],
+          ['같은 곳에 3번까지', '한 업체에 최대 3번(첫 메일 + 재발송 2회)만 나갑니다.'],
+          ['48시간 간격', '같은 곳에 이틀 안에 두 번 나가지 않습니다.'],
+          ['답장이 오면 멈춤', '답장이 온 곳에는 예약된 재발송이 나가지 않습니다.'],
+          ['지우지 않습니다', '검증 실패·보관함으로 보낸 것도 DB에서 지우지 않습니다. 언제든 되돌릴 수 있습니다.'],
+        ].map(([t, d]) => `
+          <div style="display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--border-subtle)">
+            <span style="color:#16a34a;font-weight:800;flex-shrink:0">✓</span>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700;color:var(--text-primary)">${t}</div>
+              <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;margin-top:2px">${d}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+
       <!-- 자주 묻는 것 -->
-      <div style="margin-top:14px;background:var(--bg-surface);border:1px solid var(--border-default);
+      <div style="background:var(--bg-surface);border:1px solid var(--border-default);
                   border-radius:14px;padding:20px 22px">
         <h3 style="margin:0 0 12px;font-size:15.5px;font-weight:800;color:var(--text-primary)">
           ❓ 자주 묻는 것
         </h3>
         ${[
           ['보내기를 눌렀는데 왜 바로 안 나가나요?',
-           '예약으로 깔리기 때문입니다. 하루 20통씩 나눠서 나갑니다. [📅 예약 발송] 탭에서 언제 누구에게 나갈지 볼 수 있습니다.'],
+           '예약으로 깔리기 때문입니다. 정해진 통수씩 나눠서 나갑니다. [📅 예약 발송] 탭에서 언제 누구에게 나갈지 볼 수 있습니다.'],
+          ['예약 시각이 지났는데 안 나갑니다.',
+           '예약을 실제로 내보내는 작업이 하루 한 번 돕니다. 지금 당장 보내려면 [📅 예약 발송] 탭의 <b>[⏱ 지금 예약분 내보내기]</b> 를 누르세요. 시각이 지난 것만 나가고 아직 안 된 것은 그대로 둡니다.'],
           ['업체가 목록에서 사라졌어요.',
-           '답장이 오면 [💬 답장 받음] 으로 자동으로 옮겨갑니다. 지워진 것이 아니라 다음 단계로 넘어간 것입니다.'],
+           '답장이 오면 [💬 답장 받음] 으로 자동으로 옮겨갑니다. 지워진 것이 아니라 다음 단계로 넘어간 것입니다. 단계를 직접 옮겨도 마찬가지입니다.'],
           ['같은 곳에 또 보내고 싶은데 안 됩니다.',
            '한 곳에 최대 3번까지만 나갑니다. 마지막 발송 후 48시간도 지나야 합니다. 스팸으로 걸리지 않기 위한 제한입니다.'],
           ['메일 문구를 바꾸고 싶어요.',
-           '[📝 메일 양식] 에서 고쳐 저장하면 다음 발송부터 적용됩니다. 이번 한 번만 다르게 보내려면 발송 화면에서 직접 고치면 됩니다.'],
+           '[📝 메일 양식] 에서 [✏ 수정] 으로 고쳐 저장하면 다음 발송부터 적용됩니다. 이번 한 번만 다르게 보내려면 발송 화면에서 직접 고치면 됩니다.'],
+          ['받은 메일이 안 보입니다.',
+           '앱을 열면 자동으로 가져옵니다. 방금 온 메일을 당장 보려면 받은 메일함의 <b>[📥 메일 가져오기]</b> 를 누르세요.'],
           ['받은 메일함 숫자가 이상합니다.',
-           '[📬 메일 계정] 의 대표 계정 기준으로 셉니다. 대표 계정을 바꾸면 그 계정 메일함으로 바뀝니다.'],
+           '[📬 메일 계정] 의 대표 계정 기준으로 셉니다. 대표 계정을 바꾸면 그 계정 메일함으로 바뀝니다. 광고·자동발송은 숫자에서 빠집니다.'],
+          ['AI 검증은 돈이 드나요?',
+           '네, 업체 한 곳당 비용이 듭니다. 그래서 <b>버튼을 누를 때만</b> 돌아갑니다. 버튼에 대상 건수와 예상 금액이 적혀 있습니다. 저절로 돌아가는 일은 없습니다.'],
+          ['잘못 눌러서 엉뚱한 곳으로 보냈어요.',
+           '단계를 옮긴 것이라면 그 화면에서 되돌릴 수 있습니다. <b>메일이 이미 나간 것은 되돌릴 수 없습니다</b> — 그래서 발송 전에 한 번 더 묻습니다.'],
         ].map(([q, a]) => `
           <div style="padding:11px 0;border-top:1px solid var(--border-subtle)">
             <div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:4px">Q. ${q}</div>
@@ -9869,13 +9891,16 @@ function renderUserGuidePage() {
           화면을 미리 익혀 두셔도 <b>사고가 나지 않습니다.</b>
         </div>
       </div>` : `
-      <div style="background:#dcfce7;border:1px solid #86efac;border-radius:14px;padding:18px 22px">
-        <div style="font-size:14.5px;font-weight:800;color:#166534;margin-bottom:6px">
-          📤 발송이 열려 있습니다
+      <div style="background:#eff6ff;border:1px solid #2563eb;border-radius:14px;padding:18px 22px">
+        <div style="font-size:14.5px;font-weight:800;color:#1e3a8a;margin-bottom:6px">
+          📤 실제 발송이 열려 있습니다 — 누르면 진짜로 나갑니다
         </div>
-        <div style="font-size:12.5px;color:#166534;line-height:1.75">
-          예약 시각이 되면 실제 업체로 메일이 나갑니다.
-          하루 최대 ${(lock && lock.dailyCap) || 20}통까지입니다.
+        <div style="font-size:12.5px;color:#1e3a8a;line-height:1.75">
+          <b>[발송 관리 → 보낼 메일]</b> 에 있는 곳으로만 나갑니다.
+          [AI 검증 완료]에 있는 나머지는 발송 리스트로 옮기기 전까지 나가지 않습니다.<br>
+          하루 최대 <b>${(lock && lock.dailyCap) || 20}통</b> ·
+          한 통 사이 <b>${Math.round(((lock && lock.intervalMs) || 8000) / 1000)}초</b> ·
+          같은 곳에는 48시간 안에 다시 나가지 않습니다.
         </div>
       </div>`;
   }).catch(() => {});
@@ -11630,15 +11655,17 @@ function openMailAccountModal(editId) {
   const isEdit = !!editId;
   const acc = isEdit ? (_mailAccounts || []).find(a => a._id === editId) : null;
 
-  // 흔한 SMTP 프리셋 (사용자 편의) — 이카운트 기본
+  // ── 이카운트 하나만 남긴다 ──
+  //
+  // 예전에는 Gmail·Outlook·네이버·다음·카페24·직접입력까지 골랐다.
+  // 그런데 회사 메일은 이카운트 하나뿐이고, 다른 것을 고르면 그때부터
+  // 앱 비밀번호·IMAP 활성화 같은 각 서비스 사정을 알아야 한다.
+  // 쓸 일이 없는 선택지가 여섯 개 있으면 "뭘 골라야 하지"가 먼저 생긴다.
+  //
+  // 되살리려면 아래 배열에 항목을 다시 넣으면 된다 — providerGuides 안내문과
+  // 호스트 자동 채움은 그대로 살아 있다.
   const presetOptions = [
     { key: 'ecount',  label: '📮 이카운트 (ECOUNT)', host: 'wsmtp.ecount.com', port: 465, secure: true },
-    { key: 'gmail',   label: '📮 Gmail', host: 'smtp.gmail.com', port: 465, secure: true },
-    { key: 'outlook', label: '📮 Outlook / Office 365', host: 'smtp.office365.com', port: 587, secure: false },
-    { key: 'naver',   label: '📮 Naver', host: 'smtp.naver.com', port: 465, secure: true },
-    { key: 'daum',    label: '📮 Daum/Hanmail', host: 'smtp.daum.net', port: 465, secure: true },
-    { key: 'cafe24',  label: '📮 Cafe24', host: 'smtp.cafe24.com', port: 465, secure: true },
-    { key: 'custom',  label: '⚙️ 직접 입력 (커스텀)', host: '', port: 465, secure: true },
   ];
   // 서비스별 사전 세팅 안내
   const providerGuides = {
@@ -13088,12 +13115,13 @@ async function deleteAllFailedLeads() {
  * 표에서 회사를 눌러 여는 상세 팝업의 [이전/다음]은 그대로 둔다 —
  * 한 곳만 확인하러 들어간 경우에는 그쪽이 맞다.
  */
-function startDirectReview(source) {
+function startDirectReview(source, batch) {
   _review.queue = [];      // 화면의 검색·국가 조건으로 새로 받는다
   _review.idx = 0;
   _review.skip = 0;        // 처음부터 — 지난번에 건너뛴 위치를 물고 들어오지 않게
   _review.decided = new Map();
   _review.source = source || '';   // '' = AI 검증 완료 · 'legacy' = 올린 데이터
+  _review.batch = batch || '';     // 올린 파일 하나만 볼 때 그 파일
   // 어디서 들어왔는지 기억한다. [← 돌아가기] 는 시작한 그 자리로 되돌려야지,
   // 정해진 한 화면으로 보내면 "내가 보던 데가 아닌데" 가 된다.
   _review.from = state.view;

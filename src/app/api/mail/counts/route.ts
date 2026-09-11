@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
-import { countSince, seoulDayStart, COUNT_PERIOD_LABEL, COUNT_PERIOD_DAYS } from '@/lib/mail/period';
+import { countSince, seoulDayStart, replyWindowFilter, REPLY_WINDOW_DAYS, COUNT_PERIOD_LABEL, COUNT_PERIOD_DAYS } from '@/lib/mail/period';
 
 export const runtime = 'nodejs';
 
@@ -42,9 +42,16 @@ export async function GET(req: Request) {
         direction: 'in',
         classification: { $nin: NOISE },
       }),
-      // 회신 필요 — 상대가 질문·요청을 보냈고 아직 처리 안 된 것
+      // 회신 필요 — 상대가 질문·요청을 보냈고 아직 처리 안 된 것.
+      //
+      // ⚠️ 기간이 다른 배지들과 다르다 (2개월이 아니라 최근 REPLY_WINDOW_DAYS).
+      // 2주가 지나도록 답하지 않은 건은 답할 일이 아니거나 이미 다른 경로로
+      // 정리된 것이다. 남겨두면 숫자가 줄지 않아 밀린 일처럼 보이고,
+      // 한참 지난 건에 뒤늦게 답장을 보내는 사고가 난다.
+      // 목록(/api/mail/inbox?needsReply=1)도 **같은 기간**을 써야 숫자가 맞는다.
       InboundMail.countDocuments({
-        ...acc, ...since,
+        ...acc,
+        ...replyWindowFilter(),
         trashedAt: null,
         direction: 'in',
         classification: { $nin: NOISE },

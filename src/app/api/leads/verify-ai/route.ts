@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: '잘못된 요청 본문' }, { status: 400 });
   }
 
-  const scope: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'maybe-recheck' | 'leadIds' | 'legacy' = body?.scope || 'suspicious';
+  const scope: 'suspicious' | 'all-unverified' | 'verifying-stage' | 'maybe-recheck' | 'leadIds' | 'legacy' | 'verified-unchecked' = body?.scope || 'suspicious';
   const leadIds: string[] | undefined = body?.leadIds;
   const limit = Math.min(Math.max(parseInt(body?.limit, 10) || 20, 1), 50);
   const excludeKorea: boolean = body?.excludeKorea !== false;
@@ -76,10 +76,25 @@ export async function POST(req: Request) {
         { 'verification.aiVerifiedAt': { $exists: false } },
         { 'verification.aiVerifiedAt': '' },
       ];
+    } else if (scope === 'verified-unchecked') {
+      // [AI 검증 완료]에 있는데 정작 AI 판정을 받은 적이 없는 것.
+      //
+      // 예전 스크립트가 검증 단계를 건너뛰고 stage 만 'verified' 로 올려놔서,
+      // 653곳 중 244곳만 실제 판정이 있었다. 화면 이름이 [AI 검증 완료]인데
+      // 절반 넘게 AI 가 본 적이 없는 상태라 이름과 실제가 어긋난다.
+      filter.stage = 'verified';
+      filter.deleted = { $ne: true };
+      filter.$or = [
+        { 'verification.aiVerifiedAt': { $exists: false } },
+        { 'verification.aiVerifiedAt': '' },
+      ];
     } else if (scope === 'legacy') {
       // 엑셀로 직접 올린 것 중 AI 판정을 안 받은 것.
       // AI 서칭으로 들어온 건(importBatch = ai-search-*)은 제 갈래가 따로 있다.
-      filter.importBatch = { $not: /^ai-search-/ };
+      // 올린 파일 하나를 열고 들어왔으면 그 파일 안의 업체만 검증한다
+      filter.importBatch = typeof body?.batch === 'string' && body.batch.trim()
+        ? body.batch.trim()
+        : { $not: /^ai-search-/ };
       filter.deleted = { $ne: true };
       // [AI 검증 완료]에 같은 업체가 이미 있어 감춘 것은 검증하지 않는다.
       // 같은 회사를 두 번 판정하는 셈이고, 건당 요금이 나가는 일이다.

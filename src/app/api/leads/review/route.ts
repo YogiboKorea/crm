@@ -50,10 +50,13 @@ const REAL_EMAIL = { Email: { $regex: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ } };
  *             AI 검증에서 '애매함'으로 남은 것이 대부분 여기 모인다.
  *             AI 서칭으로 들어온 건(ai-search-*)은 제 갈래가 따로 있어 뺀다.
  */
-function sourceFilter(source?: string) {
+function sourceFilter(source?: string, batch?: string) {
   if (source === 'legacy') {
     return {
-      importBatch: { $not: /^ai-search-/ },
+      // 올린 파일 하나를 열고 들어왔으면 **그 파일 안의 업체만** 본다.
+      // 폴더를 열어놓고 검토를 눌렀는데 다른 파일 업체가 나오면
+      // "내가 올린 그 목록을 보는 중" 이라는 전제가 깨진다.
+      importBatch: batch ? batch : { $not: /^ai-search-/ },
       stage: { $in: ['imported', 'verifying', 'archived', 'ai-searched'] },
       // AI 가 무관으로 판정한 것은 뺀다.
       // 그건 [🚫 검증 실패] 화면이 보여주는 것과 같은 집합이라
@@ -67,8 +70,8 @@ function sourceFilter(source?: string) {
   return { stage: 'verified' };
 }
 
-function buildPending(q?: string, country?: string, source?: string) {
-  const f: any = { ...sourceFilter(source), deleted: { $ne: true }, ...REAL_EMAIL };
+function buildPending(q?: string, country?: string, source?: string, batch?: string) {
+  const f: any = { ...sourceFilter(source, batch), deleted: { $ne: true }, ...REAL_EMAIL };
   if (country && country !== 'All') f.Country = country;
   if (q) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -108,10 +111,11 @@ export async function GET(req: Request) {
     const q = (searchParams.get('q') || '').trim();
     const country = (searchParams.get('country') || '').trim();
     const source = (searchParams.get('source') || '').trim();
+    const batch = (searchParams.get('batch') || '').trim();
 
     await dbConnect();
 
-    const pending = buildPending(q, country, source);
+    const pending = buildPending(q, country, source, batch);
 
     const [items, counts] = await Promise.all([
       // 추천 우선순위 높은 것부터. 도중에 그만두더라도 값어치 있는 곳은
@@ -187,6 +191,7 @@ export async function POST(req: Request) {
     typeof body?.q === 'string' ? body.q.trim() : '',
     typeof body?.country === 'string' ? body.country : '',
     typeof body?.source === 'string' ? body.source : '',
+    typeof body?.batch === 'string' ? body.batch : '',
   );
   if (!leadId || !nextStage) {
     return NextResponse.json(
