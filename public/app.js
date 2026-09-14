@@ -797,6 +797,12 @@ function bindEvents() {
         state.email.mode = 'list';
         state.email.dirty = false;
       }
+      // 사이드바로 메일 화면에 들어오면 늘 받은 메일 목록부터 — 보낸 메일함을 연 채로
+      // [받은 메일함]을 눌렀는데 보낸 메일함이 그대로 보이면 눌러도 안 되는 것처럼 보인다.
+      if ((targetView === 'tool-inbox' || targetView === 'tool-inbox-needsreply') && typeof _inboxState !== 'undefined') {
+        _inboxState.sent = false;
+        closeSentMailModal();
+      }
       if (targetStatus) {
         state.status = targetStatus;
         const statusEl = els.status;
@@ -1764,7 +1770,7 @@ async function _renderInner() {
   // 회신 필요 화면까지 따라가 "회신 필요 6건" 처럼 보였다. 같은 화면 안에서 페이지를 넘기거나
   // 다시 그릴 때는 그대로 둔다.
   if ((state.view === "tool-inbox" || state.view === "tool-inbox-needsreply") && _inboxState.lastView !== state.view) {
-    Object.assign(_inboxState, { page: 1, classification: '', q: '', linked: '', group: '', trashed: false, today: false });
+    Object.assign(_inboxState, { page: 1, classification: '', q: '', linked: '', group: '', trashed: false, today: false, sent: false });
     _inboxState.lastView = state.view;
   }
   if (state.view === "tool-inbox") {
@@ -2131,6 +2137,14 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
                 <div style="font-size:44px;font-weight:800;color:#1d4ed8;line-height:1">
                   ${notPicked.toLocaleString()}</div>
                 <div style="font-size:12px;font-weight:700;color:#1e40af;margin-top:2px">2차 검토 필요</div>
+                <!-- 아래 탭은 '검증 성공 540', 여기는 316 이라 줄어든 것처럼 보였다.
+                     2차 검토는 메일 주소가 있는 곳만 대상이라 두 숫자가 다르다 — 그 관계를 같이 적는다. -->
+                ${typeof serverVerified === 'number' && typeof serverNoEmail === 'number' && serverNoEmail > 0 ? `
+                <div style="font-size:11px;color:#3b82f6;margin-top:3px;line-height:1.5"
+                     title="메일 주소 대신 문의폼·인스타 DM 등으로만 연락되는 곳은 메일을 보낼 수 없어 2차 검토에서 뺍니다. 목록 위 [📭 이메일 없음] 칩에서 볼 수 있습니다.">
+                  검증 성공 <b>${serverVerified.toLocaleString()}</b>곳 중 메일 주소가 있는 곳<br>
+                  <span style="color:#64748b">(메일 주소 없음 ${serverNoEmail.toLocaleString()}곳 제외)</span>
+                </div>` : ''}
               </div>
               <div style="width:1px;height:46px;background:#93c5fd"></div>
               <div>
@@ -4529,8 +4543,204 @@ const MAIL_CLASS = {
 // 다르면 화면에서 거래처 폴더인 줄 알고 목록 사이에 섞여 나온다.
 var AD_FOLDER_NAME = '광고·자동발송';
 
+// ═══ 📤 보낸 메일함 ═══════════════════════════════════════════
+//
+// 받은 메일함 폴더 목록 맨 아래의 [📤 보낸 메일함]을 누르면 열린다.
+// 사이드바 메뉴를 늘리지 않고 휴지통처럼 폴더의 하나로 둔다.
+//
+// 보낸 메일은 DB 에 모으지 않고 **이카운트 보낸메일함을 그 자리에서 읽는다**
+// (/api/mail/sent). 받은 메일함 숫자·대화 묶기에 섞이지 않고, 웹메일과 늘 같다.
+// 메일 서버에 붙어서 읽기 때문에 한 쪽에 2~5초 걸린다 — 기다리는 동안 무엇을 하는지 적어 둔다.
+var _sentState = { page: 1, q: '', data: null, busy: false };
+/** 보낸 메일함 폴더를 받은 메일함 폴더 목록에 보여줄지 — 대표님 요청으로 일단 숨김 (2026-09-14) */
+var SHOW_SENT_MAILBOX = false;
+
+async function renderSentMailPage() {
+  const accountId = currentMailboxAccountId();
+  els.content.innerHTML = `<div class="inline-loader">이카운트 보낸메일함을 읽는 중… (2~5초)</div>`;
+
+  const params = new URLSearchParams({ page: String(_sentState.page) });
+  if (_sentState.q) params.set('q', _sentState.q);
+  if (accountId && accountId !== 'all') params.set('accountId', accountId);
+
+  const d = await safeJsonFetch('/api/mail/sent?' + params.toString());
+  if (!_inboxState.sent || (state.view !== 'tool-inbox' && state.view !== 'tool-inbox-needsreply')) return;   // 기다리는 사이 다른 화면으로 갔다
+
+  const back = `<button type="button" id="sentBack"
+      style="padding:7px 14px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-surface);
+             color:var(--text-secondary);font-size:12.5px;font-weight:700;cursor:pointer">← 받은 메일함</button>`;
+
+  if (!d || !d.success) {
+    els.content.innerHTML = `
+      <div style="margin-bottom:12px">${back}</div>
+      <div class="empty-detail"><h3>보낸메일함을 읽지 못했습니다</h3><p>${escapeHtml((d && d.error) || '잠시 뒤 다시 시도해 주세요.')}</p></div>`;
+    els.content.querySelector('#sentBack')?.addEventListener('click', leaveSentMailPage);
+    return;
+  }
+  _sentState.data = d;
+
+  const dt = (v) => {
+    if (!v) return '';
+    const x = new Date(v); const now = new Date();
+    if (x.toDateString() === now.toDateString()) return x.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    return x.toLocaleDateString('ko-KR', x.getFullYear() === now.getFullYear()
+      ? { month: '2-digit', day: '2-digit' } : { year: '2-digit', month: '2-digit', day: '2-digit' });
+  };
+  const who = (list) => {
+    const a = (list || [])[0];
+    if (!a) return '(받는 사람 없음)';
+    const more = (list || []).length > 1 ? ` 외 ${(list || []).length - 1}명` : '';
+    return escapeHtml(sentName(a.name) || a.address) + more;
+  };
+
+  const rows = (d.items || []).map((m) => `
+    <tr class="sent-row" data-uid="${m.uid}" style="cursor:pointer">
+      <td style="white-space:nowrap;color:var(--text-tertiary);font-size:12px;width:90px">${dt(m.date)}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        <div style="font-weight:600;color:var(--text-primary);font-size:13px;overflow:hidden;text-overflow:ellipsis">${who(m.to)}</div>
+        <div style="font-size:11px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis">${escapeHtml((m.to && m.to[0] && m.to[0].address) || '')}</div>
+      </td>
+      <td style="color:var(--text-primary);font-size:13px">${escapeHtml(String(m.subject || '(제목 없음)').slice(0, 90))}</td>
+      <td style="width:28px;text-align:center">${m.hasAttachment ? '<span title="첨부파일 있음">📎</span>' : ''}</td>
+    </tr>`).join('');
+
+  const pager = `
+    <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;margin:10px 0">
+      <button type="button" class="sent-page" data-page="${d.page - 1}" ${d.page <= 1 ? 'disabled' : ''}
+        style="padding:6px 12px;border-radius:7px;border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer;${d.page <= 1 ? 'opacity:.4;cursor:default' : ''}">‹ 이전</button>
+      <span style="font-size:12px;color:var(--text-tertiary)">${d.page} / ${d.totalPages} 쪽</span>
+      <button type="button" class="sent-page" data-page="${d.page + 1}" ${d.page >= d.totalPages ? 'disabled' : ''}
+        style="padding:6px 12px;border-radius:7px;border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer;${d.page >= d.totalPages ? 'opacity:.4;cursor:default' : ''}">다음 ›</button>
+    </div>`;
+
+  els.content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      ${back}
+      <div style="flex:1;min-width:220px">
+        <div style="font-size:16px;font-weight:800;color:var(--text-primary)">📤 보낸 메일함</div>
+        <div style="font-size:12px;color:var(--text-tertiary)">
+          ${escapeHtml(d.account.address)} · 이카운트 보낸메일함을 그대로 보여줍니다 · 전체 ${Number(d.total).toLocaleString()}통${_sentState.q ? ` · "${escapeHtml(_sentState.q)}" 검색` : ''}
+        </div>
+      </div>
+      <form id="sentSearch" style="display:flex;gap:6px">
+        <input id="sentQ" type="search" value="${escapeAttr(_sentState.q)}" placeholder="제목·받는 사람 주소"
+          style="padding:7px 10px;border:1px solid var(--border-default);border-radius:8px;font-size:12.5px;min-width:200px;background:var(--bg-surface);color:var(--text-primary)">
+        <button type="submit" style="padding:7px 12px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer;font-size:12.5px">찾기</button>
+      </form>
+    </div>
+    ${(d.items || []).length ? `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>보낸 시각</th><th>받는 사람</th><th>제목</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${pager}` : `<div class="empty-detail"><h3>${_sentState.q ? '찾는 메일이 없습니다' : '보낸 메일이 없습니다'}</h3></div>`}`;
+
+  els.content.querySelector('#sentBack')?.addEventListener('click', leaveSentMailPage);
+  els.content.querySelector('#sentSearch')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    _sentState.q = (els.content.querySelector('#sentQ')?.value || '').trim();
+    _sentState.page = 1;
+    renderSentMailPage();
+  });
+  els.content.querySelectorAll('.sent-page').forEach((b) => b.addEventListener('click', () => {
+    if (b.disabled) return;
+    _sentState.page = Number(b.dataset.page) || 1;
+    renderSentMailPage();
+  }));
+  els.content.querySelectorAll('.sent-row').forEach((tr) => tr.addEventListener('click', () => {
+    openSentMailModal(Number(tr.dataset.uid), d.account.accountId);
+  }));
+}
+
+/** 메일 서버가 이름을 'Camilla Hjerrild' 처럼 따옴표째 주는 경우가 있어 떼어 낸다 */
+function sentName(name) {
+  const s = String(name || '').trim();
+  const m = s.match(/^'(.*)'$/) || s.match(/^"(.*)"$/);
+  return (m ? m[1] : s).trim();
+}
+
+function leaveSentMailPage() {
+  _inboxState.sent = false;
+  _sentState.page = 1;
+  _sentState.q = '';
+  render();
+}
+
+function closeSentMailModal() {
+  document.getElementById('sentMailRoot')?.remove();
+  document.body.classList.remove('modal-open');
+}
+
+async function openSentMailModal(uid, accountId) {
+  closeSentMailModal();
+  const root = document.createElement('div');
+  root.id = 'sentMailRoot';
+  root.className = 'modal-backdrop';
+  root.style.display = 'flex';
+  root.innerHTML = `<div class="modal-card" style="max-width:920px;width:94vw;max-height:90vh;display:flex;flex-direction:column;background:#fff;border-radius:14px;overflow:hidden">
+      <div class="inline-loader" style="padding:40px">보낸 메일을 읽는 중… (2~5초)</div></div>`;
+  document.body.appendChild(root);
+  document.body.classList.add('modal-open');
+  bindBackdropDismiss(root, closeSentMailModal);
+  const onKey = (e) => { if (e.key === 'Escape') { closeSentMailModal(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+
+  const q = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+  const d = await safeJsonFetch(`/api/mail/sent/${uid}${q}`);
+  if (!document.getElementById('sentMailRoot')) return;
+  const card = root.querySelector('.modal-card');
+  if (!d || !d.success) {
+    card.innerHTML = `<div style="padding:28px"><h3 style="margin:0 0 8px">메일을 열지 못했습니다</h3>
+      <p style="color:#64748b">${escapeHtml((d && d.error) || '잠시 뒤 다시 시도해 주세요.')}</p>
+      <button type="button" id="sentClose" style="margin-top:10px;padding:8px 16px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer">닫기</button></div>`;
+    card.querySelector('#sentClose')?.addEventListener('click', closeSentMailModal);
+    return;
+  }
+  const m = d.mail;
+  const addrs = (list) => (list || []).filter(Boolean).map((a) => sentName(a.name) ? `${escapeHtml(sentName(a.name))} &lt;${escapeHtml(a.address)}&gt;` : escapeHtml(a.address)).join(', ') || '—';
+  const when = m.date ? new Date(m.date).toLocaleString('ko-KR') : '';
+  const bodyHtml = m.html
+    ? `<div class="sent-body-html" style="font-size:14.5px;color:#1e293b;line-height:1.75;word-break:break-word">${renderMailBodyHtml(m.html)}</div>`
+    : `<div style="font-size:15px;color:#1e293b;line-height:1.85;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.text || '(본문 없음)')}</div>`;
+  const atts = (m.attachments || []).map((a) => `
+    <button type="button" class="mail-att-dl" data-name="${escapeAttr(a.filename || '첨부파일')}"
+      data-url="${escapeAttr(`/api/mail/sent/${m.uid}/attachment?part=${encodeURIComponent(a.partId)}&name=${encodeURIComponent(a.filename || 'attachment')}&type=${encodeURIComponent(a.contentType || '')}${accountId ? '&accountId=' + encodeURIComponent(accountId) : ''}`)}"
+      style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;font-size:12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#1e293b;cursor:pointer">
+      <span>${attachmentIcon(a.contentType, a.filename)}</span>
+      <span style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.filename || '첨부파일')}</span>
+      ${a.size ? `<span style="color:#94a3b8;font-size:11px">${fmtAttachmentSize(a.size)}</span>` : ''}
+      <span class="mail-att-state" style="color:#2563eb;font-weight:700">⬇</span>
+    </button>`).join('');
+
+  card.innerHTML = `
+    <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;gap:12px;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <span style="font-size:10.5px;font-weight:800;color:#1d4ed8;background:#eff6ff;border-radius:99px;padding:2px 8px">📤 보낸 메일</span>
+        <h3 style="margin:6px 0 6px;font-size:17px;color:#0f172a;word-break:break-word">${escapeHtml(m.subject || '(제목 없음)')}</h3>
+        <div style="font-size:12.5px;color:#475569;line-height:1.7">
+          <div><b style="color:#64748b">받는 사람</b> ${addrs(m.to)}</div>
+          ${(m.cc || []).length ? `<div><b style="color:#64748b">참조</b> ${addrs(m.cc)}</div>` : ''}
+          <div><b style="color:#64748b">보낸 사람</b> ${addrs([m.from])} · ${escapeHtml(when)}</div>
+        </div>
+      </div>
+      <button type="button" id="sentClose" title="닫기 (Esc)"
+        style="border:none;background:none;font-size:22px;color:#94a3b8;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div style="padding:18px 22px;overflow:auto;flex:1;background:#fcfcfd">
+      ${bodyHtml}
+      ${atts ? `<div style="margin-top:16px">
+        <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px">📎 첨부파일 ${(m.attachments || []).length}개 · 누르면 내려받습니다</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${atts}</div></div>` : ''}
+    </div>`;
+  card.querySelector('#sentClose')?.addEventListener('click', closeSentMailModal);
+}
+
 async function renderInboxPage(opts) {
   const needsReplyOnly = opts && opts.needsReplyOnly === true;
+  // [📤 보낸 메일함]을 연 상태면 그 화면을 그린다 (받은 메일함 안의 폴더 하나로 둔다)
+  if (_inboxState.sent && !needsReplyOnly) return renderSentMailPage();
   els.content.innerHTML = `<div class="inline-loader">메일함 불러오는 중…</div>`;
 
   // 계정 목록을 먼저 받아야 대표 계정을 알 수 있다. 이 줄이 params 뒤에 있던 동안에는
@@ -4933,6 +5143,18 @@ async function renderInboxPage(opts) {
            치운 메일을 되돌리려면 다른 화면으로 나가야 해서 흐름이 끊긴다.
            DB 에서 지우지 않으므로 여기서 언제든 되살릴 수 있다. -->
       <div style="border-top:1px solid var(--border-subtle);margin-top:6px;padding-top:6px">
+        <!-- 보낸 메일함 — 이카운트 보낸메일함을 그 자리에서 읽는다 (renderSentMailPage).
+             사이드바 메뉴를 늘리지 않고 휴지통처럼 폴더의 하나로 둔다.
+             일단 숨김 (2026-09-14) — 기능(renderSentMailPage · /api/mail/sent)은 그대로 살아 있고,
+             다시 켜려면 SHOW_SENT_MAILBOX 를 true 로 바꾸면 된다. -->
+        ${SHOW_SENT_MAILBOX ? `<button type="button" class="inbox-group" data-group="__sent__"
+          title="이카운트 보낸메일함을 그대로 보여줍니다 — 보낸 메일의 내용·첨부를 확인합니다"
+          style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:7px 10px;
+                 font-size:12.5px;border:none;border-radius:7px;cursor:pointer;margin-bottom:2px;
+                 background:transparent;color:var(--text-secondary);font-weight:500">
+          <span style="width:16px;flex-shrink:0">📤</span>
+          <span style="flex:1">보낸 메일함</span>
+        </button>` : ''}
         <button type="button" class="inbox-group" data-group="__trash__"
           style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:7px 10px;
                  font-size:12.5px;border:none;border-radius:7px;cursor:pointer;margin-bottom:2px;
@@ -5332,11 +5554,20 @@ function bindInboxActions() {
     btn.addEventListener('click', () => {
       const g = btn.dataset.group;
       _inboxState.today = false;      // 폴더를 고르면 오늘 보기는 꺼진다
-      if (g === '__trash__') {
+      if (g === '__sent__') {
+        // 보낸 메일함은 목록 필터가 아니라 다른 화면이다 (이카운트 보낸메일함을 바로 읽음)
+        _inboxState.sent = true;
+        _inboxState.trashed = false;
+        _inboxState.group = '';
+        _sentState.page = 1;
+        _sentState.q = '';
+      } else if (g === '__trash__') {
         // 휴지통은 폴더 필터가 아니라 "치운 것만" 이라는 별도 축이다
+        _inboxState.sent = false;
         _inboxState.trashed = true;
         _inboxState.group = '';
       } else {
+        _inboxState.sent = false;
         _inboxState.trashed = false;
         _inboxState.group = g;
       }
@@ -7838,7 +8069,8 @@ function initAttachmentDownloads() {
     if (state) state.textContent = '⏳';
 
     try {
-      const res = await fetch(`/api/mail/${encodeURIComponent(btn.dataset.mail)}/attachment?${qs}`, {
+      // data-url 이 있으면 그 주소로 받는다 (보낸 메일함 첨부 — /api/mail/sent/[uid]/attachment)
+      const res = await fetch(btn.dataset.url || `/api/mail/${encodeURIComponent(btn.dataset.mail)}/attachment?${qs}`, {
         credentials: 'same-origin',
       });
       const ctype = res.headers.get('content-type') || '';
@@ -15373,7 +15605,7 @@ function emailCell(email) {
   const first = email.split(/[;,\s]+/).find((part) => part.includes("@"));
   if (!first) {
     const e = String(email).toLowerCase();
-    const label = /instagram|insta/.test(e) ? '인스타 DM 으로만 연락'
+    const label = /instagram|\binsta/.test(e) ? '인스타 DM 으로만 연락'
       : /facebook|messenger/.test(e) ? '페이스북 메시지로만 연락'
       : /whatsapp/.test(e) ? '왓츠앱으로만 연락'
       : /linkedin/.test(e) ? '링크드인으로만 연락'

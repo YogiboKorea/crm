@@ -478,3 +478,125 @@ export async function fetchEnvelopes(
     }
   });
 }
+
+// ═══ 보낸메일함 — 열어 볼 때만 바로 읽는다 ═══════════════════════
+//
+// 보낸 메일은 DB 에 수집하지 않는다. 수집하면 받은 메일함 목록·대화 묶기·
+// 회신 필요 숫자에 우리 메일이 섞여 들어가 이미 맞춰 둔 화면들이 흔들린다.
+// 대신 [📤 보낸 메일함]을 열 때 이카운트 보낸메일함을 그 자리에서 읽는다 —
+// 웹메일과 항상 같은 내용이 보이고, 저장 공간도 늘지 않는다.
+//
+// 폴더 찾기와 읽기를 **연결 한 번**에 한다. 연결을 두 번 열면 화면이 그만큼 느려진다.
+
+export interface SentListItem {
+  uid: number;
+  subject: string;
+  date: Date | null;
+  to: { name: string; address: string }[];
+  cc: { name: string; address: string }[];
+  size: number;
+  hasAttachment: boolean;
+}
+
+async function findSentPath(client: ImapFlow): Promise<string | null> {
+  const boxes = await client.list();
+  const spec = SPECIAL.sent;
+  const hit = boxes.find((b: any) => b.specialUse === spec.use)
+    || boxes.find((b: any) => spec.name.test(b.path));
+  return hit?.path || null;
+}
+
+/** bodyStructure 안에 첨부(파일 이름이 있거나 attachment 로 표시된 파트)가 있는가 */
+function structureHasAttachment(node: any): boolean {
+  if (!node) return false;
+  const disp = String(node.disposition || '').toLowerCase();
+  const name = node.dispositionParameters?.filename || node.parameters?.name;
+  if (disp === 'attachment' || (name && disp !== 'inline')) return true;
+  return (node.childNodes || []).some(structureHasAttachment);
+}
+
+const addrList = (list: any[]) =>
+  (list || []).map((x: any) => ({ name: String(x.name || ''), address: String(x.address || '').toLowerCase() }))
+    .filter((x) => x.address);
+
+/**
+ * 보낸메일함 한 쪽(최신순)을 읽는다. 본문은 받지 않는다.
+ * q 가 있으면 메일 서버에서 제목·받는 사람으로 찾는다.
+ */
+export async function listSentPage(
+  settings: ImapConfig,
+  { page = 1, pageSize = 30, q = '' }: { page?: number; pageSize?: number; q?: string } = {},
+): Promise<{ folder: string | null; total: number; page: number; pageSize: number; items: SentListItem[] }> {
+  return withClient(settings, async (client) => {
+    const folder = await findSentPath(client);
+    if (!folder) return { folder: null, total: 0, page, pageSize, items: [] };
+
+    const lock = await client.getMailboxLock(folder);
+    try {
+      const exists = Number((client.mailbox as any)?.exists || 0);
+      if (!exists) return { folder, total: 0, page, pageSize, items: [] };
+
+      let range: string;
+      let total: number;
+      let useUid = false;
+      if (q.trim()) {
+        // 서버 검색 — 제목 또는 받는 사람. 결과 UID 를 최신순으로 잘라 한 쪽만 읽는다.
+        const uids: number[] = ((await client.search({ or: [{ subject: q.trim() }, { to: q.trim() }] }, { uid: true })) || []) as number[];
+        uids.sort((a, b) => b - a);
+        total = uids.length;
+        const slice = uids.slice((page - 1) * pageSize, page * pageSize);
+        if (!slice.length) return { folder, total, page, pageSize, items: [] };
+        range = slice.join(',');
+        useUid = true;
+      } else {
+        total = exists;
+        const end = exists - (page - 1) * pageSize;
+        if (end < 1) return { folder, total, page, pageSize, items: [] };
+        const start = Math.max(1, end - pageSize + 1);
+        range = `${start}:${end}`;
+      }
+
+      const items: SentListItem[] = [];
+      for await (const msg of client.fetch(range, { uid: true, envelope: true, bodyStructure: true, size: true }, { uid: useUid })) {
+        const e: any = msg.envelope || {};
+        items.push({
+          uid: msg.uid,
+          subject: e.subject || '',
+          date: e.date || (msg as any).internalDate || null,
+          to: addrList(e.to),
+          cc: addrList(e.cc),
+          size: Number((msg as any).size || 0),
+          hasAttachment: structureHasAttachment((msg as any).bodyStructure),
+        });
+      }
+      items.sort((a, b) => b.uid - a.uid);
+      return { folder, total, page, pageSize, items };
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+/** 보낸메일함의 메일 한 통 원문(source)을 받는다 */
+export async function fetchSentSource(
+  settings: ImapConfig,
+  { uid }: { uid: number },
+): Promise<{ folder: string; source: Buffer; internalDate?: Date }> {
+  return withClient(settings, async (client) => {
+    const folder = await findSentPath(client);
+    if (!folder) throw new Error('메일함에서 보낸메일함을 찾지 못했습니다.');
+    const lock = await client.getMailboxLock(folder);
+    try {
+      const msg: any = await client.fetchOne(String(uid), { source: true, internalDate: true }, { uid: true });
+      if (!msg?.source) throw new Error('보낸메일함에서 이 메일을 찾지 못했습니다. 웹메일에서 지워졌을 수 있습니다.');
+      return { folder, source: msg.source as Buffer, internalDate: toDate(msg.internalDate) };
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+/** 보낸메일함 폴더 경로만 (첨부 받기에서 폴더를 검증할 때) */
+export async function sentFolderPath(settings: ImapConfig): Promise<string | null> {
+  return withClient(settings, (client) => findSentPath(client));
+}
