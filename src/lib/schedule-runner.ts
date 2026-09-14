@@ -6,6 +6,7 @@ import { sendMail, renderTemplate } from './mailer';
 import { buildVarsFromLead, buildSignatureBlock } from './template-vars';
 import { decryptSecret } from './crypto';
 import { checkSendGuard } from './send-limits';
+import { NO_OUTREACH_ACCOUNT } from './mail/accounts';
 
 /**
  * 단일 예약 항목을 실제로 발송 · Lead.emailHistory 기록 · stage 전이 (verified→contacted)
@@ -41,21 +42,31 @@ export async function processScheduleItem(doc: any) {
   let smtpConfig: any = undefined;
   let fromOverride: any = undefined;
   let accProfile: any = null;
-  if (doc.mailAccountId) {
-    const acc = await MailAccount.findById(doc.mailAccountId);
-    if (acc && acc.isActive) {
-      try {
-        smtpConfig = {
-          host: acc.smtpHost, port: acc.smtpPort, secure: acc.smtpSecure,
-          user: acc.smtpUser, pass: decryptSecret(acc.smtpPassEnc),
-        };
-        fromOverride = { name: acc.fromName || acc.smtpUser, address: acc.fromAddress };
-        accProfile = acc.toObject();
-      } catch (e: any) {
-        doc.status = 'failed'; doc.lastError = `계정 복호화 실패: ${e?.message || 'unknown'}`; doc.attempts += 1;
-        await doc.save();
-        return { ok: false, error: doc.lastError };
-      }
+  // 보내는 계정은 **지금의 대표 계정**이다 (lib/mail/accounts.ts getOutreachAccount).
+  // 예약에 적힌 mailAccountId 는 쓰지 않는다 — 예약을 걸 때 테스트 계정이 골라져 있었어도
+  // 실제 발송은 대표 계정으로 나가야 한다. 대표 계정이 없으면 보내지 않고 실패로 남긴다
+  // (예전처럼 .env 의 SMTP 로 조용히 대신 보내지 않는다).
+  {
+    const acc = await MailAccount.findOne({ isDefault: true, isActive: { $ne: false } });
+    if (!acc) {
+      doc.status = 'failed';
+      doc.lastError = NO_OUTREACH_ACCOUNT;
+      doc.attempts += 1;
+      await doc.save();
+      return { ok: false, error: doc.lastError };
+    }
+    doc.mailAccountId = String(acc._id);
+    try {
+      smtpConfig = {
+        host: acc.smtpHost, port: acc.smtpPort, secure: acc.smtpSecure,
+        user: acc.smtpUser, pass: decryptSecret(acc.smtpPassEnc),
+      };
+      fromOverride = { name: acc.fromName || acc.smtpUser, address: acc.fromAddress };
+      accProfile = acc.toObject();
+    } catch (e: any) {
+      doc.status = 'failed'; doc.lastError = `계정 복호화 실패: ${e?.message || 'unknown'}`; doc.attempts += 1;
+      await doc.save();
+      return { ok: false, error: doc.lastError };
     }
   }
 

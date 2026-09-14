@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       if (user.passwordHash === passwordHash) {
         return await createSession(username);
       } else {
-        return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });
+        return NextResponse.json({ success: false, error: '아이디 또는 비밀번호가 맞지 않습니다.' }, { status: 401 });
       }
     }
 
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       return await createSession(username);
     }
 
-    return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 });
+    return NextResponse.json({ success: false, error: '아이디 또는 비밀번호가 맞지 않습니다.' }, { status: 401 });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

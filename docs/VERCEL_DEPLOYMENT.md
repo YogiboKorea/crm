@@ -6,8 +6,8 @@ Vercel 프로젝트 → Settings → Environment Variables 에 등록:
 
 | 키 | 값 | 용도 |
 |---|---|---|
-| `MONGODB_URI` | `mongodb+srv://yogico:korea2026!!@yogico.dmz6oro.mongodb.net/?appName=yogico` | DB 연결 |
-| `JWT_SECRET` | `super_secret_yogico_key_for_jwt_auth_12345` | 로그인 세션 |
+| `MONGODB_URI` | `mongodb+srv://<아이디>:<비밀번호>@<클러스터>/<DB이름>` | DB 연결 |
+| `JWT_SECRET` | `<긴 무작위 문자열 — 비밀번호 관리자에만 보관>` | 로그인 세션 |
 | `ANTHROPIC_API_KEY` | `sk-ant-api03-...` (.env.local 값 그대로) | 🧠 AI 정밀 검증 (Claude API) |
 | `ADMIN_ID` / `ADMIN_PASSWORD` | (옵션) 초기 마스터 계정 | 첫 로그인용 |
 

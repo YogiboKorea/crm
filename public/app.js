@@ -1578,6 +1578,9 @@ async function _renderInner() {
         const tab = state.verifiedResultTab || 'success';
         if (tab === 'failed') {
           serverStage = '__failed';
+          // 제목도 바꾼다 — 실패 목록을 보는데 제목이 '✅ AI 검증 완료' 로 남아 있었다
+          els.viewTitle.textContent = '🚫 검증 실패';
+          els.viewSubtitle.textContent = 'AI 가 거른 곳과 보낼 메일 주소가 없는 곳입니다. 잘못 빠진 곳은 행의 [→ ✅ AI 검증 완료]로 되돌립니다.';
           displayInfo = { ...s, title: '🚫 검증 실패', sub: 'AI가 K-beauty 무관으로 판정. 수동으로 성공 탭으로 되돌리기 가능.' };
         }
       }
@@ -1723,13 +1726,13 @@ async function _renderInner() {
   // ── 새 부가 도구 페이지 스켈레톤 ──────────────────────────────
   if (state.view === "tool-b2b-email") {
     els.viewTitle.textContent = "📝 메일 양식";
-    els.viewSubtitle.textContent = "발송에 쓸 메일 문구(제목·본문·변수) 를 저장/편집. 실제 발송은 이메일 컨택 페이지에서.";
+    els.viewSubtitle.textContent = "해외 업체에 보낼 메일 문구를 만들어 두고, [발송 관리]에서 골라 씁니다.";
     renderB2BEmailManager();
     return;
   }
   if (state.view === "tool-mail-accounts") {
     els.viewTitle.textContent = "📬 메일 계정 관리";
-    els.viewSubtitle.textContent = "회사 SMTP 계정을 등록해서 다계정으로 발송 관리.";
+    els.viewSubtitle.textContent = "메일을 보낼 회사 이메일 주소와 서명을 등록합니다.";
     renderMailAccountsTool();
     return;
   }
@@ -1756,6 +1759,13 @@ async function _renderInner() {
     els.viewSubtitle.textContent = "처음 쓰시는 분을 위한 단계별 가이드 · 각 화면이 어떻게 이어지는지.";
     renderUserGuidePage();
     return;
+  }
+  // 메일 화면을 **옮겨 왔을 때만** 폴더·검색 조건을 비운다. 받은 메일함에서 고른 폴더가
+  // 회신 필요 화면까지 따라가 "회신 필요 6건" 처럼 보였다. 같은 화면 안에서 페이지를 넘기거나
+  // 다시 그릴 때는 그대로 둔다.
+  if ((state.view === "tool-inbox" || state.view === "tool-inbox-needsreply") && _inboxState.lastView !== state.view) {
+    Object.assign(_inboxState, { page: 1, classification: '', q: '', linked: '', group: '', trashed: false, today: false });
+    _inboxState.lastView = state.view;
   }
   if (state.view === "tool-inbox") {
     els.viewTitle.textContent = "📥 받은 메일함";
@@ -1823,8 +1833,8 @@ async function _renderInner() {
     return;
   }
 
-  els.viewTitle.textContent = "Leads";
-  els.viewSubtitle.textContent = "Edit, qualify, and manage buyer outreach.";
+  els.viewTitle.textContent = "📋 업체 목록";
+  els.viewSubtitle.textContent = "업체를 찾고, 검토하고, 메일을 관리합니다.";
   renderLeadTable(leads);
 }
 
@@ -2048,7 +2058,7 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
         </div>
       </div>
     `;
-  } else if (stageInfo.stage === 'verified') {
+  } else if (stageInfo.stage === 'verified' && (state.verifiedResultTab || 'success') !== 'failed') {
     // 검증 완료 = "승인하면 바로 나가는" 자리. 카드 하나로 끝낸다.
     //
     // 예전에는 여기에 (1) 메일 크롤링 카드 (2) A/B 등급 원클릭 발송 카드가 같이 떴다.
@@ -2065,8 +2075,12 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     // 서버 집계를 우선 쓰고, 없을 때만 로컬 배열로 떨어진다.
     const localReady = baseLeads.filter(emailOk).length;
     const serverVerified = _stageCountsCache?.stages?.verified;
+    // 2차 검토 대상은 **메일 주소가 있는 곳**이다 (검토 화면 진행바와 같은 기준).
+    // 전체 검증 완료 수(541)를 그대로 쓰면 검토를 누르는 순간 '0 / 317' 로 바뀌어 헷갈린다.
+    const serverNoEmail = _stageCountsCache?.verifiedSub?.noEmail;
     const emailReadyCount = (typeof serverVerified === 'number' && serverVerified > localReady)
-      ? serverVerified : localReady;
+      ? Math.max(0, serverVerified - (typeof serverNoEmail === 'number' ? serverNoEmail : 0))
+      : localReady;
     // "승인 완료 / 검토 남음" 은 readyForOutreach 로 세던 값이라 늘 전체와 같았다.
     // 지금 의미 있는 수는 "발송 리스트로 옮긴 곳"뿐이라 그것만 쓴다.
     const queuedCount = (_stageCountsCache?.stages?.queued) || 0;
@@ -2735,7 +2749,9 @@ function renderServerPagedTable(pageData, stageInfo) {
            검증 완료는 목록을 서버 페이지로 받는데, 옮기기 버튼은 예전(로컬 배열)
            표에만 있었다. 그래서 행을 체크해도 **할 수 있는 일이 [Delete Selected]
            뿐**이었다 — 정작 이 화면의 본래 목적(보낼 곳 고르기)을 못 했다. -->
-      ${stageInfo.stage === 'verified' ? `
+      <!-- [🚫 검증 실패] 탭도 내부 단계는 verified 로 들고 들어온다. 그 탭에서 [남은 전체 옮기기]를
+           누르면 **성공 쪽** 업체가 발송 관리로 옮겨진다 — 실패 목록을 보는 중에는 숨긴다. -->
+      ${stageInfo.stage === 'verified' && (state.verifiedResultTab || 'success') !== 'failed' ? `
         <button class="button primary" id="moveToQueueBtn" type="button" ${state.selectedLeadIds.size ? '' : 'disabled'}
           title="고른 곳을 [발송 관리 → 보낼 메일] 로 옮깁니다. 옮겨야 발송 대상이 됩니다."
           style="${state.selectedLeadIds.size ? '' : 'opacity:.45;cursor:default'}">
@@ -3070,17 +3086,10 @@ async function openComposeModal(scope) {
     _composeState.subject = defaultTpl.subject;
     _composeState.body = defaultTpl.body;
   }
-  // 최초 진입 시 발송 계정 선택.
-  //
-  // 테스트 발송 계정(isTestSender)이 지정돼 있으면 그것을 먼저 잡는다.
-  // 대량 발송을 대표 주소로 하면 실수 한 번에 진행 중인 거래 메일까지
-  // 상대 스팸함으로 들어간다. 기본 계정(isDefault)은 수신함·답장용이다.
-  if (!_composeState.mailAccountId && (_mailAccounts || []).length > 0) {
-    const defAcc = _mailAccounts.find(a => a.isTestSender)
-      || _mailAccounts.find(a => a.isDefault)
-      || _mailAccounts[0];
-    _composeState.mailAccountId = defAcc._id;
-  }
+  // 발송 계정 — 대표 계정으로 고정한다 (대표님 결정 2026-09-14).
+  // 예전에는 테스트 계정(isTestSender)을 먼저 골라서 실제 발송이 fe@ 로 나갈 뻔했다.
+  // 보내는 계정 = 대표 계정 (서버도 실제 발송 때 대표 계정으로 고정한다)
+  _composeState.mailAccountId = outreachAccount()?._id || null;
 
   await refreshMailerEnv();
   renderComposeModal();
@@ -3260,15 +3269,7 @@ function renderComposeModal() {
                 </div>`;
               })()}
               <label style="font-size:11px;color:var(--text-secondary);font-weight:700">📮 발송 계정</label>
-              <select id="composeAccountSel" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
-                ${(_mailAccounts || []).length === 0 ? `
-                  <option value="">— 등록된 계정 없음 (env 기본 사용) —</option>
-                ` : (_mailAccounts || []).map(a => `
-                  <option value="${escapeAttr(a._id)}" ${a._id === _composeState.mailAccountId ? 'selected' : ''}>
-                    ${escapeHtml(a.accountName)} · ${escapeHtml(a.smtpUser)}${a.isDefault ? ' (기본)' : ''}
-                  </option>
-                `).join('')}
-              </select>
+              <div style="margin-top:2px">${outreachAccountBoxHtml()}</div>
               ${(_mailAccounts || []).length === 0 ? `
                 <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
                   💡 <b>📬 메일 계정</b> 페이지에서 계정을 등록하면 여기서 선택 가능
@@ -3938,7 +3939,7 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
     ${renderPaginationBar(page, totalPages, leads.length, { compact: true })}
     <div class="bulk-actions">
       <button class="button secondary" data-select-visible type="button">${allVisibleSelected ? "이 페이지 선택 해제" : "이 페이지 전체 선택"}</button>
-      ${state.view === 'pipeline-verified' ? `
+      ${state.view === 'pipeline-verified' && (state.verifiedResultTab || 'success') !== 'failed' ? `
         <button class="button primary" id="moveToQueueBtn" type="button" ${state.selectedLeadIds.size ? '' : 'disabled'}
           title="고른 곳을 [발송 관리 → 보낼 메일] 로 옮깁니다. 옮겨야 발송 대상이 됩니다."
           style="${state.selectedLeadIds.size ? '' : 'opacity:.45;cursor:default'}">
@@ -3952,7 +3953,7 @@ function renderLeadTable(leads, emptyText = "No leads match the current filters.
           ⇢ 남은 전체 옮기기
         </button>` : ''}
       <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
-        Delete Selected (${state.selectedLeadIds.size})
+        🗑 목록에서 빼기 (${state.selectedLeadIds.size})
       </button>
       <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary);display:inline-flex;align-items:center;gap:8px">
         <span>총 <b style="color:var(--text-primary)">${leads.length.toLocaleString()}</b>건 중 <b style="color:var(--text-primary)">${start + 1}~${end}</b>번 표시</span>
@@ -4359,7 +4360,10 @@ const STAGE_QUICK_MOVES = {
   replied:       ['negotiating', 'partner', 'failed', 'archived'],
   negotiating:   ['partner', 'archived'],
   partner:       ['negotiating', 'archived'],
-  archived:      ['verified', 'verifying', 'imported'],
+  // 보관함·검증 실패에서 하는 일은 '잘못 뺐다 → 되돌리기' 하나다.
+  // 검증 대기·가져오기는 사이드바에서 숨긴 단계라, 그리로 보내면 업체가 어디에도 안 보이게 된다.
+  archived:      ['verified'],
+  failed:        ['verified'],
 };
 
 // 리드 발송 횟수 배지 (emailHistory 중 status='sent' 만 카운트)
@@ -4586,7 +4590,10 @@ async function renderInboxPage(opts) {
   // 단, [오늘 온 메일]을 보는 중이면 이 화면으로 빠지지 않는다. 오늘 0통인 것은
   // 정상인데 "수집된 메일이 없습니다"가 뜨면 수집이 고장난 줄 알게 되고,
   // 무엇보다 오늘 보기를 끄는 버튼까지 화면에서 사라져 되돌아갈 길이 없어진다.
-  if (!total && !_inboxState.q && !_inboxState.classification && !_inboxState.today) {
+  // ⚠️ 폴더·휴지통·연결 필터가 걸린 상태도 빼야 한다. 빠져 있어서, 빈 폴더(예: Yogibo Japan 0통)를
+  //    누르면 폴더 패널까지 사라진 "수집된 메일이 없습니다" 화면에 갇혀 되돌아갈 길이 없었다.
+  if (!total && !_inboxState.q && !_inboxState.classification && !_inboxState.today
+      && !_inboxState.group && !_inboxState.trashed && !_inboxState.linked) {
     els.content.innerHTML = `
       <div class="empty-detail">
         <h3>${needsReplyOnly ? '회신이 필요한 메일이 없습니다' : '수집된 메일이 없습니다'}</h3>
@@ -4664,8 +4671,14 @@ async function renderInboxPage(opts) {
       ? `<span style="background:var(--bg-surface-alt);color:var(--text-tertiary);border-radius:99px;
                      padding:1px 7px;font-size:10px;font-weight:700;margin-left:6px">${m.threadCount}통</span>`
       : '';
-    const needsReply = m.analysis && m.analysis.needsReply;
-    const deadline = m.threadDeadline || (m.analysis && m.analysis.deadline);
+    // 우리가 보낸 메일(보낸메일함에서 함께 수집된 것)은 '할 일'이 아니다.
+    // 예전에는 받은 메일과 똑같이 그려서, 목록 맨 위에 우리 전무가 보낸 메일이
+    // 발신자로 뜨고 '⚠ 회신 필요'까지 붙었다 — 자기 메일에 답하라는 셈이다.
+    const isOut = m.direction === 'out';
+    const noise = ['ad', 'system', 'newsletter'].includes(m.classification);
+    const needsReply = !isOut && !noise && m.analysis && m.analysis.needsReply;
+    const deadline = isOut || noise ? null : (m.threadDeadline || (m.analysis && m.analysis.deadline));
+    const toFirst = (m.to && m.to[0]) || {};
     // 리드에 연결된 메일은 그 회사의 대화로 바로 갈 수 있게 한다
     const leadLink = m.leadId
       ? `<button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(m.leadId)}"
@@ -4680,17 +4693,24 @@ async function renderInboxPage(opts) {
           style="width:15px;height:15px;cursor:pointer"></td>
         <td style="white-space:nowrap;color:var(--text-tertiary);font-size:12px">${dt(m.date)}</td>
         <td>
+          ${isOut ? `
+          <div style="font-weight:600;color:#475569;font-size:13px">
+            <span style="font-size:10px;font-weight:800;color:#2563eb;background:#eff6ff;border-radius:4px;padding:1px 5px;margin-right:4px">↗ 보냄</span>${escapeHtml(toFirst.name || toFirst.address || '(받는 사람 없음)')}
+          </div>
+          <div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(from.address || '')} 이(가) 보냄</div>` : `
           <div style="font-weight:600;color:var(--text-primary);font-size:13px">
             ${escapeHtml(from.name || from.address || '(발신자 없음)')}
           </div>
-          <div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(from.address || '')}</div>
+          <div style="font-size:11px;color:var(--text-tertiary)">${escapeHtml(from.address || '')}</div>`}
         </td>
         <td>
           <div style="color:var(--text-primary);font-size:13px">
             ${folderTag(m)}
             ${escapeHtml(String(m.subject || '(제목 없음)').slice(0, 70))}${threadBadge}
           </div>
-          ${m.analysis?.summary ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(String(m.analysis.summary).slice(0, 90))}</div>` : ''}
+          <!-- 요약은 AI 분석이 끝난 메일만 보여준다. 수집 때 도는 무료 로컬 분석은
+               '질문 21개 · 요청 표현 감지' 같은 판정 근거라 사람이 읽을 요약이 아니다. -->
+          ${m.analysis?.method === 'ai' && m.analysis?.summary ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">${escapeHtml(String(m.analysis.summary).slice(0, 90))}</div>` : ''}
         </td>
         <td style="white-space:nowrap">
           <span title="${escapeAttr(cls.desc || '')}" style="background:${cls.bg};color:${cls.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;cursor:help">${cls.label}</span>
@@ -4700,6 +4720,8 @@ async function renderInboxPage(opts) {
             ? `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700"
                  title="${m.repliedOutside ? '이카운트 웹메일에서 답한 것을 보낸메일함에서 확인했습니다' : '앱에서 회신했습니다'}">
                  ✅ 회신함${m.repliedOutside ? ' (웹메일)' : ''}</span>`
+            : isOut
+              ? '<span style="color:#64748b;font-size:11px" title="우리가 보낸 메일입니다">↗ 보낸 메일</span>'
             : needsReply
               ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">⚠ 회신 필요</span>`
               : '<span style="color:var(--text-quaternary);font-size:11px">—</span>'}
@@ -6711,7 +6733,8 @@ async function renderRelationshipDetail() {
   // 읽는 중에 접히면 보던 자리를 잃는다.
   els.content.querySelector('#relMoreBtn')?.addEventListener('click', (e) => {
     const box = document.getElementById('relMoreBox');
-    if (box) box.removeAttribute('hidden');
+    // 인라인 display:flex 는 hidden 을 덮어써서 처음부터 다 펼쳐져 있었다 → 펼칠 때만 flex 를 준다
+    if (box) { box.removeAttribute('hidden'); box.style.display = 'flex'; }
     e.currentTarget.remove();
   });
   els.content.querySelectorAll('.rel-quote').forEach((b) => {
@@ -6858,7 +6881,7 @@ function relTimelineHtml(timeline) {
                color:var(--text-secondary);font-size:12.5px;font-weight:700">
         ▼ 이전 대화 ${rest.length}통 더 보기
       </button>
-      <div id="relMoreBox" hidden style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+      <div id="relMoreBox" hidden style="flex-direction:column;gap:10px;margin-top:10px">
         ${rest.map((t, i) => relTimelineItemHtml(t, i + REL_RECENT_N)).join('')}
       </div>` : ''}`;
 }
@@ -7941,6 +7964,7 @@ async function openMailDetailModal(mailId) {
             ${m.group ? `<span style="background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">📁 ${escapeHtml(m.group)}</span>` : ''}
             ${replied
               ? `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">✅ 회신함${m.repliedOutside ? ' (웹메일)' : ''}</span>`
+              : m.direction === 'out' ? `<span style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">↗ 보낸 메일</span>`
               : a.needsReply ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">⚠ 회신 필요</span>` : ''}
           </div>
           <div style="font-size:16px;font-weight:700;color:#0f172a;word-break:break-word">${escapeHtml(m.subject || '(제목 없음)')}</div>
@@ -7999,12 +8023,19 @@ async function openMailDetailModal(mailId) {
           ${attachmentChipsHtml(m.id, m.attachments)}
         </div>
         <div class="mail-reply">
-          ${replyBoxHtml({ _id: m.id, subject: m.subject, from: m.from })}
+          ${m.direction === 'out' ? `
+            <!-- 우리가 보낸 메일에 '회신'을 쓰면 받는 사람이 우리 직원 주소로 채워진다. -->
+            <div style="padding:22px 20px;color:#475569;font-size:13px;line-height:1.8">
+              <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:6px">↗ 우리가 보낸 메일입니다</div>
+              받는 사람: <b>${escapeHtml((m.to || []).map((t) => t.name ? `${t.name} <${t.address}>` : t.address).join(', ') || '—')}</b><br>
+              보낸메일함에서 함께 가져온 기록이라 여기서 답장을 쓰지 않습니다.
+              상대의 답장이 오면 받은 메일로 따로 들어옵니다.
+            </div>` : replyBoxHtml({ _id: m.id, subject: m.subject, from: m.from })}
         </div>
       </div>
 
       <div style="border-top:1px solid #e2e8f0;padding:12px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        ${!replied ? `<button type="button" id="mdMarkReplied" data-mail-id="${escapeAttr(m.id)}"
+        ${!replied && m.direction !== 'out' ? `<button type="button" id="mdMarkReplied" data-mail-id="${escapeAttr(m.id)}"
           style="padding:7px 14px;font-size:12.5px;font-weight:700;border:none;border-radius:8px;
                  background:#16a34a;color:#fff;cursor:pointer">✅ 회신 완료로 표시</button>` : ''}
         ${lead ? `<button type="button" class="conversation-btn" data-conv-lead="${escapeAttr(lead.leadId)}"
@@ -8400,9 +8431,10 @@ async function openConversationModal(leadId) {
     const who = out ? '📤 우리가 보냄' : '📥 상대 답장';
     const meta = [];
     if (!out) {
-      if (t.matchedBy) meta.push(`매칭: ${t.matchedBy}`);
-      if (t.lang) meta.push(`언어: ${t.lang}`);
-      if (t.classification && t.classification !== 'unknown') meta.push(t.classification);
+      // 매칭 방식(domain/email-address)·분류 코드(b2b)는 개발용 정보라 보여주지 않는다
+      const LANG_KO = { en: '영어', ko: '한국어', ja: '일본어', zh: '중국어', he: '히브리어', da: '덴마크어', de: '독일어',
+        fr: '프랑스어', es: '스페인어', it: '이탈리아어', ro: '루마니아어', tr: '터키어', sv: '스웨덴어', no: '노르웨이어', nl: '네덜란드어', pl: '폴란드어' };
+      if (t.lang && t.lang !== 'ko') meta.push(LANG_KO[t.lang] || t.lang);
       if (t.needsReply) meta.push('답변 필요');
     } else if (t.to) {
       meta.push(`to ${t.to}`);
@@ -8727,13 +8759,51 @@ function replyBoxHtml(lastInbound) {
         <span id="convReplyMsg" style="font-size:12px;margin-left:auto"></span>
       </div>
       <div style="margin-top:6px;font-size:10.5px;color:#94a3b8">
-        In-Reply-To 헤더가 자동으로 붙어 상대 메일함에서 같은 대화로 묶입니다.
+        보낸 답장은 상대 메일함에서 원래 메일과 같은 대화로 묶여 보입니다.
       </div>
     </div>`;
 }
 
 // rootId: 이 답장 상자가 들어 있는 모달의 id.
 // 대화 모달과 받은메일 상세 모달 둘 다 같은 상자를 쓴다 (구현이 두 벌이면 한쪽만 고쳐진다).
+// ── 서식 선택칸을 누르는 동안 본문의 글자 선택 지키기 ──────────────
+//
+// 편집기 툴바의 [B][I][U] 같은 **단추**는 mousedown 기본 동작을 막아서
+// 본문 선택이 풀리지 않게 한다. 그런데 같은 처리를 글꼴·크기 **선택칸(<select>)**
+// 에도 걸어 두었더니, 브라우저가 목록 자체를 펼치지 못했다
+// ("글꼴 눌러도 안 내려온다"). 선택칸은 눌러야 열리므로 막으면 안 된다.
+//
+// 대신 선택칸을 누르기 **직전**의 글자 선택을 기억해 두었다가, 값을 고른 뒤
+// 본문에 되살려서 거기에 서식을 건다. 선택칸으로 포커스가 옮겨가면 본문 선택이
+// 사라지므로 되살리지 않으면 "먼저 글자를 선택하세요" 만 뜬다.
+function keepEditorSelection(editor, controls) {
+  let saved = null;
+  const capture = () => {
+    const sel = window.getSelection();
+    if (!editor || !sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    if (editor.contains(r.commonAncestorContainer)) saved = r.cloneRange();
+  };
+  editor?.addEventListener('mouseup', capture);
+  editor?.addEventListener('keyup', capture);
+  (controls || []).forEach((c) => {
+    c?.addEventListener('mousedown', capture);   // ⚠️ preventDefault 하지 않는다
+    c?.addEventListener('focus', capture);
+  });
+  return {
+    /** 기억해 둔 선택을 본문에 되살린다. 글자가 선택돼 있으면 true */
+    restore() {
+      if (!editor || !saved || !editor.contains(saved.commonAncestorContainer)) return false;
+      editor.focus({ preventScroll: true });
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(saved);
+      return !saved.collapsed;
+    },
+    clear() { saved = null; },
+  };
+}
+
 function bindConversationReply(leadId, rootId) {
   const root = document.getElementById(rootId || 'conversationModalRoot');
   if (!root) return;
@@ -8764,32 +8834,31 @@ function bindConversationReply(leadId, rootId) {
     try { span.appendChild(range.extractContents()); range.insertNode(span); } catch {}
   };
 
+  // 글꼴·크기·색 — 선택칸은 mousedown 을 막지 않는다 (막으면 목록이 안 펼쳐진다).
+  // 누르기 직전 글자 선택을 기억했다가 되살려서 건다 (keepEditorSelection).
   const fs = root.querySelector('#convFontSize');
-  keep(fs);
-  fs?.addEventListener('change', (e) => {
-    if (e.target.value) wrapSel('fontSize', e.target.value + 'px');
-    e.target.selectedIndex = 0;
-  });
-
-  // 글꼴 — 고른 글자가 있으면 그 부분만, 없으면 본문 전체에 건다.
-  // 크기(wrapSel)와 달리 글꼴은 "이 편지는 이 글꼴로" 쓰는 경우가 대부분이라,
-  // 아무것도 선택하지 않고 골랐을 때 아무 일도 안 일어나면 고장으로 보인다.
   const ff = root.querySelector('#convFontFamily');
-  keep(ff);
-  ff?.addEventListener('change', (e) => {
-    const stack = e.target.value;
-    if (stack) {
-      const sel = window.getSelection();
-      const hasPick = sel && !sel.isCollapsed && sel.rangeCount
-        && rbody && rbody.contains(sel.getRangeAt(0).commonAncestorContainer);
-      if (hasPick) wrapSel('fontFamily', stack);
-      else if (rbody) rbody.style.fontFamily = stack;   // 전체에 적용
-    }
+  const fc = root.querySelector('#convFontColor');
+  const pick = keepEditorSelection(rbody, [fs, ff, fc]);
+
+  // 고른 글자가 있으면 그 부분만, 없으면 **본문 전체**에 건다.
+  // 아무것도 선택하지 않고 골랐을 때 아무 일도 안 일어나면 고장으로 보인다.
+  // 전체에 건 서식은 보낼 때 본문을 감싸서 함께 보낸다 (아래 [보내기] 참고).
+  const applyStyle = (prop, val) => {
+    if (pick.restore()) wrapSel(prop, val);
+    else if (rbody) { rbody.style[prop] = val; rbody.focus({ preventScroll: true }); }
+  };
+
+  fs?.addEventListener('change', (e) => {
+    if (e.target.value) applyStyle('fontSize', e.target.value + 'px');
     e.target.selectedIndex = 0;
   });
-
-  root.querySelector('#convFontColor')?.addEventListener('input', (e) => {
-    document.execCommand('foreColor', false, e.target.value);
+  ff?.addEventListener('change', (e) => {
+    if (e.target.value) applyStyle('fontFamily', e.target.value);
+    e.target.selectedIndex = 0;
+  });
+  fc?.addEventListener('input', (e) => {
+    if (pick.restore()) document.execCommand('foreColor', false, e.target.value);
   });
 
   const lk = root.querySelector('#convInsertLink');
@@ -8857,7 +8926,15 @@ function bindConversationReply(leadId, rootId) {
   btn.addEventListener('click', async () => {
     const ta = root.querySelector('#convReplyBody');
     const msg = root.querySelector('#convReplyMsg');
-    const text = (ta?.innerHTML || '').trim();
+    // 글자를 고르지 않고 글꼴·크기를 바꾸면 본문 **칸 자체**에 서식이 걸린다.
+    // innerHTML 은 칸 안쪽만 담으므로 그대로 보내면 받는 쪽에는 기본 글꼴로 간다
+    // (화면에서만 바뀌고 메일에는 안 가는 상태였다). 칸의 서식으로 한 번 감싸서 보낸다.
+    let text = (ta?.innerHTML || '').trim();
+    const wrapCss = [
+      ta?.style.fontFamily ? `font-family:${ta.style.fontFamily}` : '',
+      ta?.style.fontSize ? `font-size:${ta.style.fontSize}` : '',
+    ].filter(Boolean).join(';');
+    if (text && wrapCss) text = `<div style="${escapeAttr(wrapCss)}">${text}</div>`;
     // 서식 태그만 남고 글자가 없는 경우(빈 <br> 등)를 걸러낸다
     const plainLen = (ta?.innerText || '').trim().length;
     if (!plainLen) {
@@ -10317,7 +10394,9 @@ async function renderB2BEmailManager() {
             return `
               <div style="background:white;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
                 <div style="padding:10px 14px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:13px;font-weight:700;color:#111827">${escapeHtml(subj)}</div>
-                <div style="padding:14px 16px;font-size:13px;line-height:1.65;color:#111827;white-space:pre-wrap">${escapeHtml(body)}</div>
+                <!-- 양식 본문은 HTML 이다(서식 편집기). 이스케이프해서 찍으면 <p><ul> 태그가 글자로 보인다.
+                     발송 화면 미리보기와 같은 방식으로 그린다. 옛 양식(평문)은 줄바꿈을 살린다. -->
+                <div class="tpl-preview-body" style="padding:14px 16px;font-size:13px;line-height:1.65;color:#111827">${/<[a-z][\s\S]*>/i.test(body) ? renderMailBodyHtml(body) : escapeHtml(body).split(String.fromCharCode(10)).join('<br>')}</div>
               </div>
               <div style="margin-top:6px;font-size:10px;color:#64748b">🎯 샘플: <b>${escapeHtml(sampleCompany)}</b> · 실제 발송 시 각 리드별 회사명으로 치환</div>
             `;
@@ -10426,22 +10505,28 @@ async function renderB2BEmailManager() {
     return true;
   };
 
+  // 선택칸은 mousedown 을 막지 않는다 — 막으면 목록이 안 펼쳐진다 (keepEditorSelection 참고).
   const fontSel = document.getElementById('tplFontFamily');
-  keepFocus(fontSel);
+  const sizeSel = document.getElementById('tplFontSize');
+  const tplPick = keepEditorSelection(document.getElementById('templateBodyRich'),
+    [fontSel, sizeSel, document.getElementById('tplFontColor')]);
+
   fontSel?.addEventListener('change', (e) => {
+    tplPick.restore();
     if (e.target.value && wrapSelection('fontFamily', e.target.value)) syncRich();
     e.target.selectedIndex = 0;
   });
 
-  const sizeSel = document.getElementById('tplFontSize');
-  keepFocus(sizeSel);
   sizeSel?.addEventListener('change', (e) => {
+    tplPick.restore();
     if (e.target.value && wrapSelection('fontSize', e.target.value + 'px')) syncRich();
     e.target.selectedIndex = 0;
   });
 
   const colorInput = document.getElementById('tplFontColor');
   colorInput?.addEventListener('input', (e) => {
+    // 색상표가 열리면 본문 선택이 풀린다 — 되살린 뒤에 색을 건다
+    if (!tplPick.restore()) return;
     document.execCommand('foreColor', false, e.target.value);
     syncRich();
   });
@@ -10625,73 +10710,87 @@ function renderUserGuidePage() {
   els.content.innerHTML = `
     <div style="max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:13px">
 
-      <!-- 한 줄 요약 — 이 앱이 무엇을 하는가 -->
+      <!-- 한 줄 요약 — 이 앱이 무엇을 하는가.
+           설명서는 **사이드바와 같은 순서·같은 이름**이어야 한다. 예전 설명서는 '발송 리스트',
+           '직접 검토 시작' 같은 옛 이름과 옛 순서(올린 데이터가 1단계)로 남아 있었다. -->
       <div style="padding:24px 26px;border-radius:16px;
                   background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd">
         <h2 style="margin:0 0 8px;font-size:21px;font-weight:800;color:#0f2d6b">
           해외 바이어를 찾아 메일을 보내고, 답장을 관리하는 곳입니다
         </h2>
         <div style="font-size:13.5px;color:#1e40af;line-height:1.85">
-          왼쪽 메뉴가 <b>일하는 순서대로</b> 놓여 있습니다. 위에서 아래로 내려가면 됩니다.<br>
+          왼쪽 메뉴는 <b>네 묶음</b>입니다 — ① 리드 파이프라인 ② 메일함 ③ 직접 올린 업체 ④ 설정·도구.<br>
           <b>고른 곳에만 메일이 나갑니다.</b> 목록에 있다고 저절로 나가지 않습니다.
         </div>
         <div style="margin-top:13px;padding:11px 15px;background:#fff;border-radius:10px;
                     font-size:12.5px;color:#1e3a8a;line-height:1.8">
-          업체 모으기 → <b>AI 검증</b> → <b>직접 검토</b>(사람이 고름) → 발송 리스트 →
-          메일 발송 → 답장 받음 → 대화 진행 → 파트너십
+          <b>AI 1차 검토</b>(저희가 돌려 넣어 드림) → <b>2차 검토</b>(대표님이 고름) → <b>발송 관리</b> →
+          답장 받음 → 대화 진행 중 → 파트너십 확정
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:#1e40af">
+          휴대폰처럼 좁은 화면에서는 왼쪽 위 <b>☰</b> 를 눌러 메뉴를 엽니다.
         </div>
       </div>
 
-      ${stepCard(1, '📥', 'import 하여 올린 데이터 — 업체를 모읍니다',
-        '엑셀·CSV로 업체 목록을 올리는 곳입니다. 올린 파일은 <b>날짜별 폴더</b>로 들어가고 사라지지 않습니다.',
-        `<b>[⬆ 엑셀·CSV 올리기]</b> — 파일을 올립니다.<br>
-         <b>[🧠 AI 검증 시작]</b> — 올린 업체가 진짜 K-뷰티 바이어인지 AI가 판단합니다.
-           통과하면 <b>[AI 검증 완료]</b>, 무관하면 <b>[보관함]</b>으로 갑니다.<br>
-         <b>[🔎 직접 검토 시작]</b> — 한 회사씩 카드로 보며 직접 고릅니다.`,
-        'AI 검증은 <b>누를 때만 요금이 나갑니다.</b> 버튼에 대상 건수와 예상 금액이 적혀 있으니 보고 누르시면 됩니다. 저절로 나가는 일은 없습니다.')}
+      ${stepCard(1, '✅', 'AI 검증 완료 — 2차 검토로 보낼 곳을 고릅니다',
+        'AI가 1차로 거른 업체들입니다. 새 업체 발굴과 AI 1차 검토는 저희가 돌려서 여기에 넣어 드립니다. <b>여기 있다고 메일이 나가지는 않습니다.</b>',
+        `<b>[2차 검토 시작 →]</b> — 한 회사씩 크게 보면서 둘 중 하나를 누릅니다. 숫자는 <b>메일 주소가 있는 곳</b>만 셉니다.<br>
+         &nbsp;&nbsp;· <b>✉ 메일 보낼곳으로 선정</b> → [발송 관리 → 보낼 메일]로<br>
+         &nbsp;&nbsp;· <b>🚫 검증실패 업체로 선정</b> → 이 화면의 [🚫 검증 실패] 탭으로<br>
+         잘못 눌렀으면 <b>[‹ 이전]</b>(또는 Backspace)으로 돌아가 다시 고르면 바뀝니다. <b>Esc</b> 로 나갑니다.<br>
+         <b>[🗂 지금까지 고른 결과 보기]</b> — 날짜별로 무엇을 골랐는지 보고 <b>[↩ 되돌리기]</b> 합니다.<br>
+         <b>📋 이 업체들, 어떤 정보가 더 필요하세요?</b> — 맨 위 칸에 적어 주시면 업체별로 찾아서 채워 드립니다.<br>
+         <b>[발송 관리 →]</b> 는 화면만 옮깁니다 (메일 안 나감). 표에서 체크 후 <b>[📨 발송 관리로 이동]</b> 을 누르면 그 업체만 옮겨집니다.`,
+        '검토 화면에서 <b>키보드 → 는 바로 [메일 보낼곳], ← 는 바로 [검증 실패]</b>로 저장됩니다. 화면을 넘기려고 방향키를 누르지 마세요. 검증 실패로 빼도 지워지지 않고, [🚫 검증 실패] 탭에서 <b>[→ ✅ AI 검증 완료]</b>로 되돌릴 수 있습니다.')}
 
-      ${stepCard(2, '✅', 'AI 검증 완료 — 보낼 곳을 고릅니다',
-        'AI 판정을 통과해 <b>메일을 보낼 수 있는</b> 업체들입니다. 여기 있다고 메일이 나가는 것은 아닙니다.',
-        `<b>[직접 검토 시작]</b> — 한 회사씩 크게 보면서 둘 중 하나를 누릅니다.<br>
-         &nbsp;&nbsp;· <b>✉ 메일 보낼곳으로 선정</b> → 발송 리스트로<br>
-         &nbsp;&nbsp;· <b>🚫 검증실패 업체로 선정</b> → 검증 실패로<br>
-         키보드로도 됩니다 — <b>→</b> 보낼곳 · <b>←</b> 검증실패 · <b>Backspace</b> 이전 회사 · <b>Esc</b> 나가기<br>
-         잘못 눌렀으면 <b>[‹ 이전]</b>으로 돌아가 다시 고르면 바뀝니다.`,
-        '검증 실패로 빼도 <b>지워지지 않습니다.</b> [🚫 검증 실패] 화면에 그대로 있고 언제든 되돌릴 수 있습니다.')}
-
-      ${stepCard(3, '📨', '발송 관리 — 메일을 보냅니다',
+      ${stepCard(2, '📨', '발송 관리 — 메일을 보냅니다',
         '탭 세 개가 <b>메일의 일생</b>입니다. 왼쪽에서 오른쪽으로 흘러갑니다.',
-        `<b>✉️ 보낼 메일</b> — 고른 곳이 모입니다. 양식과 보내는 주소를 정하고 발송합니다.<br>
-         <b>📅 예약 발송</b> — 잡아둔 예약이 시각 순서대로 있습니다.
-           답장이 오면 자동으로 빠집니다.<br>
+        `<b>✉️ 보낼 메일</b> — [📨 발송 관리로 이동]으로 고른 곳이 모입니다. 양식과 보내는 주소를 정하고 발송합니다.<br>
+         <b>📅 예약 발송</b> — 잡아둔 예약이 시각 순서대로 있습니다. 답장이 오면 자동으로 빠집니다.<br>
          <b>✅ 발송 완료</b> — 실제로 나간 것들입니다.<br><br>
          <b>[❓ 발송 로직]</b> 을 누르면 메일이 나가는 순서를 그림으로 볼 수 있습니다.`,
         '한 번에 쏟지 않습니다. <b>하루 정해진 통수까지, 한 통과 다음 통 사이 몇 초를 쉬면서</b> 나갑니다. 수백 통이 한꺼번에 나가면 받는 쪽이 광고로 보고 스팸함으로 넘기는데, 그러면 <b>진행 중인 거래 메일까지</b> 같이 스팸이 됩니다.')}
 
-      ${stepCard(4, '📬', '받은 메일함 — 답장을 봅니다',
-        '이카운트 메일함에서 가져온 수신 메일입니다. <b>앱을 열 때 자동으로</b> 새 메일을 당겨옵니다.',
-        `<b>📨 오늘 온 메일</b> — 맨 위 큰 카드. 폴더 구분 없이 오늘 온 것만 모아 봅니다.
-           제목 앞 <b>📁 태그</b>가 그 메일이 들어간 거래처 폴더입니다.<br>
-         <b>폴더 지정</b> — 제목 앞 <b>[❔ 폴더 지정]</b> 을 누르면 그 자리에서 거래처 폴더에 넣습니다.
-           같은 곳에서 온 메일을 전에 넣어둔 폴더가 있으면 <b>추천</b>으로 먼저 뜹니다.<br>
-         <b>답장</b> — 메일을 열면 <b>왼쪽에 받은 편지, 오른쪽에 답장 칸</b>이 나란히 있습니다.
-           한국어로 요지만 적고 <b>[🧠 초안 생성]</b> 을 누르면 AI가 상대 언어로 초안을 써 줍니다.`,
-        '초안 생성은 <b>자동으로 발송되지 않습니다.</b> 내용을 고치고 [보내기]를 눌러야 나갑니다. 한글 대역본이 같이 나와 무슨 내용인지 확인할 수 있습니다.')}
-
-      ${stepCard(5, '💬', '답장 받음 → 대화 진행 중 → 파트너십 확정',
+      ${stepCard(3, '💬', '답장 받음 → 대화 진행 중 → 파트너십 확정',
         '답장이 온 곳은 <b>자동으로</b> [답장 받음]으로 옮겨집니다. 그다음부터는 사람이 단계를 옮깁니다.',
         `<b>💬 답장 받음</b> — 답이 온 곳. 회사명 옆 <b>[💬 대화 전체]</b> 로 주고받은 내용을 봅니다.<br>
          <b>🤝 대화 진행 중 · ⭐ 파트너십 확정</b> — 회사별 <b>카드</b>로 봅니다.
-           카드를 누르면 그 회사와 오간 <b>대화 전체와 진행 상황</b>이 열립니다.<br>
+           카드를 누르면 그 회사와 오간 대화가 <b>요약 + 최근 3통</b>으로 열리고, 나머지는 <b>[이전 대화 더 보기]</b>로 펼칩니다.<br>
          <b>[+ 업체 직접 추가]</b> — 이 앱을 쓰기 전부터 메일로 거래하던 곳을 직접 넣습니다.
            넣으면 <b>이미 받아둔 메일이 자동으로 붙어</b> 대화 이력이 바로 보입니다.`,
         '직접 추가한 곳에는 <b>콜드메일이 나가지 않습니다.</b> 이미 연락이 닿은 곳이라 처음 보내는 소개 메일을 받으면 곤란하기 때문입니다.')}
 
-      ${stepCard(6, '📝', '메일 양식 — 보낼 문구를 정합니다',
-        '보낼 메일의 제목과 본문을 미리 만들어 두는 곳입니다. 발송할 때 골라 씁니다.',
-        `<b>[+ 새 양식 작성]</b> 으로 만들고, <b>[✏ 수정]</b> 으로 고칩니다.<br>
+      ${stepCard(4, '📥', '받은 메일함 · 회신 필요 · 기한 관리 — 답장을 봅니다',
+        '이카운트 메일함에서 가져온 메일입니다. <b>앱을 열 때 자동으로</b> 새 메일을 당겨오고, <b>메일마다 AI가 번역·요약·회신 필요 여부·기한</b>을 붙여 둡니다.',
+        `<b>📨 오늘 온 메일</b> — 폴더 구분 없이 오늘 온 것만 모아 봅니다.<br>
+         <b>폴더</b> — 거래처 폴더 → <b>❔ 미분류</b> → <b>📢 광고·자동발송</b> 순입니다. 광고·인증번호·뉴스레터는 자동으로 광고 폴더에 모이고 숫자에서 빠집니다.
+           미분류 메일은 제목 앞 <b>[❔ 폴더 지정]</b> 으로 그 자리에서 넣습니다.<br>
+         <b>메일 열기</b> — <b>왼쪽 반은 받은 편지, 오른쪽 반은 답장 칸</b>입니다. 분석이 끝난 메일은 위에 <b>✅ AI 분석 완료</b>와 요약이 보입니다.<br>
+         <b>첨부파일</b> — 본문 아래 파일 단추를 누르면 내려받습니다.<br>
+         <b>답장</b> — 한국어로 요지만 적고 <b>[🧠 초안 생성]</b> 을 누르면 AI가 상대 언어로 초안을 써 줍니다. 글꼴·크기도 바꿀 수 있습니다.<br>
+         <b>⚠️ 회신 필요</b> — 상대가 물어봤는데 아직 답하지 않은 메일만 모읍니다. 14일이 지난 것과 이미 답장한 것은 빠집니다.<br>
+         <b>⏰ 기한 관리</b> — 본문에서 찾은 날짜(회신 기한·미팅·신청 마감) 순으로 봅니다.<br>
+         <b>↗ 보낸 메일</b> — 우리가 보낸 메일도 대화 흐름을 보려고 함께 가져옵니다. 할 일로 세지 않습니다.`,
+        '초안 생성은 <b>자동으로 발송되지 않습니다.</b> 내용을 고치고 [보내기]를 눌러야 나갑니다. 아직 분석하지 않은 메일의 <b>[🧠 AI 분석]</b> 은 누를 때만 건당 약 ₩5~20이 듭니다.')}
+
+      ${stepCard(5, '📥', '직접 올린 업체 — 가진 목록이 있을 때',
+        '대표님이 따로 가진 업체 목록이 있을 때 올리는 곳입니다. 올린 파일은 <b>올린 날짜별 폴더</b>로 들어가고 사라지지 않습니다.',
+        `<b>[⬆ 엑셀·CSV 올리기]</b> — <b>CSV 파일</b>을 올립니다. 엑셀 파일은 <b>[다른 이름으로 저장 → CSV UTF-8]</b>로 저장한 뒤 올려 주세요.<br>
+         <b>[📚 올린 업체 목록]</b> — 폴더를 열어 <b>[🔎 직접 검토]</b> 로 한 회사씩 고릅니다. 이미 AI 검증 완료에 있는 업체·중복·주소가 틀린 곳은 자동으로 빠집니다.<br>
+         AI 가 무관으로 본 곳은 <b>보관함</b>으로 갑니다 — [🗂 지금까지 고른 결과 보기]의 <b>📦 보관함</b> 탭에서 볼 수 있습니다.`,
+        '올린 업체의 AI 검증은 <b>누를 때만 요금이 나갑니다.</b> 저절로 돌아가는 일은 없습니다.')}
+
+      ${stepCard(6, '📬', '메일 계정 관리 — 보내는 주소와 서명',
+        '메일을 보낼 회사 주소와 서명을 등록합니다. <b>대표 계정</b>을 정하면 받은 메일함·회신 필요·기한 관리가 그 계정 기준으로 바뀝니다.',
+        `<b>[+ 계정 추가]</b> 로 등록하고 <b>[✏ 수정]</b> 에서 보내는 사람 이름·직함·회사·전화를 채웁니다.<br>
+         이 정보가 메일 끝 <b>서명</b>으로 붙습니다. 해외로 가는 메일이므로 <b>영문으로</b> 적어 두시는 것이 좋습니다.`,
+        '')}
+
+      ${stepCard(7, '📝', '메일 양식 — 보낼 문구를 정합니다',
+        '보낼 메일의 제목과 본문을 미리 만들어 두는 곳입니다. [발송 관리]에서 골라 씁니다.',
+        `<b>[+ 새 양식 작성]</b> 으로 만들고, <b>[✏ 수정]</b> 으로 고칩니다. 글꼴·크기·색도 바꿀 수 있습니다.<br>
          <b>[회사명]</b> 처럼 대괄호로 적어두면 <b>회사마다 그 회사 이름으로 바뀌어</b> 나갑니다.<br>
-         발송 화면 오른쪽에서 회사를 바꿔 가며 <b>실제로 갈 모습</b>을 미리 볼 수 있습니다.`,
+         편집 화면 아래 <b>👁 실제 발송 미리보기</b>에서 회사를 바꿔 가며 받는 사람이 볼 모습을 확인합니다.`,
         '양식을 고치면 <b>다음 발송부터</b> 적용됩니다. 이미 예약된 메일은 예약 당시 문구로 나갑니다.')}
 
       <!-- 지금 발송이 열려 있는가 -->
@@ -10707,7 +10806,7 @@ function renderUserGuidePage() {
           아래는 화면에서 끌 수 없습니다. 실수로 눌러도 이 선을 넘지 않습니다.
         </div>
         ${[
-          ['고른 곳에만 나갑니다', '[발송 리스트]로 옮긴 업체에만 메일이 나갑니다. 검증 완료에 있는 나머지는 눌러도 나가지 않습니다.'],
+          ['고른 곳에만 나갑니다', '[발송 관리]로 옮긴 업체에만 메일이 나갑니다. AI 검증 완료에 있는 나머지는 나가지 않습니다.'],
           ['하루 통수 제한', '하루에 정해진 통수를 넘지 않습니다. 남은 것은 다음 날로 넘어갑니다.'],
           ['한 통씩 쉬어 가며', '한 통과 다음 통 사이에 간격을 둡니다. 한꺼번에 쏟으면 스팸으로 걸립니다.'],
           ['같은 곳에 3번까지', '한 업체에 최대 3번(첫 메일 + 재발송 2회)만 나갑니다.'],
@@ -10744,9 +10843,11 @@ function renderUserGuidePage() {
           ['받은 메일이 안 보입니다.',
            '앱을 열면 자동으로 가져옵니다. 방금 온 메일을 당장 보려면 받은 메일함의 <b>[📥 메일 가져오기]</b> 를 누르세요.'],
           ['받은 메일함 숫자가 이상합니다.',
-           '[📬 메일 계정] 의 대표 계정 기준으로 셉니다. 대표 계정을 바꾸면 그 계정 메일함으로 바뀝니다. 광고·자동발송은 숫자에서 빠집니다.'],
-          ['AI 검증은 돈이 드나요?',
-           '네, 업체 한 곳당 비용이 듭니다. 그래서 <b>버튼을 누를 때만</b> 돌아갑니다. 버튼에 대상 건수와 예상 금액이 적혀 있습니다. 저절로 돌아가는 일은 없습니다.'],
+           '[📬 메일 계정 관리] 의 대표 계정 기준으로 셉니다. 대표 계정을 바꾸면 그 계정 메일함으로 바뀝니다. 광고·자동발송과 우리가 보낸 메일은 할 일 숫자에서 빠집니다.'],
+          ['AI 검증·AI 분석은 돈이 드나요?',
+           '네, 누를 때마다 비용이 듭니다. 그래서 <b>버튼을 누를 때만</b> 돌아갑니다. 새로 들어온 메일의 1차 분석은 저희가 비용 없이 넣어 드리고 있어, 대부분 이미 <b>✅ AI 분석 완료</b>로 보입니다.'],
+          ['첨부파일은 어디서 받나요?',
+           '메일을 열면 본문 아래에 파일 단추가 있습니다. 누르면 이카운트 메일함에서 바로 받아옵니다. 원본 메일을 웹메일에서 지웠다면 받을 수 없다고 알려 줍니다.'],
           ['잘못 눌러서 엉뚱한 곳으로 보냈어요.',
            '단계를 옮긴 것이라면 그 화면에서 되돌릴 수 있습니다. <b>메일이 이미 나간 것은 되돌릴 수 없습니다</b> — 그래서 발송 전에 한 번 더 묻습니다.'],
         ].map(([q, a]) => `
@@ -10782,7 +10883,7 @@ function renderUserGuidePage() {
         </div>
         <div style="font-size:12.5px;color:#1e3a8a;line-height:1.75">
           <b>[발송 관리 → 보낼 메일]</b> 에 있는 곳으로만 나갑니다.
-          [AI 검증 완료]에 있는 나머지는 발송 리스트로 옮기기 전까지 나가지 않습니다.<br>
+          [AI 검증 완료]에 있는 나머지는 [발송 관리로 이동]하기 전까지 나가지 않습니다.<br>
           하루 최대 <b>${(lock && lock.dailyCap) || 20}통</b> ·
           한 통 사이 <b>${Math.round(((lock && lock.intervalMs) || 8000) / 1000)}초</b> ·
           같은 곳에는 48시간 안에 다시 나가지 않습니다.
@@ -11095,7 +11196,7 @@ function outboxLockBannerHtml(lock, readyCount) {
               : n === 0
                 ? '지금 <b>[보낼 메일]이 비어 있어</b> 나갈 곳이 없습니다. 검증 완료에서 옮겨야 대상이 됩니다.'
                 : `지금 나갈 수 있는 곳은 <b>[보낼 메일] ${n.toLocaleString()}곳</b>뿐입니다.
-                   검증 완료에 있는 나머지는 발송 리스트로 옮기기 전까지 나가지 않습니다.`}
+                   AI 검증 완료에 있는 나머지는 [발송 관리로 이동]하기 전까지 나가지 않습니다.`}
             ${lock?.dailyCap
               ? `<br><span style="color:#1d4ed8">하루 최대 ${lock.dailyCap}통 · 한 통 사이 ${Math.round((lock.intervalMs || 0) / 1000)}초 ·
                  같은 곳에는 48시간 안에 다시 안 나갑니다</span>` : ''}
@@ -11431,6 +11532,30 @@ async function runOutboxCampaign(ready, lock) {
 }
 
 /** 양식·계정·미리보기 대상이 비어 있거나 사라졌으면 채워 넣는다 */
+/**
+ * 영업 메일을 보내는 계정 = 대표 계정 (서버 lib/mail/accounts.ts getOutreachAccount 와 같은 규칙).
+ * 화면에서 고를 수 없게 한다 — 서버도 실제 발송 때 대표 계정으로 고정하므로, 선택칸을 두면
+ * "고른 계정으로 나간다" 는 잘못된 기대만 준다.
+ */
+function outreachAccount() {
+  return (_mailAccounts || []).find((a) => a.isDefault && a.isActive !== false) || null;
+}
+
+/** 발송 화면에 보여줄 '보내는 계정' 표시 (고를 수 없음) */
+function outreachAccountBoxHtml() {
+  const a = outreachAccount();
+  if (!a) {
+    return `<div style="padding:9px 11px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;
+                        font-size:12px;color:#991b1b;line-height:1.6">
+      대표 계정이 없어 보낼 수 없습니다. <b>[📬 메일 계정 관리]</b>에서 대표 계정을 지정하세요.</div>`;
+  }
+  return `<div style="padding:8px 11px;border-radius:8px;background:var(--bg-surface-alt);border:1px solid var(--border-default)">
+      <div style="font-size:13px;font-weight:800;color:var(--text-primary)">${escapeHtml(a.fromAddress || a.smtpUser)}
+        <span style="font-size:10px;font-weight:800;color:#1e40af;background:#dbeafe;border-radius:4px;padding:1px 5px;margin-left:4px">대표 계정</span></div>
+      <div style="font-size:10.5px;color:var(--text-tertiary);margin-top:2px">영업 메일은 대표 계정으로만 나갑니다 · 바꾸려면 [📬 메일 계정 관리]</div>
+    </div>`;
+}
+
 function outboxSyncCompose(ready) {
   const tpls = state.email.templates || [];
   const cur = tpls.find((t) => t._id === _outboxCompose.templateId);
@@ -11441,12 +11566,9 @@ function outboxSyncCompose(ready) {
     _outboxCompose.body = t.body || '';
     _outboxCompose.dirty = false;
   }
-  if (!_outboxCompose.mailAccountId && (_mailAccounts || []).length) {
-    // 대량 발송은 테스트 계정 우선 — 대표 주소로 쏘면 진행 중인 거래 메일까지 물린다
-    const a = _mailAccounts.find((x) => x.isTestSender)
-      || _mailAccounts.find((x) => x.isDefault) || _mailAccounts[0];
-    _outboxCompose.mailAccountId = a._id;
-  }
+  // 보내는 계정은 언제나 대표 계정 (outreachAccount). 한 번 정해 두면 대표 계정을 바꿔도 따라가지 않으므로
+  // 매번 다시 맞춘다.
+  _outboxCompose.mailAccountId = outreachAccount()?._id || null;
   if (!ready.some((l) => l.leadId === _outboxCompose.previewLeadId)) {
     _outboxCompose.previewLeadId = ready[0]?.leadId || null;
   }
@@ -11573,7 +11695,7 @@ function outboxReadyHtml(ready, lock) {
         <div style="font-size:34px;margin-bottom:8px">✉️</div>
         <div style="font-size:14px;font-weight:700;color:var(--text-secondary)">보낼 메일이 없습니다</div>
         <div style="font-size:12.5px;margin-top:5px;line-height:1.6">
-          [✅ 검증 완료]에서 보낼 곳을 골라 <b>[발송 리스트로 옮기기]</b> 를 누르면 여기에 모입니다.
+          [✅ AI 검증 완료]에서 보낼 곳을 체크하고 <b>[📨 발송 관리로 이동]</b>을 누르면 여기에 모입니다.
         </div>
         <button id="outboxGoVerified" type="button" class="button primary"
           style="margin-top:13px;font-size:13px;padding:9px 16px">✅ 검증 완료에서 고르기</button>
@@ -11630,11 +11752,7 @@ function outboxReadyHtml(ready, lock) {
             </label>
             <label style="flex:1;min-width:130px">
               <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">보내는 계정</span>
-              <select id="obAcc" style="width:100%;margin-top:3px;padding:7px 9px;font-size:12.5px;
-                border:1px solid var(--border-default);border-radius:7px;
-                background:var(--bg-surface);color:var(--text-primary)">
-                ${(_mailAccounts || []).map((a) => `<option value="${escapeAttr(a._id)}" ${a._id === (acc && acc._id) ? 'selected' : ''}>${escapeHtml(a.smtpUser)}${a.isTestSender ? ' (테스트)' : ''}</option>`).join('')}
-              </select>
+              <div style="margin-top:3px">${outreachAccountBoxHtml()}</div>
             </label>
           </div>
 
@@ -13306,7 +13424,10 @@ function verifyDetailsHtml(lead) {
 
   const v = lead?.verification;
   if (!v || !v.verifiedAt) {
-    return `<div style="font-size:13px;color:#9ca3af">⏳ 아직 검증되지 않았습니다. 툴바의 🔍 검증 버튼으로 실행하세요.</div>`;
+    // AI 판정이 있는데 '아직 검증되지 않았습니다'가 뜨면 모순으로 읽힌다 (위에 '진성 바이어'가 보이는데).
+    // 없는 툴바 버튼을 가리키던 안내도 뺐다.
+    if (v && (v.aiVerdict || v.aiVerifiedAt)) return '';
+    return `<div style="font-size:13px;color:#9ca3af">⏳ 아직 자동 점검(사이트·메일 형식)을 하지 않았습니다.</div>`;
   }
   const bucket = verifyBucketOf(lead);
   const headerColor = bucket === 'passed' ? '#166534' : bucket === 'suspicious' ? '#92400e' : bucket === 'invalid' ? '#991b1b' : '#64748b';
@@ -13830,7 +13951,11 @@ function openEditModal(id) {
   });
 
   document.getElementById('el-title').textContent = lead.Company;
-  document.getElementById('el-badge').textContent = lead.Priority || "No priority";
+  // 우선순위가 없으면 배지를 숨긴다 ('No priority' 영어가 그대로 떴다)
+  {
+    const badge = document.getElementById('el-badge');
+    if (badge) { badge.textContent = lead.Priority ? `우선순위 ${lead.Priority}` : ''; badge.hidden = !lead.Priority; }
+  }
   document.getElementById('el-badge').className = "badge " + badgeClass(lead.Priority);
   document.getElementById('el-meta').textContent = (lead.Country || "") + " · " + (lead.Type || "Lead");
   
@@ -15160,7 +15285,8 @@ function continentFor(country) {
 }
 
 function optionHtml(values, selected = "All") {
-  return values.map((value) => `<option value="${escapeAttr(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+  // 값은 'All' 그대로 두고(서버·필터 로직이 이 값을 본다) 보이는 글자만 한국어로
+  return values.map((value) => `<option value="${escapeAttr(value)}" ${value === selected ? "selected" : ""}>${value === 'All' ? '전체' : escapeHtml(value)}</option>`).join("");
 }
 
 function stat(label, value, view = "") {
@@ -15196,7 +15322,7 @@ function statVerify(label, value, bucket) {
 }
 
 function emptyState(text) {
-  return `<div class="empty-detail"><h3>No results</h3><p>${escapeHtml(text)}</p></div>`;
+  return `<div class="empty-detail"><h3>아직 없습니다</h3><p>${escapeHtml(String(text).replace(/리드가 없습니다/g, '업체가 없습니다'))}</p></div>`;
 }
 
 function infoBlock(title, body) {
@@ -15233,11 +15359,29 @@ function emailButton(email) {
   return first ? `<a href="mailto:${escapeAttr(first)}">Email</a>` : "";
 }
 
+/**
+ * 메일 주소 칸.
+ *
+ * 검증 완료 541곳 중 224곳은 주소 대신 조사 메모가 들어 있다 —
+ * 'Contact form on site' 59, 'Not found publicly' 46, 'DM via Instagram' 22 …
+ * 영어 원문을 그대로 두면 대표님 화면에 영어 문장이 줄줄이 보이고, 메일 칸이라
+ * 주소인 줄 안다. 주소가 아니면 한국어 회색 표시로 바꾸고 원문은 툴팁으로만 둔다.
+ */
 function emailCell(email) {
-  if (!email) return "";
+  if (!email) return '<span style="color:var(--text-quaternary);font-size:12px">메일 주소 없음</span>';
   const text = truncate(email, 78);
   const first = email.split(/[;,\s]+/).find((part) => part.includes("@"));
-  if (!first) return escapeHtml(text);
+  if (!first) {
+    const e = String(email).toLowerCase();
+    const label = /instagram|insta/.test(e) ? '인스타 DM 으로만 연락'
+      : /facebook|messenger/.test(e) ? '페이스북 메시지로만 연락'
+      : /whatsapp/.test(e) ? '왓츠앱으로만 연락'
+      : /linkedin/.test(e) ? '링크드인으로만 연락'
+      : /form|contact page|website/.test(e) ? '사이트 문의폼만 있음'
+      : /phone|tel|call/.test(e) ? '전화로만 연락'
+      : '메일 주소 없음';
+    return `<span title="${escapeAttr(email)}" style="color:var(--text-quaternary);font-size:12px;cursor:help">${label}</span>`;
+  }
   return `<a href="mailto:${escapeAttr(first)}">${escapeHtml(text)}</a>`;
 }
 

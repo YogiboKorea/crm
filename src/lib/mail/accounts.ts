@@ -78,3 +78,22 @@ export async function resolveAccount(accountId?: string): Promise<any | null> {
     || await MailAccount.findOne({ isActive: { $ne: false } }).lean()
   );
 }
+
+/**
+ * 영업 메일(첫 소개·재발송·예약·발송 관리 일괄)을 보내는 계정 = **대표 계정**.
+ *
+ * 대표님 결정(2026-09-14): "대표 계정으로 만든 것으로만 나가면 된다, 그게 기준이어야 한다."
+ * 예전에는 화면이 테스트 계정(isTestSender, fe@)을 먼저 골라서, 월요일부터 실제 발송이
+ * '개발 계정 테스트' 주소로 나갈 뻔했다. 화면에서 무엇을 넘기든, 예전에 걸어둔 예약에
+ * 어떤 계정이 적혀 있든, **실제로 보내는 순간** 이 함수가 돌려주는 계정으로 나간다.
+ * 대표 계정을 바꾸면([메일 계정 관리]) 그다음 발송부터 새 대표 계정으로 나간다.
+ *
+ * 받은 메일에 답장하는 경로(/api/mail/reply)는 해당하지 않는다 — 답장은 그 메일을 받은
+ * 계정으로 나가야 상대 메일함에서 같은 대화로 이어진다.
+ */
+export async function getOutreachAccount(): Promise<any | null> {
+  return MailAccount.findOne({ isDefault: true, isActive: { $ne: false } }).lean();
+}
+
+export const NO_OUTREACH_ACCOUNT =
+  '대표 계정이 없습니다. [메일 계정 관리]에서 보낼 계정을 대표 계정으로 지정하세요.';

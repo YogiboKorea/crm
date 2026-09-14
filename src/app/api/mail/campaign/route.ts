@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getOutreachAccount, NO_OUTREACH_ACCOUNT } from '@/lib/mail/accounts';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
@@ -104,6 +105,12 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
+    // 영업 메일은 대표 계정으로만 나간다 (lib/mail/accounts.ts). 없으면 예약을 만들지 않는다.
+    const outreach: any = await getOutreachAccount();
+    if (!outreach) {
+      return NextResponse.json({ success: false, error: NO_OUTREACH_ACCOUNT }, { status: 400 });
+    }
+
     const batchId = `camp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const docs = targets.map((t, i) => {
       const slot = Math.floor(i / batchSize);          // 몇 번째 묶음인가
@@ -111,7 +118,7 @@ export async function POST(req: Request) {
       return {
         leadId: t.leadId,
         templateId,
-        mailAccountId: String(body.mailAccountId || ''),
+        mailAccountId: String(outreach._id),
         to: t.email,
         scheduledFor: when,
         status: 'pending' as const,

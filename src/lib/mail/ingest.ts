@@ -389,10 +389,13 @@ async function ingestFolder(
         classification: doc.classification,
         headers: parsed.headers,
       });
+      // 우리가 보낸 메일은 '할 일'이 아니다 — 본문에 질문이 있어도 그건 우리가 상대에게 한 질문이다.
+      // 예전에는 보낸 메일 64통 중 47통이 '회신 필요'로 찍혀 받은 메일함 맨 위를 차지했다.
+      const outbound = doc.direction === 'out';
       doc.analysis = {
         method: la.method,
-        needsReply: la.needsReply,
-        deadline: la.deadline,
+        needsReply: outbound ? false : la.needsReply,
+        deadline: outbound ? null : la.deadline,
         urgency: la.urgency,
         summary: la.replyReason,
         keyPoints: la.points,

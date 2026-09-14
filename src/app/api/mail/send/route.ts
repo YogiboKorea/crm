@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { NO_OUTREACH_ACCOUNT } from '@/lib/mail/accounts';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { EmailTemplate } from '@/models/EmailTemplate';
@@ -81,10 +82,13 @@ export async function POST(req: Request) {
   let smtpConfig: any = undefined;
   let fromOverride: any = undefined;
   let usedAccount: any = null;
-  if (mailAccountId) {
-    const acc = await MailAccount.findById(mailAccountId);
-    if (!acc || !acc.isActive) {
-      return NextResponse.json({ success: false, error: '지정된 발송 계정이 없거나 비활성' }, { status: 400 });
+  // 영업 메일은 **대표 계정**으로만 나간다 (lib/mail/accounts.ts getOutreachAccount).
+  // 화면이 넘긴 mailAccountId 는 보지 않는다 — 선택칸에서 다른 계정을 골랐어도 대표 계정으로 나간다.
+  void mailAccountId;
+  {
+    const acc = await MailAccount.findOne({ isDefault: true, isActive: { $ne: false } });
+    if (!acc) {
+      return NextResponse.json({ success: false, error: NO_OUTREACH_ACCOUNT }, { status: 400 });
     }
     try {
       smtpConfig = {

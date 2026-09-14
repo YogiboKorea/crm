@@ -1450,3 +1450,8 @@ body.modal-open {
 .el-judge-go { border: 1px solid #86efac; background: #f0fdf4; color: #15803d; }
 .el-judge-no { border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; }
 .el-judge:disabled { opacity: .5; cursor: default; }
+
+/* hidden 속성은 인라인 display 보다 항상 이긴다.
+   파트너 상세의 '이전 대화 N통 더 보기' 상자가 style="display:flex" 때문에
+   hidden 인데도 처음부터 다 펼쳐져 있었다. 같은 실수가 다른 곳에도 생기지 않게 막는다. */
+[hidden] { display: none !important; }

@@ -74,9 +74,12 @@ export async function GET() {
     const verifiedSub = { approved: 0, pending: 0, noEmail: 0, all: stages.verified, queued: stages.queued };
     const [vApproved, vNoEmail] = await Promise.all([
       Lead.countDocuments({ stage: 'verified', readyForOutreach: true, deleted: { $ne: true } }),
+      // '보낼 수 있는 메일 주소가 없다' 의 기준은 검토 화면(review/route.ts REAL_EMAIL)과 같아야 한다.
+      // 예전에는 빈칸·'Not found' 만 셌다(68). 실제로는 'Contact form on site'·'DM via Instagram' 처럼
+      // 주소가 아닌 글자가 든 곳이 더 많아 224곳이었고, 그래서 첫 화면은 541, 검토 화면은 317 로 갈렸다.
       Lead.countDocuments({
         stage: 'verified', deleted: { $ne: true },
-        $or: [{ Email: '' }, { Email: /^Not found/i }, { Email: { $exists: false } }],
+        Email: { $not: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ },
       }),
     ]);
     verifiedSub.approved = vApproved;

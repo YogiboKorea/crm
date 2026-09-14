@@ -30,7 +30,7 @@ export default function Home() {
             </div>
             <div className="brand-text">
               <h1>Yogico CRM</h1>
-              <p>Importer &amp; buyer pipeline</p>
+              <p>해외 바이어 발굴·메일 관리</p>
             </div>
           </button>
           <nav className="nav" aria-label="Pipeline">
@@ -124,7 +124,7 @@ export default function Home() {
                 출처가 다르고, 검증도 따로 돌려야 하고, "내가 올린 그 파일"을
                 다시 찾아보는 일이 잦다. 설정·도구 안에 묻어두면 도구 하나로
                 보여 "내가 올린 게 어디 갔지"가 된다. 그래서 자기 구역으로 뺐다. */}
-            <div className="nav-section-label">📥 import 하여 올린 데이터</div>
+            <div className="nav-section-label">📥 직접 올린 업체</div>
             <button className="nav-item" data-view="tool-legacy" type="button" title="올린 업체 목록 — 엑셀로 올린 업체. 올린 날짜별 폴더로 나뉘어 있습니다. 여기서 AI 검증과 직접 검토를 돌려 보낼 곳을 고릅니다">
               {/* 배지를 달지 않는다. 여기 숫자는 stage 집계에 없는 값이라
                   늘 0 으로 떴다 — 실제로는 1,900곳이 들어 있는데 0 이 붙어
@@ -190,8 +190,8 @@ export default function Home() {
               <button id="navDrawerBtn" className="nav-drawer-btn" type="button"
                       aria-label="메뉴 열기" aria-expanded="false" aria-controls="appSidebar">☰</button>
               <div className="topbar-title">
-                <h2 id="viewTitle" className="">Leads</h2>
-                <p id="viewSubtitle">Search, qualify, and manage outreach.</p>
+                <h2 id="viewTitle" className="">✅ AI 검증 완료</h2>
+                <p id="viewSubtitle"></p>
               </div>
             </div>
             <div className="top-actions">
@@ -742,7 +742,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=d9a29c38" strategy="afterInteractive" />
+      <Script src="/app.js?v=00a9486c" strategy="afterInteractive" />
     </>
   );
 }

@@ -31,7 +31,8 @@ export async function GET(req: Request) {
         trashedAt: null,
         direction: 'in',
         'analysis.deadline': { $ne: null },
-        classification: { $nin: ['ad', 'system'] },
+        // 배지(counts)와 같은 기준 — 뉴스레터도 뺀다 (배지 16 · 화면 17 로 어긋났다)
+        classification: { $nin: ['ad', 'system', 'newsletter'] },
         status: { $nin: ['replied', 'archived', 'ignored'] },
         // 화면 숫자와 같은 기준(최근 2개월). 과거 건은 거래처별 보기로 조회한다.
         date: { $gte: countSince() },

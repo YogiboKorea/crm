@@ -1,5 +1,17 @@
-﻿node_modules/
+node_modules/
 .next/
 .env*
 .env.local
 
+# ── 실제 거래처 데이터 — 저장소에 올리지 않는다 ──────────────────
+# 메일 본문·연락처가 그대로 들어 있다. 저장소가 공개였던 동안 이미 올라갔으므로
+# 여기 적는 것만으로는 부족하고, 추적에서도 빼야 한다 (git rm --cached).
+scripts/mail-analysis/
+scripts/.threadkey-backup.json
+scripts/backups/
+kbeauty-crm-export-*.csv
+scripts/.*.tmp.mjs
+
+# 되돌리기용 정리 기록 (거래처 id 목록)
+scripts/.cleanup-*.json
+scripts/.mark-replied-*.json

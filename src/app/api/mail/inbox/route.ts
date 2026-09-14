@@ -108,6 +108,9 @@ export async function GET(req: Request) {
     // status 조건도 배지와 맞춘다 — 이미 답한 건은 셋 다에서 빠져야 한다.
     if (needsReply === '1') {
       query['analysis.needsReply'] = true;
+      // 사이드바 배지(counts)와 같은 기준 — 광고·자동발송·뉴스레터는 '할 일'이 아니다.
+      // 빠져 있어서 '[오늘의집] 오감리뷰 30% 할인' 같은 광고가 회신 필요 목록에 떴다.
+      if (!query.classification) query.classification = { $nin: ['ad', 'system', 'newsletter'] };
       query.status = { $in: ['new', 'reviewing'] };
       query.direction = 'in';
       // today=1 이 이미 date 를 잡고 있으면 건드리지 않는다.

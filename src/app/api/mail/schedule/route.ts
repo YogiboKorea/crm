@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getOutreachAccount, NO_OUTREACH_ACCOUNT } from '@/lib/mail/accounts';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
@@ -89,10 +90,11 @@ export async function POST(req: Request) {
   const tpl = await EmailTemplate.findById(templateId).lean();
   if (!tpl) return NextResponse.json({ success: false, error: '템플릿을 찾을 수 없음' }, { status: 404 });
 
-  if (mailAccountId) {
-    const acc = await MailAccount.findById(mailAccountId).lean();
-    if (!acc) return NextResponse.json({ success: false, error: '메일 계정을 찾을 수 없음' }, { status: 404 });
-  }
+  // 영업 메일은 대표 계정으로만 나간다 — 넘어온 계정 대신 대표 계정을 기록한다.
+  // (실제 발송 때도 schedule-runner 가 그 시점의 대표 계정으로 다시 고른다)
+  void mailAccountId;
+  const outreach: any = await getOutreachAccount();
+  if (!outreach) return NextResponse.json({ success: false, error: NO_OUTREACH_ACCOUNT }, { status: 400 });
 
   const leads = await Lead.find({ leadId: { $in: leadIds } }, { leadId: 1, Email: 1 }).lean();
   const validLeads = (leads as any[]).filter((l) => {
@@ -107,7 +109,7 @@ export async function POST(req: Request) {
   const docs = validLeads.map((l) => ({
     leadId: l.leadId,
     templateId,
-    mailAccountId: mailAccountId || '',
+    mailAccountId: String(outreach._id),
     to: (l.Email as string).trim(),
     scheduledFor,
     status: 'pending' as const,

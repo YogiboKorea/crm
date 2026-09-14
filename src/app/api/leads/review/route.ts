@@ -65,6 +65,13 @@ function sourceFilter(source?: string, batch?: string) {
       'verification.aiVerdict': { $ne: 'not-buyer' },
       // [AI 검증 완료]에 같은 업체가 이미 있어 감춘 것도 뺀다 (같은 이유).
       legacyHiddenAt: { $exists: false },
+      // ⚠️ 목록 API(legacy/route.ts NOT_HIDDEN)와 **같은 조건**이어야 한다.
+      //    예전에는 이 두 줄이 없어서, 목록에서는 숨긴 업체가 검토 화면에는 떴다.
+      //    dupHiddenAt  — 같은 업체가 이미 있어 숨긴 중복 (416곳)
+      //    badEmailAt   — 주소가 그 회사 것이 아닌 곳 (83곳, 예: 'Ulta Beauty' 에 jubao@lingying.com)
+      //    검토에서 [메일 보낼곳]을 누르면 **엉뚱한 사람에게 실제 메일이 나간다.**
+      dupHiddenAt: { $exists: false },
+      badEmailAt: { $exists: false },
     };
   }
   return { stage: 'verified' };
@@ -91,7 +98,12 @@ async function tallies(pending: any) {
   const [remaining, queued, failed] = await Promise.all([
     Lead.countDocuments(pending),
     Lead.countDocuments({ stage: 'queued', deleted: { $ne: true } }),
-    Lead.countDocuments({ stage: 'failed', deleted: { $ne: true } }),
+    // '검증 실패' 는 두 갈래를 합친 수다 — 탭 배지·목록(/api/leads?stage=__failed)과 같은 기준.
+    // stage 'failed' 만 세서 탭은 955, 검토 화면은 790 으로 어긋났다.
+    Lead.countDocuments({
+      deleted: { $ne: true },
+      $or: [{ stage: 'failed' }, { stage: 'archived', 'verification.aiVerdict': 'not-buyer' }],
+    }),
   ]);
   return { remaining, queued, failed };
 }
