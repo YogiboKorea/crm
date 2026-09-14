@@ -1,5 +1,15 @@
 import { NextResponse } from 'next/server';
 import { sendMail, verifySmtp } from '@/lib/mailer';
+import { isMasterUser } from '@/lib/masters';
+import { getSessionUser } from '@/lib/mail/scope';
+
+/** 회사 기본 SMTP(.env) 를 쓰는 경로라 관리자(마스터)만 — 일반 아이디가 회사 주소로 아무에게나 보내지 못하게 */
+async function masterOnly() {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ success: false, error: '로그인이 필요합니다' }, { status: 401 });
+  if (!isMasterUser(user)) return NextResponse.json({ success: false, error: '관리자만 쓸 수 있습니다' }, { status: 403 });
+  return null;
+}
 
 export const runtime = 'nodejs';
 
@@ -9,11 +19,15 @@ export const runtime = 'nodejs';
  *                              MAIL_DRY_RUN=1 이면 로그만.
  */
 export async function GET() {
+  const denied = await masterOnly();
+  if (denied) return denied;
   const result = await verifySmtp();
   return NextResponse.json({ success: result.ok, ...result });
 }
 
 export async function POST(req: Request) {
+  const denied = await masterOnly();
+  if (denied) return denied;
   let body: any;
   try {
     body = await req.json();

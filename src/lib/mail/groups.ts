@@ -60,15 +60,26 @@ async function ownDomains(): Promise<Set<string>> {
   return out;
 }
 
+/** MailAccount._id 로 캐스팅 가능한 값인가 — 'main'(옛 메일) 같은 값으로 find 하면 CastError */
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
+
 /**
  * 이미 수집된 메일에서 "발신자 → 그룹" 이력을 만든다.
  * 주소가 정확히 일치하는 쪽을 우선하고, 없으면 도메인으로 본다.
+ *
+ * accountIds — 볼 수 있는 계정 id (lib/mail/scope.ts MailScope.accountIds).
+ * 넘기면 그 계정 메일에서만 배운다(아이디별 메일 분리). 남의 메일에서 배우면
+ * 그 사람의 폴더 이름·거래처 발신자가 내 메일함 추천으로 새어 나온다.
+ * 안 넘기면 예전처럼 전체에서 배운다 — 사람이 없는 실행(수집 크론) 전용.
  */
-export async function learnSenderGroups(): Promise<LearnedGroups> {
+export async function learnSenderGroups(accountIds?: string[] | null): Promise<LearnedGroups> {
   const own = await ownDomains();
 
+  const match: any = { group: { $nin: [null, ''] }, 'from.address': { $nin: [null, ''] } };
+  if (accountIds) match.accountId = { $in: accountIds };
+
   const rows: any[] = await InboundMail.aggregate([
-    { $match: { group: { $nin: [null, ''] }, 'from.address': { $nin: [null, ''] } } },
+    { $match: match },
     {
       $group: {
         _id: { addr: '$from.address', group: '$group' },
@@ -207,12 +218,19 @@ export function suggestGroupByName(
 /** 화면 숫자의 기준 기간 — 모든 카운트가 같은 기준을 써야 한다 (period.ts) */
 const FRESH_SINCE = () => countSince();
 
-async function getFolderOrder(accountId?: string): Promise<{
+async function getFolderOrder(accountId?: string, accountIds?: string[] | null): Promise<{
   merged: Map<string, number>;
   byAccount: Map<string, Map<string, number>>;
 }> {
   const query: any = {};
-  if (accountId && accountId !== 'all') query._id = accountId;
+  if (accountIds) {
+    // 볼 수 있는 계정의 폴더만 순서에 넣는다 — 남의 계정 폴더 이름이 거래처 목록에 끼면
+    // 그 사람 메일함 구성이 그대로 보인다. 범위 밖 accountId 를 고르면 폴더 없음.
+    const wanted = accountId && accountId !== 'all' ? [accountId] : accountIds;
+    query._id = { $in: wanted.filter((id) => accountIds.includes(id) && OBJECT_ID.test(id)) };
+  } else if (accountId && accountId !== 'all') {
+    query._id = accountId;
+  }
 
   const accounts: any[] = await MailAccount.find(query, {
     imapFolders: 1,
@@ -274,11 +292,24 @@ export interface GroupRow {
  *
  * 화면 숫자는 **최근 한 달** 기준이다. 누적을 쓰면 577 같은 큰 수가 떠서
  * 옆의 미확인 숫자와 기준이 어긋나고, 눌렀을 때 나오는 목록과도 맞지 않는다.
+ *
+ * accountIds — 볼 수 있는 계정 id (lib/mail/scope.ts). 넘기면 그 계정 메일만 세고
+ * 그 계정 폴더만 보여준다. 안 넘기면 전체(수집 크론처럼 사람이 없는 실행 전용).
  */
-export async function listGroups(accountId?: string): Promise<{ groups: GroupRow[]; byAccount: Record<string, GroupRow[]> }> {
+export async function listGroups(
+  accountId?: string,
+  accountIds?: string[] | null,
+): Promise<{ groups: GroupRow[]; byAccount: Record<string, GroupRow[]> }> {
   const match: any = { group: { $nin: [null, ''] } };
-  if (accountId && accountId !== 'all') match.accountId = accountId;
-  const folderOrder = await getFolderOrder(accountId);
+  if (accountIds) {
+    // 범위 밖 계정을 고르면 빈 목록 — 남의 계정 숫자를 id 만으로 알아낼 수 없게
+    match.accountId = accountId && accountId !== 'all'
+      ? { $in: accountIds.includes(accountId) ? [accountId] : [] }
+      : { $in: accountIds };
+  } else if (accountId && accountId !== 'all') {
+    match.accountId = accountId;
+  }
+  const folderOrder = await getFolderOrder(accountId, accountIds);
 
   const rows: any[] = await InboundMail.aggregate([
     { $match: match },

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { resolveAccount, toImapConfig } from '@/lib/mail/accounts';
 import { listSentPage } from '@/lib/mail/imap';
+import { getSessionUser, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,9 +13,12 @@ export const maxDuration = 60;
  *
  * 보낸 메일은 DB 에 수집하지 않는다 (lib/mail/imap.ts '보낸메일함' 설명 참고).
  * accountId 는 받은 메일함이 지금 보고 있는 계정이다. 없으면 대표 계정.
- * 로그인 확인은 proxy.ts 가 /api 전체에 건다.
+ * 로그인 확인은 proxy.ts 가 /api 전체에 건다. 계정은 로그인한 아이디 몫 안에서만 고른다 (lib/mail/scope.ts).
  */
 export async function GET(req: Request) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
   try {
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1);
@@ -22,7 +26,9 @@ export async function GET(req: Request) {
     const accountId = url.searchParams.get('accountId') || 'default';
 
     await dbConnect();
-    const account: any = await resolveAccount(accountId);
+    const account: any = await resolveAccount(accountId, user);
+    // 남의 계정 id 면 404 — 그 계정이 있는지조차 알려주지 않는다
+    if (!account && accountId !== 'default' && accountId !== 'all') return NextResponse.json(NOT_YOURS, { status: 404 });
     if (!account) return NextResponse.json({ success: false, error: '등록된 메일 계정이 없습니다.' }, { status: 400 });
 
     const r = await listSentPage(toImapConfig(account), { page, pageSize: 30, q });

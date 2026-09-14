@@ -11,7 +11,7 @@ config({ path: '.env.local', quiet: true });
 
 const jwt = await new SignJWT({ user: 'yogico', role: 'admin' }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
 await mongoose.connect(process.env.MONGODB_URI);
-const accounts = await mongoose.connection.db.collection('mailaccounts').find({ isActive: { $ne: false } }).project({ fromAddress: 1, smtpUser: 1, isDefault: 1 }).toArray();
+const accounts = await mongoose.connection.db.collection('mailaccounts').find({ isActive: { $ne: false }, owner: { $in: ['admin', 'yogico'] } }).project({ fromAddress: 1, smtpUser: 1, isDefault: 1 }).toArray();
 await mongoose.disconnect();
 const def = accounts.find((a) => a.isDefault);
 const other = accounts.find((a) => !a.isDefault);
@@ -72,7 +72,7 @@ try {
   await waitFor(() => false, 1500);
   const req = captured.find((c) => /test-send/.test(c.url));
   const body = req ? JSON.parse(req.body) : {};
-  ok(req && body.to === 'someone@example.com' && body.templateId && body.previewLeadId, `요청: ${JSON.stringify(body)}`);
+  ok(req && body.to === 'someone@example.com' && body.templateId && !body.previewLeadId, `요청 (예제 업체라 previewLeadId 없음): ${JSON.stringify(body)}`);
   ok(dialogs.some((d) => /테스트 메일을 보냅니다/.test(d)), `확인창: ${dialogs.find((d) => /테스트 메일을 보냅니다/.test(d)) || '-'}`);
   ok(!captured.some((c) => /campaign|schedule|\/send$/.test(c.url)), '업체 발송(예약) 요청은 나가지 않음');
 } finally {

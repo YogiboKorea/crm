@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
 import { replyWindowFilter, replySince } from '@/lib/mail/period';
+import { getMailScope, mailFilter, UNAUTHORIZED } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,11 @@ export async function GET(req: Request) {
 
     await dbConnect();
 
+    // 회사 목록은 모두가 함께 보지만, 카드에 붙는 메일 통수·답장 필요 수는
+    // 로그인한 아이디의 메일만 센다 — 남의 메일함 숫자가 섞이면 안 된다.
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
     const filter: any = { stage, deleted: { $ne: true } };
     if (q) {
       const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -64,7 +70,8 @@ export async function GET(req: Request) {
 
     // 받은 메일 — 회사별 통수 · 마지막 수신 · 답해야 할 건수를 한 번에
     const inAgg: any[] = await InboundMail.aggregate([
-      { $match: { leadId: { $in: ids }, trashedAt: null } },
+      // 내 계정 메일만 — 같은 회사라도 다른 아이디가 받은 편지는 세지 않는다
+      { $match: { leadId: { $in: ids }, trashedAt: null, ...mailFilter(scope) } },
       {
         $group: {
           _id: '$leadId',
@@ -96,6 +103,8 @@ export async function GET(req: Request) {
           leadId: { $in: ids },
           ...NEEDS_REPLY,
           'analysis.deadline': { $ne: null, $gte: new Date() },
+          // 기한도 내 메일에서만 — 남의 메일 기한이 카드에 뜨면 내용이 새는 셈이다
+          ...mailFilter(scope),
         },
       },
       { $group: { _id: '$leadId', nearest: { $min: '$analysis.deadline' } } },

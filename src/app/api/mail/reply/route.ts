@@ -54,8 +54,12 @@ export async function POST(req: Request) {
     // 내 메일함에 온 메일에만 답할 수 있다 (아이디별 메일 분리 — lib/mail/scope.ts)
     if (!canUseAccount(scope, mail.accountId)) return NextResponse.json(NOT_YOURS, { status: 404 });
 
-    const to = mail.from?.address;
-    if (!to) return NextResponse.json({ success: false, error: '원본 메일에 발신 주소가 없습니다' }, { status: 400 });
+    // 받은 메일에 답하면 보낸 사람에게, **우리가 보낸 메일**에서 이어서 보내면 그 메일의 받는 사람(상대)에게 간다.
+    // 보낸 메일의 from 은 우리 주소라, 그대로 쓰면 우리 자신에게 답장이 간다.
+    const to = mail.direction === 'out'
+      ? ((mail.to || []).find((t: any) => t?.address && !/@yogico\.kr$/i.test(t.address)) || (mail.to || [])[0])?.address
+      : mail.from?.address;
+    if (!to) return NextResponse.json({ success: false, error: '받을 주소를 찾을 수 없습니다' }, { status: 400 });
 
     // ── 발송 계정 ──
     // 1) 화면이 고른 계정(내 것만)  2) 이 메일을 받은 계정 — 상대 메일함에서 같은 주소로 대화가 이어진다

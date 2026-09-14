@@ -66,11 +66,20 @@ function shape(m: any, companyMap: Map<string, string>): BriefingItem {
   };
 }
 
-export async function buildBriefing(days = 1): Promise<Briefing> {
+/**
+ * extraMatch — 모든 InboundMail 조회에 덧붙이는 조건 (아이디별 메일 분리, lib/mail/scope.ts).
+ *   화면 : mailFilter(scope) — 로그인한 사람이 볼 수 있는 계정의 메일만
+ *   크론 : 마스터 계정들의 메일만 (대표 메일로 가는 브리핑에 다른 아이디의 메일이 섞이지 않게)
+ * 조건을 복사해 다른 곳에서 따로 세면 한쪽만 고쳐져 숫자가 어긋난다 — 범위는 여기로 넘겨서 한 곳에서 센다.
+ * 넘기지 않으면 예전처럼 전체 메일로 센다.
+ */
+export async function buildBriefing(days = 1, extraMatch?: Record<string, any>): Promise<Briefing> {
   const until = new Date();
   const since = new Date(until.getTime() - days * 86400000);
 
-  const base = { direction: 'in' as const, trashedAt: null, classification: { $nin: NOISE } };
+  // $and 로 감싼다 — 펼쳐 넣으면 넘어온 조건의 키가 아래 조회의 date·status 같은 조건과 겹쳐 덮일 수 있다
+  const scoped = extraMatch && Object.keys(extraMatch).length ? { $and: [extraMatch] } : null;
+  const base = { ...(scoped || {}), direction: 'in' as const, trashedAt: null, classification: { $nin: NOISE } };
   // 합계는 화면 숫자와 같은 기준(최근 2개월)으로 센다.
   // 전체를 세면 1년치가 잡혀 143 같은 수가 뜨고, 오늘 할 일이 그 안에 묻힌다.
   const periodSince = countSince();
@@ -98,10 +107,33 @@ export async function buildBriefing(days = 1): Promise<Briefing> {
   }
 
   // 직전 24시간에 'replied' 로 올라온 리드 = 새로 답장이 온 곳
-  const recentReplies: any[] = await Lead.find(
-    { stage: 'replied', lastInboundAt: { $gte: since.toISOString() } },
-    { leadId: 1, Company: 1, lastInboundAt: 1 },
-  ).sort({ lastInboundAt: -1 }).limit(20).lean();
+  let recentReplies: any[];
+  if (!scoped) {
+    recentReplies = await Lead.find(
+      { stage: 'replied', lastInboundAt: { $gte: since.toISOString() } },
+      { leadId: 1, Company: 1, lastInboundAt: 1 },
+    ).sort({ lastInboundAt: -1 }).limit(20).lean();
+  } else {
+    // Lead.lastInboundAt 은 어느 계정으로 받은 답장이든 적힌다 — 그대로 쓰면 남의 메일함에 온 답장이
+    // "새로 답장이 온 곳" 으로 드러난다. 범위 안 메일이 그 기간에 실제로 온 리드만, 그 메일 시각으로 보여준다.
+    // (받은 메일 · 휴지통 제외 — 리드 목록의 답장 지표(scopeMailStats)와 같은 기준)
+    const mine: any[] = await InboundMail.aggregate([
+      { $match: { ...scoped, direction: 'in', trashedAt: null, date: { $gte: since }, leadId: { $nin: [null, ''] } } },
+      { $group: { _id: '$leadId', at: { $max: '$date' } } },
+    ]);
+    const lastAt = new Map(mine.map((r) => [String(r._id), r.at]));
+    const rows: any[] = lastAt.size
+      ? await Lead.find(
+          // 기간 조건은 위 메일 시각이 대신한다 (저장된 lastInboundAt 은 남의 메일로 덮였을 수 있다)
+          { stage: 'replied', leadId: { $in: Array.from(lastAt.keys()) } },
+          { leadId: 1, Company: 1 },
+        ).lean()
+      : [];
+    recentReplies = rows
+      .map((l) => ({ ...l, lastInboundAt: new Date(lastAt.get(l.leadId)).toISOString() }))
+      .sort((a, b) => (a.lastInboundAt < b.lastInboundAt ? 1 : -1))
+      .slice(0, 20);
+  }
 
   const stageAgg: any[] = await Lead.aggregate([
     { $group: { _id: '$stage', n: { $sum: 1 } } },

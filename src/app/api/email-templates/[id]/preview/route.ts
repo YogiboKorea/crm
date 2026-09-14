@@ -5,6 +5,7 @@ import { Lead } from '@/models/Lead';
 import { MailAccount } from '@/models/MailAccount';
 import { renderTemplate } from '@/lib/mailer';
 import { buildVarsFromLead, buildExampleVars, buildSignatureBlock } from '@/lib/template-vars';
+import { getSessionUser, ownerFilter } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -30,8 +31,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const leadId = body?.leadId as string | undefined;
     const mailAccountId = body?.mailAccountId as string | undefined;
 
-    if (mailAccountId) {
-      accProfile = await MailAccount.findById(mailAccountId).lean();
+    if (mailAccountId && /^[0-9a-f]{24}$/i.test(String(mailAccountId))) {
+      // 서명은 로그인한 사람 몫의 계정에서만 가져온다 (lib/mail/scope.ts).
+      // 남의 계정 id 면 서명 없이 미리보기 — 남의 이름·직함·연락처가 보이지 않게.
+      const user = await getSessionUser();
+      accProfile = user
+        ? await MailAccount.findOne({ _id: mailAccountId, ...ownerFilter(user) }).lean()
+        : null;
       if (accProfile) accountInfo = { id: String(accProfile._id), name: accProfile.accountName, from: accProfile.fromAddress };
     }
 

@@ -5,6 +5,7 @@ import {
   autoAssignGroup, getOwnDomains,
 } from '@/lib/mail/groups';
 import { InboundMail } from '@/models/InboundMail';
+import { getMailScope, accountParamFilter, mailFilter, mailboxIds, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -19,12 +20,23 @@ export const maxDuration = 120;
 export async function GET(req: Request) {
   try {
     await dbConnect();
-    const accountId = new URL(req.url).searchParams.get('accountId') || undefined;
-    const result = await listGroups(accountId);
+
+    // 거래처(폴더) 목록·숫자도 내가 볼 수 있는 계정 것만 (lib/mail/scope.ts)
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
+    const requested = new URL(req.url).searchParams.get('accountId') || undefined;
+    const acc = accountParamFilter(scope, requested);
+    if (acc.denied) return NextResponse.json(NOT_YOURS, { status: 403 });
+    // 'default' 는 accountParamFilter 와 같이 '전체' 로 본다 — 계정 id 로 넘기면 MailAccount 조회가 깨진다
+    const accountId = requested && requested !== 'default' ? requested : undefined;
+    // 특정 메일함을 골랐으면 같은 메일함인 계정 id 들 전체로 (같은 주소를 다른 아이디가 먼저 모은 경우)
+    const result = accountId && accountId !== 'all'
+      ? await listGroups(undefined, mailboxIds(scope, accountId))
+      : await listGroups(accountId, scope.accountIds);
 
     // 거래처가 안 붙은 메일 수 — 재분류 대상이 얼마나 되는지 보여준다
-    const match: any = { group: { $in: [null, ''] }, direction: 'in', trashedAt: null };
-    if (accountId && accountId !== 'all') match.accountId = accountId;
+    const match: any = { ...acc.filter, group: { $in: [null, ''] }, direction: 'in', trashedAt: null };
     const ungrouped = await InboundMail.countDocuments(match);
 
     return NextResponse.json({ success: true, ...result, ungrouped });
@@ -48,19 +60,27 @@ export async function POST(req: Request) {
   try {
     await dbConnect();
 
-    const learned = await learnSenderGroups();
-    const { groups } = await listGroups();
+    // 재분류도 내 계정 메일만 건드린다 (lib/mail/scope.ts)
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+    const acc = accountParamFilter(scope, body?.accountId);
+    if (acc.denied) return NextResponse.json(NOT_YOURS, { status: 403 });
+
+    // 학습·거래처 후보도 내 계정 범위에서만 — 남의 폴더 이름이 내 메일에 붙으면
+    // 그 사람의 거래처 구성이 드러난다.
+    const learned = await learnSenderGroups(scope.accountIds);
+    const { groups } = await listGroups(undefined, scope.accountIds);
     const knownGroups = groups.map((g) => g.group).filter(Boolean);
 
     // 사람이 직접 옮긴 것(groupBy: 'manual')은 애초에 group 이 채워져 있어
     // 이 조건에 안 걸린다. 혹시 미분류로 되돌린 경우까지 감안해 명시적으로 뺀다.
     const match: any = {
+      ...acc.filter,
       group: { $in: [null, ''] },
       groupBy: { $ne: 'manual' },
       direction: 'in',
       trashedAt: null,
     };
-    if (body?.accountId && body.accountId !== 'all') match.accountId = body.accountId;
 
     const targets: any[] = await InboundMail.find(match, {
       _id: 1, subject: 1, from: 1, classification: 1,
@@ -79,10 +99,11 @@ export async function POST(req: Request) {
     // 발신 도메인별 누적 통수 — 폴더를 팔 만큼 오간 곳인지 판단하는 근거.
     // 이번에 분류할 것만이 아니라 **전체 수신 이력**을 세야 한다
     // (한 통씩 여러 번 온 곳도 합치면 단골일 수 있다).
+    // 단 "전체" 는 내가 볼 수 있는 계정 전체 — 남의 메일 통수로 내 폴더가 생기면 안 된다.
     const domainCounts = new Map<string, number>();
     if (useFallback) {
       const rows: any[] = await InboundMail.aggregate([
-        { $match: { direction: { $ne: 'out' }, 'from.address': { $nin: [null, ''] } } },
+        { $match: { ...mailFilter(scope), direction: { $ne: 'out' }, 'from.address': { $nin: [null, ''] } } },
         { $group: { _id: { $toLower: { $arrayElemAt: [{ $split: ['$from.address', '@'] }, 1] } }, n: { $sum: 1 } } },
       ]);
       for (const r of rows) if (r._id) domainCounts.set(String(r._id), r.n);
@@ -119,7 +140,8 @@ export async function POST(req: Request) {
 
       ops.push({
         updateOne: {
-          filter: { _id: m._id },
+          // targets 가 이미 범위 안이지만, 쓰기에도 범위를 한 번 더 건다
+          filter: { _id: m._id, ...mailFilter(scope) },
           update: { $set: { group: hit.group, groupBy: by } },
         },
       });

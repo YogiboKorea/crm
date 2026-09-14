@@ -5,6 +5,7 @@ import { Lead } from '@/models/Lead';
 import { getMailSettings } from '@/lib/mail-settings';
 import { draftReply } from '@/lib/ai/draft-reply';
 import { actualCost } from '@/lib/ai/estimate';
+import { getMailScope, mailFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -42,10 +43,14 @@ export async function POST(req: Request) {
 
   try {
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
     const settings = await getMailSettings();
 
-    const mail: any = await InboundMail.findById(inboundMailId).lean();
-    if (!mail) return NextResponse.json({ success: false, error: '원본 메일을 찾을 수 없습니다' }, { status: 404 });
+    // 남의 계정 메일로는 초안을 만들지 않는다 — 초안 응답에 원문 내용이 녹아 나오고 유료 호출이기도 하다.
+    // 범위 조건을 조회에 바로 걸어 없는 메일과 남의 메일이 똑같은 404 가 되게 한다 (있는지 떠보기 방지)
+    const mail: any = await InboundMail.findOne({ _id: inboundMailId, ...mailFilter(scope) }).lean();
+    if (!mail) return NextResponse.json(NOT_YOURS, { status: 404 });
 
     // 리드 회사명을 넘겨 초안이 맥락을 갖게 한다
     let leadCompany = '';
@@ -58,7 +63,7 @@ export async function POST(req: Request) {
 
     // 초안을 메일에 남긴다 — 화면을 닫았다 열어도 유지되고, 무엇을 보냈는지 이력이 된다
     await InboundMail.updateOne(
-      { _id: mail._id },
+      { _id: mail._id, ...mailFilter(scope) },
       {
         $push: {
           drafts: {

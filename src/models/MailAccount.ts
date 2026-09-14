@@ -42,6 +42,8 @@ export interface IMailAccount extends Document {
 
   lastVerifiedAt?: string;    // 마지막 성공적으로 SMTP 연결한 시각
   lastVerifyError?: string;   // 마지막 verify 실패 사유
+  backfilledAt?: Date | null; // [📥 2달 가져오기]를 끝낸 시각 — 없으면 새 아이디 첫 로그인 때 자동으로 돈다
+  backfillCursor?: any;       // 2달 가져오기 중간 위치 (창을 닫아도 이어 간다)
 
   createdAt: Date;
   updatedAt: Date;
@@ -80,6 +82,11 @@ const MailAccountSchema = new Schema<IMailAccount>({
 
   lastVerifiedAt: { type: String, default: '' },
   lastVerifyError: { type: String, default: '' },
+
+  // [📥 전체 메일함 2달 가져오기] — 새 아이디로 처음 로그인하면 자동으로 돈다(한 번만).
+  // 끝나면 backfilledAt 을 찍고, 중간에 창을 닫으면 backfillCursor 에서 이어 간다 (lib/mail/ingest.ts runBackfill)
+  backfilledAt: { type: Date, default: null },
+  backfillCursor: { type: Schema.Types.Mixed, default: null },
 }, { timestamps: true });
 
 // 소유자별로 accountName + smtpUser 조합은 unique (같은 계정 중복 등록 방지)

@@ -3,6 +3,7 @@ import { tidyMailText } from '@/lib/mail/text';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
+import { getMailScope, mailFilter, UNAUTHORIZED } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +17,9 @@ export const runtime = 'nodejs';
  * 어느 한쪽 앱만으로는 만들 수 없는 화면이다.
  *
  * 응답: { lead, timeline: [{direction:'out'|'in', ...}], stats }
+ *
+ * 리드는 모두가 함께 쓰지만, 받은 메일은 로그인한 아이디가 볼 수 있는 계정 것만 엮는다
+ * (lib/mail/scope.ts). 보낸 기록(emailHistory)은 리드 자료라 그대로 보여준다.
  */
 export async function GET(req: Request) {
   try {
@@ -26,6 +30,8 @@ export async function GET(req: Request) {
     }
 
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
     const lead: any = await Lead.findOne({ leadId }).lean();
     if (!lead) {
@@ -33,8 +39,9 @@ export async function GET(req: Request) {
     }
 
     // ── 받은 메일 (본문 포함 — 대화를 읽어야 하므로) ──
+    // 같은 리드라도 다른 아이디의 계정으로 받은 메일은 넣지 않는다 — 여기서 빠지면 남의 메일 본문이 통째로 보인다
     const inbound: any[] = await InboundMail.find(
-      { leadId },
+      { leadId, ...mailFilter(scope) },
       { 'raw.html': 0 },   // HTML 원문은 무거워서 제외 (상세 조회에서 별도)
     ).sort({ date: 1 }).lean();
 
@@ -101,6 +108,22 @@ export async function GET(req: Request) {
 
     const lastIn = received.length ? received[received.length - 1] : null;
 
+    // Lead.inboundCount · lastInboundAt 은 모든 계정의 메일로 센 값이다.
+    // 그대로 내보내면 남의 계정으로 온 답장 통수·시각이 드러나므로, 이 사람이 볼 수 있는 메일로 다시 센다
+    // (ingest.ts 와 같은 기준: 받은 메일 · 휴지통 제외).
+    const myIn = inbound.filter((m: any) => m.direction === 'in' && !m.trashedAt);
+    const myLastIn = myIn.reduce((best: string, m: any) => {
+      const at = m.date ? new Date(m.date).toISOString() : '';
+      return at > best ? at : best;
+    }, '');
+    // Lead.needsReply 도 어느 계정 메일이든 마지막으로 받은 한 통의 판정으로 덮인 값이다 —
+    // 남의 메일함에 온 답장 때문에 '회신 필요' 가 켜지거나 꺼져 보이지 않게, 내 메일 중 마지막 한 통으로 정한다.
+    // (inbound 는 date 오름차순이라 myIn 의 끝이 가장 최근 메일이다)
+    const myLatestIn = myIn.length ? myIn[myIn.length - 1] : null;
+    const myNeedsReply = Boolean(
+      myLatestIn && myLatestIn.analysis?.needsReply === true && myLatestIn.status !== 'replied',
+    );
+
     return NextResponse.json({
       success: true,
       lead: {
@@ -112,9 +135,9 @@ export async function GET(req: Request) {
         WebsiteContact: lead.WebsiteContact,
         stage: lead.stage,
         stageChangedAt: lead.stageChangedAt,
-        inboundCount: lead.inboundCount || 0,
-        lastInboundAt: lead.lastInboundAt || '',
-        needsReply: lead.needsReply || false,
+        inboundCount: myIn.length,
+        lastInboundAt: myLastIn,
+        needsReply: myNeedsReply,
       },
       timeline,
       stats: {

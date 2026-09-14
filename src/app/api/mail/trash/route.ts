@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
+import { getMailScope, mailFilter, UNAUTHORIZED } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -12,6 +13,9 @@ export const runtime = 'nodejs';
  * 오판이 곧 자료 소실이 되고 되돌릴 방법이 없다.
  *
  * Body: { mailIds: string[], restore?: boolean }
+ *
+ * 로그인한 아이디가 볼 수 있는 계정의 메일만 옮긴다 — 남의 메일 id 가 섞여 오면 조용히 건너뛴다
+ * (moved 통수에서 빠진다).
  */
 export async function POST(req: Request) {
   let body: any = {};
@@ -29,8 +33,12 @@ export async function POST(req: Request) {
 
   try {
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
+    // 범위 조건을 수정 쿼리에 직접 건다 — id 만 믿으면 남의 메일도 휴지통으로 보낼 수 있다
     const r = await InboundMail.updateMany(
-      { _id: { $in: ids } },
+      { _id: { $in: ids }, ...mailFilter(scope) },
       { $set: { trashedAt: restore ? null : new Date() } },
     );
     return NextResponse.json({
@@ -43,11 +51,14 @@ export async function POST(req: Request) {
   }
 }
 
-/** GET /api/mail/trash — 휴지통 통수 */
+/** GET /api/mail/trash — 휴지통 통수 (내가 볼 수 있는 계정 것만) */
 export async function GET() {
   try {
     await dbConnect();
-    const count = await InboundMail.countDocuments({ trashedAt: { $ne: null } });
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+    // 통수도 범위 안에서 센다 — 전체로 세면 남의 계정 메일이 몇 통인지 드러난다
+    const count = await InboundMail.countDocuments({ trashedAt: { $ne: null }, ...mailFilter(scope) });
     return NextResponse.json({ success: true, count });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message || '조회 실패' }, { status: 500 });

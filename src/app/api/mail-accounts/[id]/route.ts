@@ -1,39 +1,27 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { jwtVerify } from 'jose';
-import { isMasterUser } from '@/lib/masters';
+import { getSessionUser, ownerFilter, UNAUTHORIZED } from '@/lib/mail/scope';
 import dbConnect from '@/lib/mongodb';
 import { MailAccount } from '@/models/MailAccount';
 import { encryptSecret, sanitizeMailAccount } from '@/lib/crypto';
-import nodemailer from 'nodemailer';
+import { decryptSecret } from '@/lib/crypto';
+import { isAllowedMailHost, verifySmtpLogin, HOST_NOT_ALLOWED, FROM_MUST_MATCH } from '@/lib/mail/account-guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret');
-
-async function currentUser() {
-  const c = await cookies();
-  const token = c.get('admin_session')?.value;
-  if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return (payload as any).user as string;
-  } catch { return null; }
-}
 
 /**
  * PUT    /api/mail-accounts/:id → 계정 정보 부분 업데이트 (비번 포함 시 재검증)
  * DELETE /api/mail-accounts/:id → 계정 삭제
  */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await currentUser();
-  if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
 
   await dbConnect();
-  const acc = await MailAccount.findOne({ _id: id, ...(isMasterUser(user) ? {} : { owner: user }) });
+  // 자기 범위(lib/mail/scope.ts ownerFilter) 계정만 고친다 — 마스터라도 다른 아이디의 계정은 404
+  const acc = await MailAccount.findOne({ _id: id, ...ownerFilter(user) });
   if (!acc) return NextResponse.json({ success: false, error: 'not found' }, { status: 404 });
 
   const update: any = {};
@@ -42,20 +30,32 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (Object.prototype.hasOwnProperty.call(body, k)) update[k] = body[k];
   }
 
-  // 비번 변경 시 반드시 재검증
-  if (body.smtpPass) {
+  if (typeof update.smtpUser === 'string') update.smtpUser = update.smtpUser.trim().toLowerCase();
+  const nextHost = update.smtpHost ?? acc.smtpHost;
+  const nextUser = update.smtpUser ?? acc.smtpUser;
+  if (!isAllowedMailHost(nextHost)) {
+    return NextResponse.json({ success: false, error: HOST_NOT_ALLOWED }, { status: 400 });
+  }
+  const nextFrom = update.fromAddress ?? acc.fromAddress;
+  if (String(nextFrom || '').trim().toLowerCase() !== String(nextUser || '').trim().toLowerCase()) {
+    return NextResponse.json({ success: false, error: FROM_MUST_MATCH }, { status: 400 });
+  }
+
+  // 로그인 주소·서버가 바뀌면 비밀번호를 새로 안 넣었어도 **반드시 다시 로그인해 본다**.
+  // (예전에는 비밀번호를 넣을 때만 확인해서, 주소만 david@ 로 바꿔 그 메일함을 여는 길이 있었다)
+  const identityChanged = ['smtpUser', 'smtpHost', 'smtpPort', 'smtpSecure'].some(
+    (k) => Object.prototype.hasOwnProperty.call(update, k) && String(update[k]).toLowerCase() !== String((acc as any)[k]).toLowerCase(),
+  );
+  if (body.smtpPass || identityChanged) {
     try {
-      const t = nodemailer.createTransport({
-        host: update.smtpHost || acc.smtpHost,
-        port: update.smtpPort || acc.smtpPort,
-        secure: update.smtpSecure ?? acc.smtpSecure,
-        auth: {
-          user: update.smtpUser || acc.smtpUser,
-          pass: body.smtpPass,
-        },
+      await verifySmtpLogin({
+        host: String(nextHost).trim(),
+        port: Number(update.smtpPort ?? acc.smtpPort),
+        secure: Boolean(update.smtpSecure ?? acc.smtpSecure),
+        user: String(nextUser).trim(),
+        pass: body.smtpPass ? String(body.smtpPass) : decryptSecret(acc.smtpPassEnc),
       });
-      await t.verify();
-      update.smtpPassEnc = encryptSecret(String(body.smtpPass));
+      if (body.smtpPass) update.smtpPassEnc = encryptSecret(String(body.smtpPass));
       update.lastVerifiedAt = new Date().toISOString();
       update.lastVerifyError = '';
     } catch (e: any) {
@@ -66,9 +66,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
   }
 
-  // isDefault=true 로 변경 시 다른 계정 해제
+  // isDefault=true 로 변경 시 다른 계정 해제 — 같은 범위 안에서만 (다른 아이디의 기본 계정은 그 사람 것)
   if (body.isDefault === true) {
-    await MailAccount.updateMany({ ...(isMasterUser(user) ? {} : { owner: user }), isDefault: true, _id: { $ne: acc._id } }, { $set: { isDefault: false } });
+    await MailAccount.updateMany({ ...ownerFilter(user), isDefault: true, _id: { $ne: acc._id } }, { $set: { isDefault: false } });
     update.isDefault = true;
   }
 
@@ -78,15 +78,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await currentUser();
-  if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   const { id } = await params;
   await dbConnect();
-  const acc = await MailAccount.findOneAndDelete({ _id: id, ...(isMasterUser(user) ? {} : { owner: user }) });
+  // 자기 범위 계정만 지운다 — 마스터라도 다른 아이디의 계정은 404
+  const acc = await MailAccount.findOneAndDelete({ _id: id, ...ownerFilter(user) });
   if (!acc) return NextResponse.json({ success: false, error: 'not found' }, { status: 404 });
-  // default 계정 삭제하면 가장 오래된 것을 새 default 로
+  // default 계정 삭제하면 같은 범위에서 가장 오래된 것을 새 default 로
+  // (범위 밖 계정을 기본으로 올리면 다른 아이디의 기본 계정이 둘이 된다)
   if (acc.isDefault) {
-    const next = await MailAccount.findOne(isMasterUser(user) ? {} : { owner: user }).sort({ createdAt: 1 });
+    const next = await MailAccount.findOne(ownerFilter(user)).sort({ createdAt: 1 });
     if (next) { next.isDefault = true; await next.save(); }
   }
   return NextResponse.json({ success: true });

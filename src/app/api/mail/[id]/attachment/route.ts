@@ -6,7 +6,8 @@ import { toImapConfig } from '@/lib/mail/accounts';
 import { getMailSettings } from '@/lib/mail-settings';
 import type { ImapConfig } from '@/lib/mail/imap';
 import { openAttachmentStream } from '@/lib/mail/imap';
-import { getMailScope, canUseAccount, ownerFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { getMailScope, mailFilter, ownerFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { isMasterUser } from '@/lib/masters';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,24 +57,46 @@ function contentDisposition(kind: 'attachment' | 'inline', filename: string): st
  * 실제로 기본 계정은 david@ 인데 'main' 메일 20통은 fe@ 메일함에서 왔다.
  * 그래서 설정에 적힌 주소와 같은 계정을 찾고, 없으면 설정의 접속 정보를 그대로 쓴다.
  *
- * user — 로그인한 아이디. 계정은 **그 사람 몫(ownerFilter) 안에서만** 찾는다.
+ * sessionUser — 로그인한 아이디. 계정은 **그 사람 몫(ownerFilter) 안에서만** 찾는다.
  * 주소가 같다고 다른 아이디가 등록한 계정의 비밀번호로 메일함을 열면 안 된다.
+ *
+ * 같은 주소를 여러 아이디가 등록하면 메일은 먼저 모은 계정 id 에 붙는다 (lib/mail/scope.ts).
+ * 그 메일은 내 범위에 들지만 계정 주인은 남이라 위 조회가 비어 첨부를 못 받았다.
+ * 그때는 남의 계정에서 **주소·서버만** 읽어, 같은 메일함을 가리키는 **내 계정**의 비밀번호로 연다.
  */
 async function resolveMailbox(
   accountId: string | undefined,
   folder: string,
-  user: string,
+  sessionUser: string,
 ): Promise<{ settings: ImapConfig } | { error: string }> {
   const id = String(accountId || '');
-  const mine = ownerFilter(user);
+  const mine = ownerFilter(sessionUser);
 
   if (/^[a-f0-9]{24}$/i.test(id)) {
     const account = await MailAccount.findOne({ _id: id, ...mine }).lean();
-    if (!account) return { error: '이 메일을 받은 메일 계정이 삭제되어 첨부파일을 받을 수 없습니다.' };
-    return { settings: toImapConfig(account, folder) };
+    if (account) return { settings: toImapConfig(account, folder) };
+
+    // 같은 메일함을 다른 아이디가 먼저 등록해 그 계정 id 로 모인 메일.
+    // 비밀번호(smtpPassEnc)는 아예 읽지 않는다 — 주소와 서버만 있으면 내 계정을 찾을 수 있다
+    const other: any = await MailAccount.findById(id, { smtpUser: 1, smtpHost: 1 }).lean();
+    const addr = String(other?.smtpUser || '').trim().toLowerCase();
+    const host = String(other?.smtpHost || '').trim().toLowerCase();
+    if (!addr) return { error: '이 메일을 받은 메일 계정이 삭제되어 첨부파일을 받을 수 없습니다.' };
+
+    // 주소만 같고 서버가 다르면 다른 메일함이다 — UID 가 달라 엉뚱한 첨부가 나가므로 서버까지 맞춘다
+    const own: any[] = await MailAccount.find(mine).lean();
+    const same = own
+      .filter((a) => String(a.smtpUser || '').trim().toLowerCase() === addr
+        && String(a.smtpHost || '').trim().toLowerCase() === host)
+      // 꺼 둔 계정보다 쓰고 있는 계정을 먼저 (비밀번호가 최신일 가능성이 높다)
+      .sort((a, b) => Number(b.isActive !== false) - Number(a.isActive !== false))[0];
+    if (!same) return { error: '이 메일함을 내 메일 계정으로 등록하지 않아 첨부파일을 받을 수 없습니다.' };
+    return { settings: toImapConfig(same, folder) };
   }
 
   // 'main' 또는 비어 있음 — 예전 수신 설정으로 받은 메일
+  // 옛 메일은 마스터 몫이다. 일반 아이디가 회사 수신 설정의 비밀번호로 메일함을 열 일은 없다
+  if (!isMasterUser(sessionUser)) return { error: '이 메일을 받은 메일함 정보를 찾을 수 없습니다.' };
   const legacy: any = await getMailSettings();
   const user = String(legacy?.imapUser || '').toLowerCase();
   if (!user) return { error: '이 메일을 받은 메일함 정보를 찾을 수 없습니다.' };
@@ -113,12 +136,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const scope = await getMailScope();
     if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
-    const mail: any = await InboundMail.findById(id, {
+    // 범위 조건을 조회에 바로 건다 — 없는 메일과 남의 메일이 **똑같은** 404 가 되어야
+    // 응답 차이로 "그 id 의 메일이 있다" 는 것을 알아낼 수 없다
+    const mail: any = await InboundMail.findOne({ _id: id, ...mailFilter(scope) }, {
       subject: 1, uid: 1, folder: 1, accountId: 1, attachments: 1,
     }).lean();
-    if (!mail) return fail(404, '메일을 찾을 수 없습니다.');
-    // 남의 계정 메일이면 첨부 목록도 보지 않고 끝낸다 — 404 로 있는지도 알려주지 않는다
-    if (!canUseAccount(scope, mail.accountId)) return NextResponse.json(NOT_YOURS, { status: 404 });
+    if (!mail) return NextResponse.json(NOT_YOURS, { status: 404 });
 
     // 화면에 보여준 목록과 같은 기준으로 고른다 (본문 삽입 이미지는 목록에서 뺐다)
     const list = (mail.attachments || []).filter((a: any) => !a.inline);

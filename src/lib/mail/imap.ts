@@ -260,6 +260,51 @@ export async function fetchRecent(
 }
 
 /**
+ * 기간 안의 메일을 **한 묶음씩** 가져온다 — [📥 전체 메일함 2달 가져오기] 용.
+ *
+ * 새로 등록한 메일함은 수집 위치(lastUid)가 없어서 평소 수집으로는 최근 몇십 통만 들어온다.
+ * 메일함에 0 · 0 · 0 으로 뜨던 이유다. 날짜(SINCE)로 찾아 오래된 것부터 limit 통씩 돌려주고,
+ * 다음 호출은 afterUid 뒤부터 이어 받는다 (서버 실행 시간 제한 안에서 끊어 가며 끝까지).
+ */
+export async function fetchSinceBatch(
+  settings: ImapConfig,
+  { folder, since, afterUid = 0, limit = 40 }: { folder: string; since: Date; afterUid?: number; limit?: number },
+): Promise<{ messages: FetchedMessage[]; total: number; remaining: number; lastUid: number; uidNext: number }> {
+  return withClient(settings, async (client) => {
+    const lock = await client.getMailboxLock(folder);
+    try {
+      const uidNext = (client.mailbox as any).uidNext || 0;
+      if ((client.mailbox as any).exists === 0) return { messages: [], total: 0, remaining: 0, lastUid: afterUid, uidNext };
+      const found = ((await client.search({ since }, { uid: true })) || []) as number[];
+      const all = [...found].sort((a, b) => a - b);
+      const pending = all.filter((u) => u > afterUid);
+      const pick = pending.slice(0, limit);
+      const messages: FetchedMessage[] = [];
+      if (pick.length) {
+        for await (const msg of client.fetch(pick.join(','), { uid: true, flags: true, source: true, internalDate: true }, { uid: true })) {
+          messages.push({
+            uid: msg.uid,
+            source: msg.source as Buffer,
+            flags: Array.from(msg.flags || []),
+            internalDate: toDate(msg.internalDate),
+          });
+        }
+      }
+      messages.sort((a, b) => a.uid - b.uid);
+      return {
+        messages,
+        total: all.length,
+        remaining: Math.max(0, pending.length - pick.length),
+        lastUid: pick.length ? pick[pick.length - 1] : afterUid,
+        uidNext,
+      };
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+/**
  * 첨부파일 1개를 메일 서버에서 그대로 받아온다.
  *
  * 파일 내용을 DB 에 쌓지 않고 필요할 때만 가져오는 방식이라

@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
 import { Lead } from '@/models/Lead';
 import { countSince, COUNT_PERIOD_LABEL } from '@/lib/mail/period';
+import { getMailScope, accountParamFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -22,8 +23,14 @@ export async function GET(req: Request) {
   try {
     await dbConnect();
 
+    // 기한 목록도 내가 볼 수 있는 계정의 메일만 (lib/mail/scope.ts)
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
+    // 'all'·미지정은 "내 계정 전체". 남의 계정 id 를 넘기면 거절한다.
     const accountId = new URL(req.url).searchParams.get('accountId');
-    const acc = accountId && accountId !== 'all' ? { accountId } : {};
+    const { filter: acc, denied } = accountParamFilter(scope, accountId);
+    if (denied) return NextResponse.json(NOT_YOURS, { status: 403 });
 
     const mails: any[] = await InboundMail.find(
       {

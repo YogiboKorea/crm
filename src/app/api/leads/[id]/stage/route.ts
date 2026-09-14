@@ -66,7 +66,9 @@ export async function POST(
       update.readyForOutreach = false;
     }
 
-    const lead = await Lead.findByIdAndUpdate(id, { $set: update }, { new: true });
+    // 응답에 메일에서 온 값(스레드 키·답장 수·회신 필요)은 싣지 않는다 — 다른 아이디의 메일 흔적이다 (아이디별 메일 분리)
+    const lead = await Lead.findByIdAndUpdate(id, { $set: update }, { new: true })
+      .select('-threadKeys -inboundCount -lastInboundAt -needsReply -replyDeadline');
     return NextResponse.json({ success: true, data: lead });
   } catch (error: any) {
     return NextResponse.json(

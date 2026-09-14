@@ -46,7 +46,11 @@ export async function processScheduleItem(doc: any) {
   // 그 계정이 지워졌거나 사용 중지면 다른 주소로 대신 보내지 않고 실패로 남긴다
   // (예전처럼 .env 의 SMTP 로 조용히 대신 보내지도 않는다).
   {
-    const { account: acc, error: accError } = await resolveOutreachAccount(doc.mailAccountId, 'system');
+    const { account: acc, error: accError } = await resolveOutreachAccount(
+      doc.mailAccountId,
+      // 만든 사람이 있으면 그 사람 계정 범위로, 없으면(옛 예약) 마스터 계정 범위로
+      doc.createdBy && doc.createdBy !== 'system' ? doc.createdBy : undefined,
+    );
     if (!acc) {
       doc.status = 'failed';
       doc.lastError = accError || 'no account';

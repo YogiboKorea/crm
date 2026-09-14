@@ -29,6 +29,7 @@ export interface MailAccountSummary {
   address: string;        // smtpUser (= 메일 주소)
   isDefault: boolean;
   isActive: boolean;
+  backfilledAt?: Date | null;  // 2달 가져오기를 끝낸 시각 (없으면 새 아이디 첫 로그인 때 자동으로 돈다)
 }
 
 /** SMTP 호스트로 IMAP 호스트를 추정 — 이카운트만 확인됨 */
@@ -62,8 +63,22 @@ export function toImapConfig(account: any, folder = 'INBOX'): ImapConfig {
  * user 를 넘기면 그 사람 계정만, 'system' 이면 전부(크론 수집 — 모든 사람의 메일을 모아 둔다).
  */
 export async function listMailAccounts(user?: string | null): Promise<any[]> {
-  const scope = user === 'system' ? {} : ownerScope(user);
-  return MailAccount.find({ ...scope, isActive: { $ne: false } })
+  if (user === 'system') {
+    // 크론 수집: 같은 주소를 여러 아이디가 등록했어도 메일함은 하나다 — 한 번만 모은다.
+    // 가장 먼저 등록된 계정으로 모은다 (그 계정에 이미 수집 위치(lastUid)와 메일이 붙어 있다).
+    // 누가 볼 수 있는지는 주소 기준으로 lib/mail/scope.ts 가 정한다.
+    const all = await MailAccount.find({ isActive: { $ne: false } }).sort({ createdAt: 1 }).lean();
+    const seen = new Set<string>();
+    return all
+      .filter((a: any) => {
+        const key = String(a.smtpUser || '').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a: any, b: any) => Number(!!b.isDefault) - Number(!!a.isDefault));
+  }
+  return MailAccount.find({ ...ownerScope(user), isActive: { $ne: false } })
     .sort({ isDefault: -1, createdAt: 1 })
     .lean();
 }
@@ -76,7 +91,8 @@ export function summarize(account: any): MailAccountSummary {
     address: account.smtpUser,
     isDefault: Boolean(account.isDefault),
     isActive: account.isActive !== false,
-  };
+    backfilledAt: account.backfilledAt || null,
+  } as MailAccountSummary;
 }
 
 /**

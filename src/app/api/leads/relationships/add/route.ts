@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
+import { getMailScope, mailFilter, UNAUTHORIZED } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -62,6 +63,11 @@ export async function POST(req: Request) {
   try {
     await dbConnect();
 
+    // 회사 등록 자체는 공용이지만 아래에서 메일을 붙이므로 누가 등록하는지 먼저 확인한다.
+    // (회사를 만든 뒤에 401 이 나면 메일 연결 없이 회사만 남는다)
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
     // 이미 있는 회사면 새로 만들지 않는다.
     // 같은 곳이 두 줄로 생기면 대화 이력이 갈라져 어느 쪽이 진짜인지 알 수 없다.
     const dup = await Lead.findOne(
@@ -102,10 +108,13 @@ export async function POST(req: Request) {
     });
 
     // 이미 받아둔 같은 주소의 메일을 이 회사에 붙인다 (아직 안 붙은 것만)
+    // 등록한 사람의 메일함에 있는 것만 붙인다 — 남의 메일을 건드리면 linkedMails 숫자로
+    // 다른 아이디가 이 주소와 주고받았는지가 드러난다.
     const linked = await InboundMail.updateMany(
       {
         'from.address': new RegExp(`^${Email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
         $or: [{ leadId: '' }, { leadId: { $exists: false } }, { leadId: null }],
+        ...mailFilter(scope),
       },
       // 'manual' — InboundMail 이 선언해 둔 값 중 하나. 새 값을 쓰면
       // 타입 선언과 어긋나 나중에 필터가 안 걸린다.

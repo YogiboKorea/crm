@@ -5,6 +5,7 @@ import { Lead } from '@/models/Lead';
 import { getMailSettings } from '@/lib/mail-settings';
 import { analyzeMail } from '@/lib/ai/analyze-mail';
 import { estimateMailCost, estimateBatchCost, actualCost } from '@/lib/ai/estimate';
+import { getMailScope, mailFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -17,6 +18,8 @@ export const maxDuration = 300;
  *   1) 광고·자동발송·자사발신은 애초에 대상에서 제외
  *   2) 이미 AI 분석된 메일은 다시 하지 않음
  *   3) 한 번에 처리할 통수를 설정의 dailyAnalyzeLimit 로 제한
+ * 대상은 로그인한 아이디가 볼 수 있는 계정의 메일로만 고른다 (lib/mail/scope.ts) —
+ * 남의 메일을 분석하면 번역·요약이 그 사람 메일에 박히고 비용도 엉뚱한 사람 몫으로 나간다.
  *
  * Body: {
  *   mailIds?: string[],   // 지정 시 그 메일만 (화면에서 개별 실행)
@@ -30,6 +33,8 @@ export async function POST(req: Request) {
 
   try {
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
     const settings = await getMailSettings();
     const model = settings.claudeModel || 'claude-haiku-4-5';
     const limit = Math.min(
@@ -40,9 +45,13 @@ export async function POST(req: Request) {
     // ── 대상 선정 ──
     let targets: any[];
     if (Array.isArray(body?.mailIds) && body.mailIds.length) {
-      targets = await InboundMail.find({ _id: { $in: body.mailIds } }).lean();
+      // 화면에서 고른 메일이라도 범위 밖이면 빠진다
+      targets = await InboundMail.find({ _id: { $in: body.mailIds }, ...mailFilter(scope) }).lean();
+      // 고른 메일이 하나도 남지 않으면 "분석할 메일 없음(성공)" 이 아니라 거절 — 404 로 있는지도 알려주지 않는다
+      if (!targets.length) return NextResponse.json(NOT_YOURS, { status: 404 });
     } else {
       targets = await InboundMail.find({
+        ...mailFilter(scope),
         // 광고·자동발송은 사람이 읽을 것이 아니므로 번역할 이유가 없다
         classification: { $nin: ['ad', 'system'] },
         // 우리가 보낸 메일은 '할 일'이 아니라 기록이다
@@ -114,7 +123,8 @@ export async function POST(req: Request) {
           set.classification = r.classification;
           set.classifiedBy = 'ai';
         }
-        await InboundMail.updateOne({ _id: mail._id }, { $set: set });
+        // 대상은 이미 범위로 골랐지만 쓰기에도 한 번 더 건다 (고른 뒤 계정이 바뀌어도 남의 메일에 박히지 않게)
+        await InboundMail.updateOne({ _id: mail._id, ...mailFilter(scope) }, { $set: set });
 
         // 리드의 회신 필요 지표도 AI 판정으로 갱신
         if (mail.leadId) {
@@ -141,7 +151,9 @@ export async function POST(req: Request) {
       }
     }
 
+    // 남은 통수도 내 범위 안에서 센다
     const remaining = await InboundMail.countDocuments({
+      ...mailFilter(scope),
       classification: { $nin: ['ad', 'system'] },
       direction: { $ne: 'out' },
       trashedAt: null,
@@ -166,10 +178,14 @@ export async function POST(req: Request) {
 export async function GET() {
   try {
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
     const settings = await getMailSettings();
     const model = settings.claudeModel || 'claude-haiku-4-5';
 
+    // 대기 통수·예상 비용은 내가 분석할 수 있는 메일(POST 대상과 같은 범위)로만
     const pending = await InboundMail.find({
+      ...mailFilter(scope),
       classification: { $nin: ['ad', 'system'] },
       direction: { $ne: 'out' },
       trashedAt: null,
@@ -180,6 +196,7 @@ export async function GET() {
       .lean();
 
     const total = await InboundMail.countDocuments({
+      ...mailFilter(scope),
       classification: { $nin: ['ad', 'system'] },
       direction: { $ne: 'out' },
       trashedAt: null,

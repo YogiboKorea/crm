@@ -172,6 +172,10 @@ export default function Home() {
               <span className="nav-icon">💎</span><span className="nav-label">추천 리스트</span>
             </button>
             */}
+            {/* 로그인 아이디·비밀번호 — 사람마다 아이디가 따로 있다 (david 대표님 · hoon 전무님 …) */}
+            <button className="nav-item" data-view="tool-crm-account" type="button" title="CRM 계정 관리 — 내 로그인 아이디 확인 · 비밀번호 변경">
+              <span className="nav-icon">👤</span><span className="nav-label">CRM 계정 관리</span>
+            </button>
             <button className="nav-item" data-view="tool-user-guide" type="button" title="사용 설명서 — 처음 쓰시는 분을 위한 단계별 가이드">
               <span className="nav-icon">📖</span><span className="nav-label">사용 설명서</span>
             </button>
@@ -742,7 +746,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=26bff071" strategy="afterInteractive" />
+      <Script src="/app.js?v=9f148975" strategy="afterInteractive" />
     </>
   );
 }

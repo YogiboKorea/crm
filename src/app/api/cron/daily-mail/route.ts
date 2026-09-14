@@ -7,9 +7,26 @@ import { getMailSettings } from '@/lib/mail-settings';
 import { MailAccount } from '@/models/MailAccount';
 import { sendMail } from '@/lib/mailer';
 import { decryptSecret } from '@/lib/crypto';
+import { masterIds } from '@/lib/masters';
+import { accountIdsForOwner } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+
+/**
+ * 크론 브리핑이 셀 메일 범위 — 마스터 몫만 (아이디별 메일 분리, lib/mail/scope.ts).
+ *
+ * 브리핑은 설정의 briefingEmail(대표 메일)로 간다. 범위 없이 세면 다른 아이디가 등록한
+ * 메일함의 제목·요약까지 대표 메일로 나간다. 크론에는 로그인한 사람이 없으므로 마스터 범위를 직접 만든다:
+ *   · 마스터 아이디가 등록한 계정
+ *   · 같은 메일함(주소+서버가 같은) 을 다른 아이디가 먼저 등록한 계정 — 메일은 먼저 모은 계정 id 에 붙는다
+ *   · 'main' — 계정 개념 전에 모은 옛 메일 (마스터 몫)
+ */
+async function masterMailMatch(): Promise<Record<string, any>> {
+  // 관리자가 화면에서 보는 범위와 **똑같이** — lib/mail/scope.ts accountIdsForOwner.
+  // (같은 메일함인 다른 계정은 관리자 계정이 그 메일함에 로그인 검증된 경우에만 넣는다. 손으로 따로 만들면 기준이 어긋난다)
+  return { accountId: { $in: await accountIdsForOwner(masterIds()[0]) } };
+}
 
 /**
  * GET /api/cron/daily-mail — 매일 1회 도는 메일 파이프라인.
@@ -70,7 +87,8 @@ export async function GET(req: Request) {
   try {
     const settings = await getMailSettings();
     const days = Number(settings.briefingDays) || 1;
-    const briefing = await buildBriefing(days);
+    // 대표 메일로 가는 브리핑이므로 마스터 몫의 메일만 담는다
+    const briefing = await buildBriefing(days, await masterMailMatch());
     const to = String(settings.briefingEmail || '').trim();
 
     const hasContent = briefing.needsReply.length || briefing.deadlinesSoon.length || briefing.newReplies.length;
@@ -81,10 +99,12 @@ export async function GET(req: Request) {
       // 새 소식이 없는 날은 보내지 않는다 — 빈 메일이 매일 오면 열어보지 않게 된다
       report.steps.briefing = { skipped: '새 소식 없음', counts: briefing.totals };
     } else {
-      const account: any = await MailAccount.findOne({ isDefault: true, isActive: true }).lean()
-        || await MailAccount.findOne({ isActive: true }).lean();
+      // 보내는 계정도 마스터 계정 중에서 고른다. 전체에서 기본 계정을 찾으면
+      // 다른 아이디가 기본으로 지정한 계정(그 사람 비밀번호)으로 대표 브리핑이 나갈 수 있다
+      const account: any = await MailAccount.findOne({ owner: { $in: masterIds() }, isDefault: true, isActive: { $ne: false } }).lean()
+        || await MailAccount.findOne({ owner: { $in: masterIds() }, isActive: { $ne: false } }).lean();
       if (!account) {
-        report.steps.briefing = { error: '발송 계정 없음' };
+        report.steps.briefing = { error: '발송 계정 없음 (마스터 아이디로 등록한 활성 메일 계정이 없습니다)' };
       } else {
         const dateLabel = new Date().toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' });
         // 브리핑은 우리 주소로 가는 내부 메일이라 아웃바운드 잠금 대상이 아니다

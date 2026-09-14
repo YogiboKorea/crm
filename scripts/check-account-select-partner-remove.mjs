@@ -21,7 +21,8 @@ const db = mongoose.connection.db;
 const A = db.collection('mailaccounts');
 const S = db.collection('emailschedules');
 const L = db.collection('leads');
-const accounts = await A.find({ isActive: { $ne: false } }).project({ smtpUser: 1, fromAddress: 1, isDefault: 1 }).toArray();
+// 관리자(마스터) 화면에는 마스터 아이디가 등록한 계정만 보인다 (lib/mail/scope.ts)
+const accounts = await A.find({ isActive: { $ne: false }, owner: { $in: ['admin', 'yogico'] } }).project({ smtpUser: 1, fromAddress: 1, isDefault: 1 }).toArray();
 const def = accounts.find((a) => a.isDefault);
 const other = accounts.find((a) => !a.isDefault);
 console.log(`  계정: ${accounts.map((a) => `${a.fromAddress || a.smtpUser}${a.isDefault ? '(대표)' : ''}`).join(', ')}`);

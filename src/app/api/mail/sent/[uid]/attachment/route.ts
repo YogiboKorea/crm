@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { resolveAccount, toImapConfig } from '@/lib/mail/accounts';
 import { openAttachmentStream, sentFolderPath } from '@/lib/mail/imap';
+import { getSessionUser, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,10 @@ function contentDisposition(filename: string): string {
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ uid: string }> }) {
+  // 첨부도 자기 계정 보낸메일함에서만 (lib/mail/scope.ts)
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
   try {
     const { uid: uidStr } = await params;
     const uid = Number(uidStr);
@@ -35,7 +40,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ uid: str
     }
 
     await dbConnect();
-    const account: any = await resolveAccount(url.searchParams.get('accountId') || 'default');
+    const accountId = url.searchParams.get('accountId') || 'default';
+    const account: any = await resolveAccount(accountId, user);
+    // 남의 계정 id 면 404 — 그 사람 첨부를 내려받지 못하게
+    if (!account && accountId !== 'default' && accountId !== 'all') return NextResponse.json(NOT_YOURS, { status: 404 });
     if (!account) return NextResponse.json({ success: false, error: '등록된 메일 계정이 없습니다.' }, { status: 400 });
     const settings = toImapConfig(account);
     const folder = await sentFolderPath(settings);

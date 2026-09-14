@@ -137,34 +137,36 @@ export function buildSignatureBlock(
 
   const normalizeUrl = (u: string) => /^https?:\/\//i.test(u) ? u : `http://${u}`;
 
+  // ── 서명 모양 (대표님이 쓰는 서명 그대로 · 2026-09-14) ──
+  //   David I Daejin Park, CEO
+  //
+  //   Yogi Corporation Inc.
+  //
+  //   A: 201, 125, Bongeunsa-ro, Gangnam-gu, Seoul, Korea
+  //
+  //   M: +82 10 1234 5678
+  //
+  //   www.yogico.kr
+  // 이름과 직함은 한 줄에 쉼표로 붙이고, 줄마다 한 줄씩 띄운다.
+  const headline = [name, title].filter(Boolean).join(', ');
+  const rows: Array<{ text: string; html: string }> = [];
+  if (headline) rows.push({ text: headline, html: `<span style="font-weight:600">${escapeHtml(headline)}</span>` });
+  if (company) rows.push({ text: company, html: escapeHtml(company) });
+  if (address) rows.push({ text: `A: ${address}`, html: `A: ${escapeHtml(address)}` });
+  if (phone) rows.push({ text: `M: ${phone}`, html: `M: ${escapeHtml(phone)}` });
+  if (email && !address && !phone && !website) {
+    rows.push({ text: `E: ${email}`, html: `E: <a href="mailto:${escapeHtml(email)}" style="color:#2563eb;text-decoration:none">${escapeHtml(email)}</a>` });
+  }
+  if (website) rows.push({ text: website, html: `<a href="${escapeHtml(normalizeUrl(website))}" style="color:#2563eb;text-decoration:none">${escapeHtml(website)}</a>` });
+
   if (opts.html) {
-    const bits: string[] = [];
-    if (name) bits.push(`<div style="margin:2px 0;font-weight:600">${escapeHtml(name)}</div>`);
-    if (title) bits.push(`<div style="margin:2px 0;color:#4b5563">${escapeHtml(title)}</div>`);
-    if (name || title) bits.push(`<div style="height:10px"></div>`);
-    if (company) bits.push(`<div style="margin:2px 0;font-weight:700">${escapeHtml(company)}</div>`);
-    if (address) bits.push(`<div style="margin:2px 0;color:#4b5563">A: ${escapeHtml(address)}</div>`);
-    if (phone)   bits.push(`<div style="margin:2px 0;color:#4b5563">M: ${escapeHtml(phone)}</div>`);
-    if (website) bits.push(`<div style="margin:2px 0;color:#4b5563">&nbsp;&nbsp;&nbsp;<a href="${escapeHtml(normalizeUrl(website))}" style="color:#2563eb;text-decoration:none">${escapeHtml(website)}</a></div>`);
-    if (email && !address && !phone && !website) {
-      bits.push(`<div style="margin:2px 0;color:#4b5563">E: <a href="mailto:${escapeHtml(email)}" style="color:#2563eb;text-decoration:none">${escapeHtml(email)}</a></div>`);
-    }
     return `
-<div style="margin-top:20px;padding-top:14px;border-top:1px solid #e5e7eb;font-family:inherit;font-size:13px;color:#111827">
-  ${bits.join('\n  ')}
+<div style="margin-top:24px;font-family:inherit;font-size:13px;line-height:1.5;color:#111827">
+  ${rows.map((r) => `<div style="margin:0 0 12px">${r.html}</div>`).join('\n  ')}
 </div>`.trim();
   }
-  // plain text
-  const lines: string[] = [];
-  if (name) lines.push(name);
-  if (title) lines.push(title);
-  if (name || title) lines.push('');
-  if (company) lines.push(company);
-  if (address) lines.push(`A: ${address}`);
-  if (phone) lines.push(`M: ${phone}`);
-  if (website) lines.push(`   ${website}`);
-  if (email && !address && !phone && !website) lines.push(`E: ${email}`);
-  return '\n\n---\n' + lines.join('\n');
+  // plain text — 줄마다 빈 줄 하나
+  return '\n\n' + rows.map((r) => r.text).join('\n\n');
 }
 
 function escapeHtml(s: string): string {

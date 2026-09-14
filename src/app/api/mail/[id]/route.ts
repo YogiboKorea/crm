@@ -21,12 +21,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const scope = await getMailScope();
     if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
-    const mail: any = await InboundMail.findById(id).lean();
+    // 남의 계정 메일은 id 를 알아도 못 연다. 범위 조건을 조회에 바로 걸어
+    // 없는 메일과 남의 메일이 똑같은 404 가 되게 한다 — 응답이 다르면 그런 메일이 있다는 게 드러난다
+    const mail: any = await InboundMail.findOne({ _id: id, ...mailFilter(scope) }).lean();
     if (!mail) {
-      return NextResponse.json({ success: false, error: '메일을 찾을 수 없습니다' }, { status: 404 });
-    }
-    // 남의 계정 메일은 id 를 알아도 못 연다 — 403 이 아니라 404 로, 그런 메일이 있는지도 알려주지 않는다
-    if (!canUseAccount(scope, mail.accountId)) {
       return NextResponse.json(NOT_YOURS, { status: 404 });
     }
 

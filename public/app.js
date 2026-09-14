@@ -301,6 +301,8 @@ async function init() {
   renderFilters();
   bindEvents();
   startNavBadgePolling();
+  // 새 아이디 첫 로그인 — 내 메일함 2달치를 자동으로 가져온다 (첫 화면이 뜬 뒤 조금 있다가)
+  setTimeout(startAutoBackfill, 2500);
   syncMailOnLogin();   // 밤사이 온 답장을 화면 열 때 한 번 당겨온다 (기다리지 않는다)
 
   const needsBaseLeads = state.view === 'pipeline-verifying' || state.view === 'pipeline-import';
@@ -1389,9 +1391,14 @@ function renderFilters() {
   if (els.verify) els.verify.value = state.verify || "All";
 }
 
+// 화면 그리기 번호 — 서버 응답을 기다리는 사이 다른 메뉴로 옮기면, 늦게 도착한 앞 화면이
+// 새 화면 위에 자기 조각(2차 검토 카드·성공/실패 탭·칩)을 붙여 버렸다
+// ([메일 양식] 위에 [AI 검증 완료] 머리가 떠 있던 문제). 기다린 뒤 번호가 바뀌었으면 그리지 않는다.
+var _renderSeq = 0;
 async function render() {
+  const seq = ++_renderSeq;
   try {
-    return await _renderInner();
+    return await _renderInner(seq);
   } catch (e) {
     console.error('[render] failed:', e);
     if (els.content) {
@@ -1406,7 +1413,8 @@ async function render() {
   }
 }
 
-async function _renderInner() {
+async function _renderInner(seq) {
+  const stale = () => seq !== undefined && seq !== _renderSeq;
   const leads = getFilteredLeads();
   // 매 render 마다 stage 배너/서브필터 chip 초기화 — 각 페이지에서 필요 시 다시 그려짐
   clearStageBanner();
@@ -1599,13 +1607,16 @@ async function _renderInner() {
       const tier = serverStage === 'verified' ? (state.tierFilter || null) : null;
       const wantPage = state.pagination?.currentPage || 1;
       const counts = _stageCountsCache || await loadStageCounts();
+      if (stale()) return;   // 기다리는 사이 다른 화면으로 옮겼다 — 그리지 않는다
       let pageData;
       try {
         pageData = await loadServerPage(serverStage, wantPage, sub === 'all' ? null : sub, false, tier);
       } catch (e) {
+        if (stale()) return;
         els.content.innerHTML = emptyState('페이지 로드 실패: ' + (e.message || 'unknown'));
         return;
       }
+      if (stale()) return;
       const totalForBanner = pageData.total;
       renderStageBanner(displayInfo, totalForBanner, totalForBanner);
       // 검증완료 페이지 상단에 성공/실패 탭
@@ -1763,6 +1774,12 @@ async function _renderInner() {
     els.viewTitle.textContent = "📅 예약 발송 관리";
     els.viewSubtitle.textContent = "대기 중 예약 · 발송 여부 확인 · 취소 · 즉시 발송.";
     renderScheduledMailsPage();
+    return;
+  }
+  if (state.view === "tool-crm-account") {
+    els.viewTitle.textContent = "👤 CRM 계정 관리";
+    els.viewSubtitle.textContent = "내 로그인 아이디를 확인하고 비밀번호를 바꿉니다.";
+    renderCrmAccountPage();
     return;
   }
   if (state.view === "tool-user-guide") {
@@ -4570,7 +4587,7 @@ var AD_FOLDER_NAME = '광고·자동발송';
 // 메일 서버에 붙어서 읽기 때문에 한 쪽에 2~5초 걸린다 — 기다리는 동안 무엇을 하는지 적어 둔다.
 var _sentState = { page: 1, q: '', data: null, busy: false };
 /** 보낸 메일함 폴더를 받은 메일함 폴더 목록에 보여줄지 — 대표님 요청으로 일단 숨김 (2026-09-14) */
-var SHOW_SENT_MAILBOX = false;
+var SHOW_SENT_MAILBOX = true;   // 대표님 요청으로 다시 켬 (2026-09-14)
 
 async function renderSentMailPage() {
   const accountId = currentMailboxAccountId();
@@ -4830,6 +4847,7 @@ async function renderInboxPage(opts) {
         ${needsReplyOnly ? '' : `
           <div style="margin-top:16px;display:flex;gap:8px;justify-content:center">
             <button class="button" id="inboxIngestBtn" type="button">📥 지금 메일 가져오기</button>
+            <button class="button primary" id="inboxBackfillBtn" type="button" title="이카운트 메일함에서 최근 2달 메일을 전부 가져와 분류합니다">📥 전체 메일함 2달 가져오기</button>
             <button class="button secondary" data-goto-view="tool-mail-settings" type="button">🔌 수신 설정</button>
           </div>`}
       </div>`;
@@ -5222,6 +5240,7 @@ async function renderInboxPage(opts) {
       ${filterChip('리드 연결됨', 'linked', '1')}
       ${filterChip('미연결', 'linked', '0')}
       <button class="button secondary" id="inboxIngestBtn" type="button" style="margin-left:auto">📥 메일 가져오기</button>
+      <button class="button secondary" id="inboxBackfillBtn" type="button" title="이카운트 메일함에서 최근 2달 메일을 전부 가져와 분류합니다 (새로 등록한 메일함은 처음에 한 번 눌러 주세요)">📥 2달 전체</button>
       <!-- [🧠 AI 분석] 은 뺐다 — 한 번에 N통을 유료 분석하는 버튼이라 비용이 예측되지 않는다.
            분석 결과(한글 번역·요약·기한)를 *보는* 기능은 그대로다. 분석 자체는 개발자 쪽에서
            일괄로 돌려 DB 에 넣는다. 되살리려면 아래 주석을 풀면 된다 (핸들러는 살아 있다).
@@ -5661,6 +5680,14 @@ function bindInboxActions() {
       btn.disabled = false;
       btn.textContent = '📥 메일 가져오기';
     }
+  });
+  els.content.querySelector('#inboxBackfillBtn')?.addEventListener('click', async () => {
+    const r = await loadInboxAccounts(true);
+    const all = (r && r.accounts) || [];
+    const cur = currentMailboxAccountId();
+    const targets = cur && cur !== 'all' ? all.filter((a) => a.accountId === cur) : all;
+    if (!targets.length) { alert('먼저 [📬 메일 계정 관리]에서 메일 계정을 등록하세요.'); return; }
+    runMailBackfill(targets.map((a) => ({ id: a.accountId, label: a.label || a.address })));
   });
   els.content.querySelectorAll('[data-goto-view]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -8307,14 +8334,7 @@ async function openMailDetailModal(mailId) {
           ${attachmentChipsHtml(m.id, m.attachments)}
         </div>
         <div class="mail-reply">
-          ${m.direction === 'out' ? `
-            <!-- 우리가 보낸 메일에 '회신'을 쓰면 받는 사람이 우리 직원 주소로 채워진다. -->
-            <div style="padding:22px 20px;color:#475569;font-size:13px;line-height:1.8">
-              <div style="font-size:14px;font-weight:800;color:#1e293b;margin-bottom:6px">↗ 우리가 보낸 메일입니다</div>
-              받는 사람: <b>${escapeHtml((m.to || []).map((t) => t.name ? `${t.name} <${t.address}>` : t.address).join(', ') || '—')}</b><br>
-              보낸메일함에서 함께 가져온 기록이라 여기서 답장을 쓰지 않습니다.
-              상대의 답장이 오면 받은 메일로 따로 들어옵니다.
-            </div>` : replyBoxHtml({ _id: m.id, subject: m.subject, from: m.from })}
+          ${m.direction === 'out' ? sentMailPanelHtml(m) : replyBoxHtml({ _id: m.id, subject: m.subject, from: m.from })}
         </div>
       </div>
 
@@ -8926,6 +8946,40 @@ function renderMailBodyHtml(body) {
     }
   });
   return el.innerHTML;
+}
+
+/**
+ * 우리가 보낸 메일의 오른쪽 칸 — 예전에는 "우리가 보낸 메일입니다" 안내만 떠서 정작 무엇을 보냈는지
+ * 확인하려면 왼쪽의 요약 본문만 봐야 했다 (인용된 앞 대화·서식이 빠진 글자). 보낸 **원문 그대로**를 보여주고,
+ * 같은 받는 사람에게 이어서 보낼 수 있게 한다 (대표님 요청 2026-09-14).
+ * 이어서 보내기는 받는 사람(상대)에게 간다 — 서버 api/mail/reply 가 보낸 메일이면 받는 사람을 주소로 쓴다.
+ */
+function sentMailPanelHtml(m) {
+  const fmtAddr = (list) => (list || []).map((t) => t.name ? `${t.name} <${t.address}>` : t.address).join(', ');
+  const recipient = (m.to || []).find((t) => t && t.address && !/@yogico\.kr$/i.test(t.address)) || (m.to || [])[0];
+  const when = m.date ? new Date(m.date).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  const original = m.html
+    ? `<div class="sent-original-html" style="font-size:13.5px;line-height:1.7;color:#1e293b;word-break:break-word">${renderMailBodyHtml(m.html)}</div>`
+    : `<div style="font-size:13.5px;line-height:1.8;color:#1e293b;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.bodyFull || m.body || '(본문 없음)')}</div>`;
+  return `
+    <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;min-height:0">
+      <div style="padding:11px 13px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;font-size:12.5px;color:#0c4a6e;line-height:1.75">
+        <div style="font-size:13.5px;font-weight:800;margin-bottom:3px">↗ 우리가 보낸 메일</div>
+        <div><span style="color:#64748b">보낸 사람</span> <b>${escapeHtml(fmtAddr([m.from]) || '—')}</b></div>
+        <div><span style="color:#64748b">받는 사람</span> <b>${escapeHtml(fmtAddr(m.to) || '—')}</b></div>
+        ${(m.cc || []).length ? `<div><span style="color:#64748b">참조</span> ${escapeHtml(fmtAddr(m.cc))}</div>` : ''}
+        <div><span style="color:#64748b">보낸 시각</span> ${escapeHtml(when)}</div>
+      </div>
+      <details open style="border:1px solid #e2e8f0;border-radius:10px;background:#fff">
+        <summary style="cursor:pointer;padding:9px 12px;font-size:12.5px;font-weight:700;color:#334155">📄 보낸 원문 그대로 보기 <span style="font-weight:400;color:#94a3b8">· 서식·인용된 앞 대화 포함</span></summary>
+        <div style="padding:4px 14px 14px;max-height:420px;overflow:auto">${original}</div>
+      </details>
+      ${recipient ? `
+      <div style="border-top:1px dashed #cbd5e1;padding-top:10px">
+        <div style="font-size:12px;font-weight:800;color:#334155;margin-bottom:6px">↪ ${escapeHtml(recipient.name || recipient.address)} 에게 이어서 보내기</div>
+        ${replyBoxHtml({ _id: m.id, subject: m.subject, from: recipient })}
+      </div>` : ''}
+    </div>`;
 }
 
 function replyBoxHtml(lastInbound) {
@@ -10677,15 +10731,7 @@ async function renderB2BEmailManager() {
           ${(() => {
             const acc = (_mailAccounts || []).find(a => a._id === state.email.previewAccountId);
             if (!acc) return `<div style="margin-top:8px;font-size:11px;color:#166534">계정을 선택하면 실제 붙을 서명이 여기 표시됩니다.</div>`;
-            const bits = [];
-            if (acc.fromName) bits.push(`<b>${escapeHtml(acc.fromName)}</b>`);
-            if (acc.senderTitle) bits.push(escapeHtml(acc.senderTitle));
-            if (acc.fromName || acc.senderTitle) bits.push('');
-            if (acc.senderCompany) bits.push(`<b>${escapeHtml(acc.senderCompany)}</b>`);
-            if (acc.senderAddress) bits.push(`A: ${escapeHtml(acc.senderAddress)}`);
-            if (acc.senderPhone) bits.push(`M: ${escapeHtml(acc.senderPhone)}`);
-            if (acc.senderWebsite) bits.push(`&nbsp;&nbsp;&nbsp;${escapeHtml(acc.senderWebsite)}`);
-            return `<div style="margin-top:10px;padding:12px 14px;background:white;border:1px solid #86efac;border-radius:6px;font-size:12px;line-height:1.7;color:#111827">${bits.map(b => b === '' ? '<br>' : `<div>${b}</div>`).join('')}</div>`;
+            return `<div style="margin-top:10px;padding:12px 14px;background:white;border:1px solid #86efac;border-radius:6px">${signaturePreviewHtml(acc)}</div>`;
           })()}
         </div>
 
@@ -11342,17 +11388,17 @@ async function sendOutboxTestMail(ready) {
   const to = (document.getElementById('obTestTo')?.value || '').trim();
   if (!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(to)) { alert('받을 메일 주소를 확인해 주세요.'); return; }
   if (!_outboxCompose.templateId) { alert('메일 양식을 먼저 고르세요.'); return; }
-  const lead = ready.find((l) => l.leadId === _outboxCompose.previewLeadId) || ready[0];
   const acc = outreachAccounts().find((a) => a._id === _outboxCompose.mailAccountId) || outreachAccount();
   const note = _outboxCompose.dirty ? '\n\n※ 이 화면에서 고친 문구가 아니라 저장된 양식으로 보냅니다 (업체 발송도 저장된 양식으로 나갑니다).' : '';
-  if (!confirm(`테스트 메일을 보냅니다.\n\n받는 주소  ${to}\n보내는 주소  ${acc ? (acc.fromAddress || acc.smtpUser) : '(대표 계정)'}\n회사명 자리  ${(lead && lead.Company) || '예시 회사'}${note}`)) return;
+  if (!confirm(`테스트 메일을 보냅니다.\n\n받는 주소  ${to}\n보내는 주소  ${acc ? (acc.fromAddress || acc.smtpUser) : '(대표 계정)'}\n회사명 자리  Acme Beauty Co. (예제 업체)${note}`)) return;
   const btn = document.getElementById('obTestSendBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 보내는 중...'; }
   try {
     const r = await safeJsonFetch('/api/mail/test-send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, templateId: _outboxCompose.templateId, previewLeadId: lead && lead.leadId, mailAccountId: _outboxCompose.mailAccountId || undefined }),
+      // previewLeadId 를 안 보내면 서버가 예제 업체(Acme Beauty Co.) 값으로 채운다 (api/mail/test-send)
+      body: JSON.stringify({ to, templateId: _outboxCompose.templateId, mailAccountId: _outboxCompose.mailAccountId || undefined }),
     });
     if (!r?.success) throw new Error(r?.error || '보내지 못했습니다');
     alert(`✅ 테스트 메일을 보냈습니다${r.dryRun ? ' (DRY RUN — 실제로는 나가지 않음)' : ''}\n\n${r.to} 메일함을 확인하세요.\n제목: ${r.subject}${r.attachments ? `\n첨부 ${r.attachments}개` : ''}`);
@@ -11380,6 +11426,8 @@ function outboxPreviewToHtml(lead) {
    ═══════════════════════════════════════════════════════════════ */
 var _outboxTab = 'ready';             // ready / scheduled / sent
 var _outboxReadyIds = [];             // [보낼 메일] 이 지금 화면에 띄운 대상 (모달과 공유)
+var _outboxReadyPage = 1;             // [보낼 메일] 업체 목록 쪽 번호 (10곳씩)
+const OUTBOX_PAGE_SIZE = 10;
 var _outboundStatusCache = null;      // { locked, message, dailyCap, intervalMs, testRecipients }
 
 // 보낼 메일 탭의 양식 — 화면 안에서 바로 고치고 미리 본다
@@ -12086,6 +12134,12 @@ function outboxBindComposeInputs(ready) {
     _outboxCompose.testToEdited = !!_outboxCompose.testTo;
   });
   document.getElementById('obTestSendBtn')?.addEventListener('click', () => sendOutboxTestMail(ready));
+  document.querySelectorAll('.ob-page').forEach((b) => b.addEventListener('click', () => {
+    const n = Number(b.dataset.page);
+    if (!n || b.disabled) return;
+    _outboxReadyPage = n;
+    renderOutboxPage();
+  }));
   prevSel?.addEventListener('change', () => {
     _outboxCompose.previewLeadId = prevSel.value;
     outboxRefreshPreview(ready);
@@ -12211,7 +12265,7 @@ function outboxReadyHtml(ready, lock) {
   ready.forEach((l) => byCountry.set(l.Country || '-', (byCountry.get(l.Country || '-') || 0) + 1));
   const topCountries = [...byCountry.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
 
-  return `
+  const composeHtml = `
     <div style="border:1px solid #bfdbfe;border-radius:12px;overflow:hidden;margin-bottom:14px">
       <div style="padding:13px 17px;background:#eff6ff;border-bottom:1px solid #bfdbfe">
         <div style="font-size:14px;font-weight:800;color:#1e3a8a">
@@ -12247,17 +12301,6 @@ function outboxReadyHtml(ready, lock) {
             </label>
           </div>
 
-          <!-- 🧪 테스트 메일 — 업체에 보내기 전에 실제로 나갈 모양 그대로 내 메일함으로 한 통 -->
-          <div id="obTestBox" style="margin:0 0 10px;padding:9px 11px;border:1px dashed #a5b4fc;border-radius:8px;background:#eef2ff">
-            <div style="font-size:11px;font-weight:800;color:#3730a3;margin-bottom:5px">🧪 테스트 메일
-              <span style="font-weight:400;color:#4338ca">· 지금 미리보기 회사 기준으로, 제목 앞에 [테스트]를 붙여 바로 보냅니다 (업체 발송 기록에는 남지 않음)</span></div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <input id="obTestTo" type="email" value="${escapeAttr(outboxTestTo())}" placeholder="받을 주소 (기본: 보내는 계정 = 본인 메일)"
-                style="flex:1;min-width:180px;padding:6px 9px;font-size:12.5px;border:1px solid #c7d2fe;border-radius:6px;background:var(--bg-surface);color:var(--text-primary)">
-              <button type="button" id="obTestSendBtn"
-                style="padding:6px 13px;font-size:12px;font-weight:700;border:1px solid #4f46e5;background:#4f46e5;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap">🧪 테스트 메일 보내기</button>
-            </div>
-          </div>
 
           <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">제목</span>
           <input id="obSubject" type="text" value="${escapeAttr(_outboxCompose.subject)}"
@@ -12377,12 +12420,62 @@ function outboxReadyHtml(ready, lock) {
         </button>
         <span id="obPlanHint" style="font-size:12px;color:var(--text-tertiary)"></span>
       </div>
-    </div>
 
+      <!-- 🧪 테스트 메일 — 맨 아래. 예제 업체로 회사명을 채워, 지정한 주소로 실제 모양 그대로 한 통 보낸다.
+           (대표님 요청 2026-09-14: 업체는 예제 업체로, 메일 주소만 지정해서 어떻게 가는지 보고 싶다) -->
+      <div id="obTestBox" style="padding:13px 17px;border-top:1px dashed #a5b4fc;background:#eef2ff">
+        <div style="font-size:12.5px;font-weight:800;color:#3730a3">🧪 테스트 메일 보내기</div>
+        <div style="font-size:11.5px;color:#4338ca;margin:3px 0 8px;line-height:1.6">
+          지금 고른 양식을 <b>예제 업체(Acme Beauty Co.)</b> 이름으로 채워, 아래 주소로 바로 보냅니다.
+          제목 앞에 <b>[테스트]</b>가 붙고, 업체 발송 기록에는 남지 않습니다.
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;max-width:560px">
+          <input id="obTestTo" type="email" value="${escapeAttr(outboxTestTo())}" placeholder="받을 메일 주소 (기본: 보내는 계정 = 본인 메일)"
+            style="flex:1;min-width:200px;padding:7px 10px;font-size:13px;border:1px solid #c7d2fe;border-radius:7px;background:var(--bg-surface);color:var(--text-primary)">
+          <button type="button" id="obTestSendBtn"
+            style="padding:7px 15px;font-size:12.5px;font-weight:700;border:1px solid #4f46e5;background:#4f46e5;color:#fff;border-radius:7px;cursor:pointer;white-space:nowrap">🧪 테스트 메일 보내기</button>
+        </div>
+      </div>
+    </div>`;
+
+  // 받는 곳 목록은 위에 둔다 — 누구에게 보내는지를 먼저 보고 문구를 고른다 (대표님 요청 2026-09-14)
+  const pages = Math.max(1, Math.ceil(ready.length / OUTBOX_PAGE_SIZE));
+  if (_outboxReadyPage > pages) _outboxReadyPage = pages;
+  if (_outboxReadyPage < 1) _outboxReadyPage = 1;
+  const from = (_outboxReadyPage - 1) * OUTBOX_PAGE_SIZE;
+  const pageLeads = ready.slice(from, from + OUTBOX_PAGE_SIZE);
+
+  return `
     <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:7px">
       받는 곳 ${ready.length.toLocaleString()}곳 · ${topCountries.map(([c, n]) => `${escapeHtml(c)} ${n}`).join(' · ')}${byCountry.size > 6 ? ` 외 ${byCountry.size - 6}개국` : ''}
     </div>
-    ${outboxLeadTableHtml(ready.slice(0, 200), ready.length)}`;
+    ${outboxLeadTableHtml(pageLeads, pageLeads.length)}
+    ${outboxPagerHtml(_outboxReadyPage, pages, ready.length, from, pageLeads.length)}
+    <div style="height:14px"></div>
+    ${composeHtml}`;
+}
+
+/** [보낼 메일] 목록 쪽 번호 — 1 2 3 4 … (앞뒤 몇 쪽만 보이고 나머지는 … 로 줄인다) */
+function outboxPagerHtml(page, pages, total, from, shown) {
+  if (pages <= 1) return '';
+  const nums = [];
+  for (let i = 1; i <= pages; i++) {
+    if (i === 1 || i === pages || Math.abs(i - page) <= 2) nums.push(i);
+    else if (nums[nums.length - 1] !== '…') nums.push('…');
+  }
+  const btn = (label, target, active, disabled) => `
+    <button type="button" class="ob-page" data-page="${target}" ${disabled ? 'disabled' : ''}
+      style="min-width:32px;padding:5px 9px;font-size:12.5px;border-radius:7px;cursor:${disabled ? 'default' : 'pointer'};
+             border:1px solid ${active ? '#2563eb' : 'var(--border-default)'};
+             background:${active ? '#2563eb' : 'var(--bg-surface)'};color:${active ? '#fff' : 'var(--text-secondary)'};
+             font-weight:${active ? 800 : 500};opacity:${disabled ? '.4' : '1'}">${label}</button>`;
+  return `
+    <div style="display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap;margin-top:9px">
+      ${btn('‹', page - 1, false, page <= 1)}
+      ${nums.map((n) => n === '…' ? '<span style="padding:0 3px;color:var(--text-quaternary)">…</span>' : btn(n, n, n === page, false)).join('')}
+      ${btn('›', page + 1, false, page >= pages)}
+      <span style="font-size:11.5px;color:var(--text-tertiary);margin-left:6px">${(from + 1).toLocaleString()}–${(from + shown).toLocaleString()} / ${total.toLocaleString()}곳</span>
+    </div>`;
 }
 
 /** 📅 예약 발송 — 언제 · 어디로. 실패한 것도 사유와 함께 여기 남긴다 */
@@ -12960,6 +13053,7 @@ async function renderMailAccountsTool() {
   document.getElementById('addMailAccountBtn')?.addEventListener('click', () => openMailAccountModal());
   document.getElementById('addFirstAccountBtn')?.addEventListener('click', () => openMailAccountModal());
   document.querySelectorAll('.acc-verify-btn').forEach(b => b.addEventListener('click', () => verifyMailAccount(b.dataset.accId)));
+  document.querySelectorAll('.acc-backfill-btn').forEach(b => b.addEventListener('click', () => runMailBackfill([{ id: b.dataset.accId, label: b.dataset.accLabel }])));
   document.querySelectorAll('.acc-edit-btn').forEach(b => b.addEventListener('click', () => openMailAccountModal(b.dataset.accId)));
   document.querySelectorAll('.acc-delete-btn').forEach(b => b.addEventListener('click', () => deleteMailAccount(b.dataset.accId)));
 
@@ -13084,6 +13178,7 @@ function mailAccountCardHtml(acc) {
           ` : ''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          <button class="acc-backfill-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" data-acc-label="${escapeAttr(acc.accountName || acc.smtpUser)}" type="button" style="font-size:11px;padding:5px 10px" title="이 메일함의 최근 2달 메일을 전부 가져와 분류합니다">📥 2달 가져오기</button>
           <button class="acc-verify-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px" title="지금 SMTP 연결 재검증">🔄 검증</button>
           <button class="acc-edit-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px">✏ 수정</button>
           <button class="acc-delete-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" type="button" style="font-size:11px;padding:5px 10px;color:#dc2626">🗑</button>
@@ -13387,6 +13482,12 @@ function openMailAccountModal(editId) {
               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
           </div>
 
+          <!-- 메일 하단에 붙을 서명 — 입력하는 대로 바뀐다 (서버 lib/template-vars.ts buildSignatureBlock 과 같은 모양) -->
+          <div style="padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px">
+            <div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:8px">✍ 메일 하단에 이렇게 붙습니다</div>
+            <div id="macSigPreview" style="padding:12px 14px;background:#fff;border:1px solid #bbf7d0;border-radius:8px">${signaturePreviewHtml(acc || {})}</div>
+          </div>
+
           <!-- 대표 지정은 계정 관리 화면 맨 위 한 곳에서만 한다.
                여기서도 바꿀 수 있게 두면 "어디서 바꿨는지" 가 흩어지고,
                이 경로로 바꿨을 때 메일함이 따라오지 않아 화면이 어긋난다.
@@ -13444,6 +13545,19 @@ function openMailAccountModal(editId) {
     }
   };
   document.getElementById('macPreset')?.addEventListener('change', (e) => applyPreset(e.target.value));
+  // 서명 미리보기 — 이름·직함·회사·주소·전화·웹사이트를 고칠 때마다 다시 그린다
+  const refreshSig = () => {
+    const box = document.getElementById('macSigPreview');
+    if (!box) return;
+    const v = (id) => document.getElementById(id)?.value.trim() || '';
+    box.innerHTML = signaturePreviewHtml({
+      fromName: v('macFromName'), senderTitle: v('macSenderTitle'), senderCompany: v('macSenderCompany'),
+      senderAddress: v('macSenderAddress'), senderPhone: v('macSenderPhone'), senderWebsite: v('macSenderWebsite'),
+      fromAddress: v('macFromAddress'),
+    });
+  };
+  ['macFromName', 'macSenderTitle', 'macSenderCompany', 'macSenderAddress', 'macSenderPhone', 'macSenderWebsite', 'macFromAddress']
+    .forEach((id) => document.getElementById(id)?.addEventListener('input', refreshSig));
   // 최초 렌더 시 현재 프리셋에 대한 가이드도 즉시 표시
   applyPreset(currentPresetKey);
 
@@ -13499,6 +13613,10 @@ function openMailAccountModal(editId) {
 
       await loadMailAccounts(true);
       renderMailAccountsTool();
+      // 새로 등록한 메일함은 수집 위치가 없어 메일함이 0 · 0 · 0 으로 뜬다 — 묻지 않고 바로 2달치를 가져온다 (오른쪽 아래 %)
+      if (!isEdit && newId) {
+        runMailBackfill([{ id: String(newId), label: payload.accountName || payload.smtpUser }], { silent: true });
+      }
     } catch (e) {
       const msg = String((e && e.message) || 'unknown');
       // 535 / Invalid login 은 비밀번호가 틀렸을 때만 나는 게 아니다.
@@ -14547,6 +14665,222 @@ function initSettingsModal() {
       }
     }
   }).catch(console.error);
+}
+
+/**
+ * 👤 CRM 계정 관리 — 로그인한 사람이 자기 비밀번호(와 아이디)를 바꾸는 화면.
+ * 사람마다 아이디가 따로 있고(david 대표님 · hoon 전무님 · 초기 비밀번호 yogibo), 각자 여기서 바꾼다.
+ * 서버: PUT /api/users/me — 현재 비밀번호 확인 · 바꾸면 로그아웃 → 새 정보로 다시 로그인.
+ */
+async function renderCrmAccountPage() {
+  let me = { username: currentUser, isMaster };
+  try {
+    const d = await fetch('/api/auth/me').then((r) => r.json());
+    if (d && d.authenticated) me = { username: d.username, isMaster: !!d.isMaster };
+  } catch { /* 아래에서 알 수 없음으로 표시 */ }
+  if (state.view !== 'tool-crm-account') return;
+
+  const field = (id, label, type, placeholder, hint) => `
+    <label style="display:block;margin-bottom:12px">
+      <span style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">${label}</span>
+      <input id="${id}" type="${type}" placeholder="${escapeAttr(placeholder || '')}" autocomplete="off"
+        style="width:100%;max-width:360px;padding:9px 11px;font-size:14px;border:1px solid var(--border-default);border-radius:8px;
+               background:var(--bg-surface);color:var(--text-primary)">
+      ${hint ? `<span style="display:block;font-size:11px;color:var(--text-tertiary);margin-top:3px">${hint}</span>` : ''}
+    </label>`;
+
+  els.content.innerHTML = `
+    <div style="max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-bottom:30px">
+      <div style="padding:18px 20px;background:var(--bg-surface);border:1px solid var(--border-default);border-radius:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--text-tertiary)">지금 로그인한 아이디</div>
+        <div style="font-size:24px;font-weight:800;color:var(--text-primary);margin-top:4px">${escapeHtml(me.username || '(알 수 없음)')}
+          ${me.isMaster ? '<span style="font-size:11px;font-weight:800;color:#1e40af;background:#dbeafe;border-radius:5px;padding:2px 7px;margin-left:6px;vertical-align:middle">관리자</span>' : ''}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:6px;line-height:1.6">
+          메일함·보내는 계정은 이 아이디로 [📬 메일 계정 관리]에 등록한 메일만 보입니다.
+        </div>
+      </div>
+
+      <form id="crmPwForm" style="padding:18px 20px;background:var(--bg-surface);border:1px solid var(--border-default);border-radius:14px">
+        <div style="font-size:15px;font-weight:800;color:var(--text-primary);margin-bottom:12px">🔒 비밀번호 변경</div>
+        ${field('crmCurPw', '현재 비밀번호', 'password', '', '')}
+        ${field('crmNewPw', '새 비밀번호', 'password', '6자 이상', '')}
+        ${field('crmNewPw2', '새 비밀번호 확인', 'password', '한 번 더 입력', '')}
+        <button type="submit" class="button primary" style="padding:9px 18px;font-size:13.5px;font-weight:700">비밀번호 바꾸기</button>
+        <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:8px">바꾸면 로그아웃됩니다. 새 비밀번호로 다시 로그인하세요.</div>
+      </form>
+
+      ${me.isMaster ? '' : `
+      <form id="crmIdForm" style="padding:18px 20px;background:var(--bg-surface);border:1px solid var(--border-default);border-radius:14px">
+        <div style="font-size:15px;font-weight:800;color:var(--text-primary);margin-bottom:12px">🪪 아이디 변경</div>
+        ${field('crmNewId', '새 아이디', 'text', '영문 소문자·숫자 3~20자', '등록해 둔 메일 계정은 새 아이디로 그대로 옮겨집니다.')}
+        ${field('crmIdCurPw', '현재 비밀번호', 'password', '', '')}
+        <button type="submit" class="button secondary" style="padding:9px 18px;font-size:13.5px;font-weight:700">아이디 바꾸기</button>
+      </form>`}
+    </div>`;
+
+  const submit = async (payload, okMsg) => {
+    const r = await fetch('/api/users/me', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    }).then((x) => x.json()).catch((e) => ({ success: false, error: e.message }));
+    if (!r || !r.success) { alert((r && r.error) || '바꾸지 못했습니다'); return; }
+    alert(okMsg(r));
+    window.location.href = '/login';
+  };
+
+  document.getElementById('crmPwForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const cur = document.getElementById('crmCurPw').value;
+    const pw = document.getElementById('crmNewPw').value;
+    const pw2 = document.getElementById('crmNewPw2').value;
+    if (!cur || !pw) { alert('현재 비밀번호와 새 비밀번호를 입력하세요.'); return; }
+    if (pw.length < 6) { alert('새 비밀번호는 6자 이상이어야 합니다.'); return; }
+    if (pw !== pw2) { alert('새 비밀번호 두 칸이 서로 다릅니다.'); return; }
+    submit({ currentPassword: cur, newPassword: pw }, () => '✅ 비밀번호를 바꿨습니다.\n새 비밀번호로 다시 로그인하세요.');
+  });
+  document.getElementById('crmIdForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = document.getElementById('crmNewId').value.trim().toLowerCase();
+    const cur = document.getElementById('crmIdCurPw').value;
+    if (!id || !cur) { alert('새 아이디와 현재 비밀번호를 입력하세요.'); return; }
+    if (!/^[a-z0-9._-]{3,20}$/.test(id)) { alert('아이디는 영문 소문자·숫자·._- 로 3~20자입니다.'); return; }
+    submit({ currentPassword: cur, newUsername: id }, (r) => `✅ 아이디를 ${r.username} 으로 바꿨습니다.\n새 아이디로 다시 로그인하세요.`);
+  });
+}
+
+/**
+ * 서명 미리보기 — 서버 lib/template-vars.ts buildSignatureBlock 과 같은 모양.
+ *   이름, 직함 / (빈 줄) / 회사 / (빈 줄) / A: 주소 / (빈 줄) / M: 전화 / (빈 줄) / 웹사이트
+ */
+function signaturePreviewHtml(acc) {
+  const t = (k) => String((acc && acc[k]) || '').trim();
+  const headline = [t('fromName'), t('senderTitle')].filter(Boolean).join(', ');
+  const rows = [];
+  if (headline) rows.push(`<span style="font-weight:600">${escapeHtml(headline)}</span>`);
+  if (t('senderCompany')) rows.push(escapeHtml(t('senderCompany')));
+  if (t('senderAddress')) rows.push(`A: ${escapeHtml(t('senderAddress'))}`);
+  if (t('senderPhone')) rows.push(`M: ${escapeHtml(t('senderPhone'))}`);
+  if (t('fromAddress') && !t('senderAddress') && !t('senderPhone') && !t('senderWebsite')) rows.push(`E: ${escapeHtml(t('fromAddress'))}`);
+  if (t('senderWebsite')) rows.push(`<span style="color:#2563eb">${escapeHtml(t('senderWebsite'))}</span>`);
+  if (!rows.length) return '<span style="font-size:11.5px;color:#94a3b8">이름·직함·회사·주소·전화·웹사이트를 적으면 여기 서명이 보입니다</span>';
+  return `<div style="font-size:12.5px;line-height:1.5;color:#111827">${rows.map((r) => `<div style="margin:0 0 11px">${r}</div>`).join('')}</div>`;
+}
+
+/**
+ * 📥 전체 메일함 2달 가져오기 — /api/mail/backfill 을 done 이 올 때까지 이어 부른다.
+ *
+ * 새 아이디로 처음 로그인하면 자동으로 돈다(startAutoBackfill). 창을 막지 않고 화면 오른쪽 아래에
+ * "메일함 가져오는 중 · 37%" 만 띄운다 — 기다리는 동안 다른 화면을 볼 수 있다 (대표님 요청 2026-09-14).
+ * 서버가 계정마다 끝냈다고 기록(backfilledAt)하므로 다음 로그인 때 다시 돌지 않고,
+ * 중간에 창을 닫으면 서버에 남긴 위치에서 이어 간다.
+ */
+var _backfillRunning = false;
+async function runMailBackfill(accounts, opts = {}) {
+  if (_backfillRunning) { if (!opts.silent) alert('이미 메일함을 가져오는 중입니다. 오른쪽 아래 진행 표시를 확인하세요.'); return; }
+  const list = (accounts || []).filter((a) => a && a.id);
+  if (!list.length) return;
+  _backfillRunning = true;
+  let cancel = false;
+
+  document.getElementById('backfillPill')?.remove();
+  const pill = document.createElement('div');
+  pill.id = 'backfillPill';
+  pill.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:11000;width:min(320px,calc(100vw - 36px));'
+    + 'background:#fff;border:1px solid #bfdbfe;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.18);padding:11px 13px;font-size:12.5px;color:#0f172a';
+  pill.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="backfill-spin" style="display:inline-block;width:14px;height:14px;border:2px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:bfspin .8s linear infinite"></span>
+      <b style="flex:1">📥 메일함 2달치 가져오는 중</b>
+      <b id="backfillPct" style="color:#2563eb;font-size:14px">0%</b>
+      <button type="button" id="backfillStop" title="그만 가져오기 (다음에 이어서 가져옵니다)"
+        style="border:none;background:none;color:#94a3b8;font-size:16px;cursor:pointer;line-height:1;padding:0 2px">×</button>
+    </div>
+    <div style="height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin-top:8px"><div id="backfillBar" style="height:100%;width:0;background:#2563eb;transition:width .4s"></div></div>
+    <div id="backfillSub" style="font-size:11px;color:#64748b;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">준비 중…</div>
+    <style>@keyframes bfspin{to{transform:rotate(360deg)}}</style>`;
+  document.body.appendChild(pill);
+  const pctEl = pill.querySelector('#backfillPct');
+  const barEl = pill.querySelector('#backfillBar');
+  const subEl = pill.querySelector('#backfillSub');
+  pill.querySelector('#backfillStop').addEventListener('click', () => { cancel = true; subEl.textContent = '멈추는 중… (다음에 이어서 가져옵니다)'; });
+
+  let shown = 0;
+  const setPct = (v) => {
+    // 뒤로 가지 않게 — 폴더를 새로 셀 때 총량이 늘어 계산값이 잠깐 줄 수 있다
+    shown = Math.max(shown, Math.min(99, Math.round(v)));
+    pctEl.textContent = `${shown}%`;
+    barEl.style.width = `${shown}%`;
+  };
+
+  const totals = { inserted: 0, duplicate: 0, matched: 0, errors: [] };
+  try {
+    for (let i = 0; i < list.length && !cancel; i++) {
+      let cursor = null;
+      for (let round = 0; round < 300 && !cancel; round++) {
+        let r;
+        try {
+          r = await safeJsonFetch('/api/mail/backfill', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId: list[i].id, days: 60, cursor }),
+          });
+        } catch (e) {
+          totals.errors.push(`[${list[i].label}] ${(e && e.message) || e}`);
+          break;
+        }
+        if (!r || !r.success) { totals.errors.push(`[${list[i].label}] ${(r && r.error) || '실패'}`); break; }
+        totals.inserted += r.inserted || 0;
+        totals.duplicate += r.duplicate || 0;
+        totals.matched += r.matched || 0;
+        if (r.errors?.length) totals.errors.push(...r.errors.map((x) => `[${list[i].label}] ${x}`));
+        if (r.done) { setPct(((i + 1) / list.length) * 100); break; }
+        // 진행률 — 폴더 수 기준에 지금 폴더 안의 진행을 더한다
+        const c = r.cursor || {};
+        const folders = (c.folders || []).length || 1;
+        const curFolder = (c.folders || [])[c.folderIndex];
+        const pr = (c.progress || {})[curFolder] || { total: 0, done: 0 };
+        const inner = pr.total ? pr.done / pr.total : 0;
+        const acctPct = (Math.min(c.folderIndex || 0, folders) + inner) / folders;
+        setPct(((i + acctPct) / list.length) * 100);
+        subEl.textContent = `${list[i].label} · 새로 ${totals.inserted.toLocaleString()}통${curFolder ? ` · ${curFolder === 'INBOX' ? '받은편지함' : curFolder.replace(/^INBOX[./]/, '')}` : ''}`;
+        cursor = r.cursor;
+      }
+    }
+  } finally {
+    _backfillRunning = false;
+  }
+
+  // 끝 — 진행 표시를 완료 문구로 바꿨다가 잠시 뒤 닫는다
+  pill.querySelector('.backfill-spin')?.remove();
+  pctEl.textContent = cancel ? '멈춤' : '100%';
+  barEl.style.width = cancel ? barEl.style.width : '100%';
+  barEl.style.background = totals.errors.length ? '#f59e0b' : '#16a34a';
+  pill.querySelector('b').textContent = cancel ? '⏸ 메일 가져오기를 멈췄습니다' : '✅ 메일함 가져오기 완료';
+  subEl.textContent = `새로 들어온 메일 ${totals.inserted.toLocaleString()}통${totals.matched ? ` · 업체 연결 ${totals.matched}건` : ''}${totals.errors.length ? ` · 오류 ${totals.errors.length}건` : ''}`;
+  if (totals.errors.length) { subEl.title = totals.errors.join('\n'); console.warn('[backfill]', totals.errors); }
+  pill.querySelector('#backfillStop').onclick = () => pill.remove();
+  setTimeout(() => pill.remove(), totals.errors.length ? 15000 : 6000);
+
+  // 메일함·폴더·배지를 새 메일 기준으로 다시 읽는다 (보고 있는 화면도 새로)
+  _mailAccountsCache = null;
+  _mailGroupsCache = null;
+  _mailCountsCache = null;
+  loadMailCounts(true);
+  if (/^tool-inbox|^tool-deadlines/.test(state.view || '')) { try { invalidateServerPage?.(); } catch { /* 무시 */ } render(); }
+}
+
+/**
+ * 새 아이디로 처음 로그인했을 때 — 아직 2달치를 안 가져온 내 메일 계정이 있으면 자동으로 시작한다.
+ * 관리자(마스터) 계정은 자동으로 돌리지 않는다: 이미 쓰고 있던 메일함이라, 원할 때 [📥 2달 전체]를 누른다.
+ */
+async function startAutoBackfill() {
+  try {
+    const me = await fetch('/api/auth/me').then((r) => r.json());
+    if (!me || !me.authenticated || me.isMaster) return;
+    const r = await safeJsonFetch('/api/mail/accounts');
+    const todo = ((r && r.accounts) || []).filter((a) => a.isActive !== false && !a.backfilledAt);
+    if (todo.length) runMailBackfill(todo.map((a) => ({ id: a.accountId, label: a.label || a.address })), { silent: true });
+  } catch (e) {
+    console.warn('[auto-backfill]', e);
+  }
 }
 
 async function loadSubIds() {

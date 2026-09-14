@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
 import { seoulDayStart, replyWindowFilter, REPLY_WINDOW_DAYS } from '@/lib/mail/period';
 import { learnSenderGroups, suggestGroupBySender } from '@/lib/mail/groups';
+import { getMailScope, accountParamFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -42,12 +43,15 @@ const LIST_PROJECTION = {
  * 무더기로 생긴 적이 있다. 제안만 하고 누르는 것은 사람이 한다.
  *
  * 미분류가 한 건도 없으면 학습 질의 자체를 돌리지 않는다.
+ *
+ * 학습도 볼 수 있는 계정(accountIds)의 메일에서만 한다 — 남의 메일에서 배우면
+ * 그 사람의 폴더 이름이 내 목록의 추천으로 새어 나온다.
  */
-async function attachGroupSuggestions(items: any[]): Promise<any[]> {
+async function attachGroupSuggestions(items: any[], accountIds: string[]): Promise<any[]> {
   if (!items.some((m) => !m?.group)) return items;
   let learned = null;
   try {
-    learned = await learnSenderGroups();
+    learned = await learnSenderGroups(accountIds);
   } catch {
     return items;   // 제안은 거들 뿐이라 실패해도 목록은 그대로 내보낸다
   }
@@ -73,14 +77,22 @@ export async function GET(req: Request) {
 
     await dbConnect();
 
+    // 로그인한 아이디가 볼 수 있는 계정의 메일만 (lib/mail/scope.ts)
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
     const query: any = {};
 
     // 휴지통은 기본 목록에서 제외 (DB 에서 지우지 않으므로 언제든 되짚을 수 있다)
     query.trashedAt = searchParams.get('trashed') === '1' ? { $ne: null } : null;
 
-    // 어느 메일함을 볼지. 'all' 이거나 미지정이면 전체.
-    // 계정 개념이 생기기 전 메일은 accountId='main' 으로 저장돼 있다.
-    if (accountId && accountId !== 'all') query.accountId = accountId;
+    // 어느 메일함을 볼지. 'all' 이거나 미지정이면 **내가 볼 수 있는 계정 전체**.
+    // 계정 개념이 생기기 전 메일은 accountId='main' 으로 저장돼 있다(마스터 몫).
+    // 남의 계정 id 를 넘기면 거절 — 범위를 안 걸면 id 만 알아도 남의 메일함이 열린다.
+    // accountId 는 최상위 조건이라 아래 $or/$and(검색·연결 여부)로 우회되지 않는다.
+    const acc = accountParamFilter(scope, accountId);
+    if (acc.denied) return NextResponse.json(NOT_YOURS, { status: 403 });
+    Object.assign(query, acc.filter);
 
     // ── 오늘 온 메일 ──
     // 폴더와 섞이지 않는 별도의 축이다. 폴더는 "어느 거래처인가",
@@ -144,7 +156,7 @@ export async function GET(req: Request) {
       ]);
       return NextResponse.json({
         success: true,
-        items: await attachGroupSuggestions(items),
+        items: await attachGroupSuggestions(items, scope.accountIds),
         total, page, limit, mode: 'flat',
       });
     }
@@ -192,7 +204,7 @@ export async function GET(req: Request) {
         threadCount: r.count,
         threadFirstDate: r.firstDate,
         threadDeadline: r.nearestDeadline || null,
-      }))),
+      })), scope.accountIds),
       total: res?.total?.[0]?.n || 0,
       page,
       limit,

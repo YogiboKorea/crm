@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
 import { countSince, seoulDayStart, replyWindowFilter, REPLY_WINDOW_DAYS, COUNT_PERIOD_LABEL, COUNT_PERIOD_DAYS } from '@/lib/mail/period';
+import { getMailScope, accountParamFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -15,12 +16,19 @@ export async function GET(req: Request) {
   try {
     await dbConnect();
 
+    // 배지 숫자도 내가 볼 수 있는 계정 것만 센다 — 남의 메일 수가 섞이면 목록과 어긋난다
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
     // as const 로 리터럴 고정 — string[] 로 추론되면 classification union 타입과 맞지 않는다
     const NOISE = ['ad', 'system', 'newsletter'] as const;
 
-    // 메일함에서 계정을 고르면 배지도 그 계정 기준으로 센다
+    // 메일함에서 계정을 고르면 배지도 그 계정 기준으로 센다.
+    // 'all'·미지정은 "내 계정 전체" — 예전처럼 {} 로 두면 모든 사람의 메일을 센다.
+    // 모든 조건에 ...acc 로 들어가므로 여기서 한 번만 좁히면 된다.
     const accountId = new URL(req.url).searchParams.get('accountId');
-    const acc = accountId && accountId !== 'all' ? { accountId } : {};
+    const { filter: acc, denied } = accountParamFilter(scope, accountId);
+    if (denied) return NextResponse.json(NOT_YOURS, { status: 403 });
 
     // 화면 숫자는 최근 2개월 기준. 기간을 두지 않으면 1년치가 전부 잡혀
     // "밀린 일이 산더미"로 읽히고, 매일 늘어나는 몇 건이 그 안에 묻힌다.

@@ -7,7 +7,7 @@ import { sendMail, renderTemplate } from '@/lib/mailer';
 import { buildVarsFromLead, buildSignatureBlock } from '@/lib/template-vars';
 import { decryptSecret } from '@/lib/crypto';
 import { resolveOutreachAccount } from '@/lib/mail/accounts';
-import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
+import { getSessionUser, ownerFilter, UNAUTHORIZED } from '@/lib/mail/scope';
 import { loadTemplateAttachments } from '@/lib/mail/template-attachments';
 import { OUTBOUND_LOCKED, canSendTo, TEST_RECIPIENTS } from '@/lib/outbound-lock';
 
@@ -46,7 +46,8 @@ export async function POST(req: Request) {
 
     // 발송 잠금 중에는 테스트 주소나 우리 메일 계정 주소로만 보낸다
     if (OUTBOUND_LOCKED && !canSendTo(to)) {
-      const own = await MailAccount.exists({ $or: [{ fromAddress: new RegExp(`^${to.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }, { smtpUser: to.toLowerCase() }] });
+      // 내가 등록(로그인 검증)한 주소로만 — 다른 사람 메일함이나 아무 주소로 새지 않게
+      const own = await MailAccount.exists({ ...ownerFilter(user), smtpUser: to.toLowerCase() });
       if (!own) {
         return NextResponse.json({ success: false, error: `발송 잠금 중 — 테스트 메일은 우리 메일 계정이나 ${TEST_RECIPIENTS.join(', ')} 로만 보낼 수 있습니다` }, { status: 423 });
       }

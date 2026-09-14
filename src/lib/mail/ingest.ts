@@ -15,7 +15,7 @@ import { InboundMail } from '@/models/InboundMail';
 import { MailSyncState } from '@/models/MailSyncState';
 import { MailSettings } from '@/models/MailSettings';
 import { getMailSettings, foldersOf } from '@/lib/mail-settings';
-import { fetchNew, fetchRecent, withOpenAccount, type ImapConfig } from './imap';
+import { fetchNew, fetchRecent, fetchSinceBatch, listMailboxes, withOpenAccount, type ImapConfig } from './imap';
 import { parseMessage, type ParsedMail } from './parse';
 import { threadKey } from './thread';
 import { ruleClassify, shouldAnalyze, type RuleResult } from './classify';
@@ -24,7 +24,30 @@ import { matchLead, shouldMoveToReplied } from './match-lead';
 import { listMailAccounts, resolveAccount, toImapConfig } from './accounts';
 import { learnSenderGroups, suggestGroupBySender, suggestGroupByName, listGroups, type LearnedGroups } from './groups';
 import { syncSentReplies } from './reconcile';
+import { accountIdsForOwner } from './scope';
+
+/**
+ * 거래처 학습(발신자→폴더명)을 **그 계정 주인이 볼 수 있는 메일** 안에서만 한다.
+ * 전체 메일로 배우면 다른 아이디가 나눠 둔 거래처 폴더명이 내 새 메일에 붙어, 남의 거래처가 드러난다.
+ */
+async function learnForOwner(owner: string, cache: Map<string, { learned: LearnedGroups | null; knownGroups: string[] }>) {
+  const key = owner || '(none)';
+  const hit = cache.get(key);
+  if (hit) return hit;
+  let learned: LearnedGroups | null = null;
+  let knownGroups: string[] = [];
+  try {
+    const ids = owner ? await accountIdsForOwner(owner) : [];
+    learned = await learnSenderGroups(ids);
+    const g = await listGroups(undefined, ids);
+    knownGroups = g.groups.map((x) => x.group).filter(Boolean);
+  } catch { /* 학습이 실패해도 수집은 한다 (폴더 기반 분류는 그대로) */ }
+  const v = { learned, knownGroups };
+  cache.set(key, v);
+  return v;
+}
 import { Lead } from '@/models/Lead';
+import { MailAccount } from '@/models/MailAccount';
 
 /** 개인 메일 도메인 — 여기서 온 것은 도메인만으로 자사 발신이라 볼 수 없다 */
 const FREE_MAIL = new Set([
@@ -258,8 +281,10 @@ async function ingestFolder(
     limit: number; recent?: number; imapUser: string; settings: any;
     accountId: string; accountLabel: string;
     learned?: LearnedGroups | null; knownGroups?: string[];
+    /** 기간 가져오기 — 이 날짜 이후 메일을 afterUid 뒤부터 limit 통 (runBackfill) */
+    backfill?: { since: Date; afterUid: number };
   },
-): Promise<{ stat: FolderStat; pendingIds: string[]; replies: MatchedReply[] }> {
+): Promise<{ stat: FolderStat; pendingIds: string[]; replies: MatchedReply[]; window?: { total: number; remaining: number; lastUid: number } }> {
   const accountId = opts.accountId;
   const state = await getSyncState(folder, accountId);
   const group = isGroupFolder(folder) ? groupNameFromFolder(folder) : null;
@@ -275,9 +300,14 @@ async function ingestFolder(
   };
   const replies: MatchedReply[] = [];
 
-  const batch = opts.recent
-    ? await fetchRecent(scoped, { folder, limit: Number(opts.recent) })
-    : await fetchNew(scoped, { folder, sinceUid: state.lastUid || 0, limit: opts.limit });
+  const since = opts.backfill
+    ? await fetchSinceBatch(scoped, { folder, since: opts.backfill.since, afterUid: opts.backfill.afterUid, limit: opts.limit })
+    : null;
+  const batch = since
+    ? { messages: since.messages }
+    : opts.recent
+      ? await fetchRecent(scoped, { folder, limit: Number(opts.recent) })
+      : await fetchNew(scoped, { folder, sinceUid: state.lastUid || 0, limit: opts.limit });
 
   stat.fetched = batch.messages.length;
   let maxUid = state.lastUid || 0;
@@ -441,12 +471,166 @@ async function ingestFolder(
   }
 
   await setSyncState(folder, {
-    lastUid: maxUid,
+    // 기간 가져오기는 오래된 것부터 올라가므로, 이미 더 앞선 수집 위치가 있으면 뒤로 되돌리지 않는다
+    lastUid: Math.max(maxUid, state.lastUid || 0),
     lastSyncAt: new Date(),
     lastError: stat.errors.length ? `${stat.errors.length}통 처리 실패` : '',
   }, accountId);
 
-  return { stat, pendingIds, replies };
+  return {
+    stat, pendingIds, replies,
+    window: since ? { total: since.total, remaining: since.remaining, lastUid: since.lastUid } : undefined,
+  };
+}
+
+export interface BackfillCursor {
+  /** 이 계정에서 돌 폴더 (첫 호출 때 정해 둔다) */
+  folders: string[];
+  folderIndex: number;
+  afterUid: number;
+  /** 폴더별 기간 안 메일 수 · 처리한 수 — 진행 표시용 */
+  progress: Record<string, { total: number; done: number }>;
+}
+
+export interface BackfillResult {
+  accountId: string;
+  accountLabel: string;
+  done: boolean;
+  cursor: BackfillCursor | null;
+  fetched: number;
+  inserted: number;
+  duplicate: number;
+  matched: number;
+  errors: string[];
+}
+
+/**
+ * [📥 전체 메일함 2달 가져오기] — 한 계정의 받은편지함 + 거래처 폴더에서 기간 안의 메일을 모두 가져와
+ * 평소 수집과 **똑같이** 분류(규칙 분류·광고 폴더·거래처 폴더·로컬 분석·리드 연결)해서 넣는다.
+ *
+ * 서버 한 번 실행 시간이 짧아(서버리스) budgetMs 안에서 끊고 cursor 를 돌려준다.
+ * 화면이 cursor 를 넘겨 done 이 될 때까지 다시 부른다. 이미 있는 메일은 중복으로 건너뛴다.
+ */
+export async function runBackfill(opts: {
+  accountId: string;
+  user?: string | null;
+  days?: number;
+  cursor?: BackfillCursor | null;
+  batchSize?: number;
+  budgetMs?: number;
+}): Promise<BackfillResult> {
+  const started = Date.now();
+  await dbConnect();
+  const settings = await getMailSettings();
+  const account: any = await resolveAccount(opts.accountId, opts.user || 'system');
+  const out: BackfillResult = {
+    accountId: String(opts.accountId), accountLabel: '', done: false, cursor: null,
+    fetched: 0, inserted: 0, duplicate: 0, matched: 0, errors: [],
+  };
+  if (!account) { out.errors.push('메일 계정을 찾을 수 없습니다'); out.done = true; return out; }
+  out.accountId = String(account._id);
+  out.accountLabel = account.accountName || account.smtpUser;
+
+  // 화면이 위치를 안 넘겼으면 — 지난번에 멈춘 자리부터, 또는 같은 메일함을 이미 다 가져왔으면 건너뛴다
+  if (!opts.cursor) {
+    if (account.backfillCursor && Array.isArray(account.backfillCursor.folders) && account.backfillCursor.folders.length) {
+      opts = { ...opts, cursor: account.backfillCursor };
+    } else {
+      const key = `${String(account.smtpUser || '').trim().toLowerCase()}|${String(account.smtpHost || '').trim().toLowerCase()}`;
+      const siblings: any[] = await MailAccount.find({ _id: { $ne: account._id }, backfilledAt: { $ne: null } }, { smtpUser: 1, smtpHost: 1 }).lean();
+      if (siblings.some((a) => `${String(a.smtpUser || '').trim().toLowerCase()}|${String(a.smtpHost || '').trim().toLowerCase()}` === key)) {
+        // 같은 주소를 다른 아이디가 이미 2달치 가져왔다 — 메일은 이미 DB 에 있고 이 계정에서도 보인다 (lib/mail/scope.ts)
+        await MailAccount.updateOne({ _id: account._id }, { $set: { backfilledAt: new Date(), backfillCursor: null } });
+        out.done = true;
+        return out;
+      }
+    }
+  }
+
+  const days = Math.max(1, Math.min(365, Number(opts.days) || 60));
+  const sinceDate = new Date(Date.now() - days * 86400000);
+  const batchSize = Math.max(5, Math.min(100, Number(opts.batchSize) || 40));
+  const budgetMs = Math.max(10_000, Math.min(240_000, Number(opts.budgetMs) || 50_000));
+
+  const { learned, knownGroups } = await learnForOwner(String(account.owner || ''), new Map());
+
+  let base: ImapConfig;
+  try {
+    base = toImapConfig(account, 'INBOX');
+  } catch (e: any) {
+    out.errors.push(String(e?.message || e));
+    out.done = true;
+    return out;
+  }
+
+  try {
+    await withOpenAccount(base, async (scoped) => {
+      // 폴더 목록은 첫 호출에만 정한다 — 받은편지함 + 사람이 나눠 둔 거래처 폴더 (보낸·휴지통·스팸 제외)
+      let cursor: BackfillCursor = opts.cursor && Array.isArray(opts.cursor.folders) && opts.cursor.folders.length
+        ? opts.cursor
+        : { folders: [], folderIndex: 0, afterUid: 0, progress: {} };
+      if (!cursor.folders.length) {
+        let boxes: string[] = [];
+        try { boxes = await listMailboxes(scoped); } catch { boxes = []; }
+        const groupFolders = boxes.filter((b) => isGroupFolder(b));
+        cursor.folders = [...new Set(['INBOX', ...(account.imapFolders || []), ...groupFolders])].filter(Boolean);
+      }
+
+      while (cursor.folderIndex < cursor.folders.length) {
+        if (Date.now() - started > budgetMs) break;
+        const folder = cursor.folders[cursor.folderIndex];
+        try {
+          const r = await ingestFolder(scoped, folder, {
+            limit: batchSize,
+            imapUser: account.smtpUser,
+            settings,
+            accountId: String(account._id),
+            accountLabel: out.accountLabel,
+            learned,
+            knownGroups,
+            backfill: { since: sinceDate, afterUid: cursor.afterUid },
+          });
+          out.fetched += r.stat.fetched;
+          out.inserted += r.stat.inserted;
+          out.duplicate += r.stat.duplicate;
+          out.matched += r.stat.matched;
+          const w = r.window || { total: 0, remaining: 0, lastUid: cursor.afterUid };
+          const prev = cursor.progress[folder] || { total: w.total, done: 0 };
+          cursor.progress[folder] = { total: w.total, done: Math.min(w.total, prev.done + r.stat.fetched) };
+          if (w.remaining > 0 && r.stat.fetched > 0) {
+            cursor.afterUid = w.lastUid;
+          } else {
+            cursor.folderIndex++;
+            cursor.afterUid = 0;
+          }
+        } catch (e: any) {
+          // 폴더 하나가 실패해도 다음 폴더로 넘어간다 (없어진 폴더·권한 문제)
+          out.errors.push(`[${folder}] ${String(e?.message || e)}`);
+          cursor.folderIndex++;
+          cursor.afterUid = 0;
+        }
+      }
+
+      out.done = cursor.folderIndex >= cursor.folders.length;
+      out.cursor = out.done ? null : cursor;
+      // 끝났으면 표시(다음 로그인 때 다시 돌지 않게), 아니면 위치를 남겨 창을 닫아도 이어 가게
+      await MailAccount.updateOne(
+        { _id: account._id },
+        { $set: out.done ? { backfilledAt: new Date(), backfillCursor: null } : { backfillCursor: cursor } },
+      );
+
+      // 다 가져왔으면 보낸메일함과 대조해 이미 답한 메일의 '회신 필요'를 내린다
+      if (out.done) {
+        try { await syncSentReplies(scoped, { accountId: String(account._id) }); } catch (e: any) {
+          out.errors.push(`[보낸메일함 대조] ${String(e?.message || e)}`);
+        }
+      }
+    });
+  } catch (e: any) {
+    out.errors.push(String(e?.message || e));
+    out.done = true;
+  }
+  return out;
 }
 
 /**
@@ -507,19 +691,13 @@ export async function runIngest(opts: IngestOptions = {}): Promise<IngestResult>
   // ── 거래처 학습 (무료) ──
   // 폴더를 돌기 전에 한 번만 만든다. 이미 폴더로 분류된 메일에서
   // "이 발신자는 이 거래처" 를 배워, INBOX 로 들어온 새 메일을 AI 없이 분류한다.
-  let learned: LearnedGroups | null = null;
-  let knownGroups: string[] = [];
-  try {
-    learned = await learnSenderGroups();
-    const g = await listGroups();
-    knownGroups = g.groups.map((x) => x.group).filter(Boolean);
-  } catch {
-    // 학습이 실패해도 수집 자체는 되어야 한다 (폴더 기반 분류는 그대로 동작)
-  }
+  // 거래처 학습은 계정마다 그 주인 범위로 한다 (learnForOwner)
+  const learnCache = new Map<string, { learned: LearnedGroups | null; knownGroups: string[] }>();
 
   for (const account of accounts) {
     const accountId = String(account._id);
     const accountLabel = account.accountName || account.smtpUser;
+    const { learned, knownGroups } = await learnForOwner(String(account.owner || ''), learnCache);
 
     // 수집 폴더는 **계정마다 다르다**. 대표 메일함은 거래처별로 폴더가 나뉘어 있고,
     // 그 폴더명이 곧 거래처(group) 이름이 된다.
