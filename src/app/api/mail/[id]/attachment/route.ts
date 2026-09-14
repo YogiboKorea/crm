@@ -6,6 +6,7 @@ import { toImapConfig } from '@/lib/mail/accounts';
 import { getMailSettings } from '@/lib/mail-settings';
 import type { ImapConfig } from '@/lib/mail/imap';
 import { openAttachmentStream } from '@/lib/mail/imap';
+import { getMailScope, canUseAccount, ownerFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,7 @@ export const maxDuration = 300;
  *    우리 주소에서 열면 그 안의 스크립트가 로그인된 화면 권한으로 돈다.
  *    피싱 메일 첨부가 실제로 들어오므로 나머지는 무조건 내려받기로만 준다.
  * ③ 로그인 확인은 proxy.ts 가 /api 전체에 걸고 있다.
+ *    다만 "누구 메일인가" 는 여기서 본다 — 남의 계정 메일이면 메일 서버에 접속하기 전에 막는다.
  */
 const INLINE_SAFE = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf',
@@ -53,15 +55,20 @@ function contentDisposition(kind: 'attachment' | 'inline', filename: string): st
  * 'main' 메일은 **당시 수신 설정의 주소**가 받은 메일이다. 기본 계정이 아니다 —
  * 실제로 기본 계정은 david@ 인데 'main' 메일 20통은 fe@ 메일함에서 왔다.
  * 그래서 설정에 적힌 주소와 같은 계정을 찾고, 없으면 설정의 접속 정보를 그대로 쓴다.
+ *
+ * user — 로그인한 아이디. 계정은 **그 사람 몫(ownerFilter) 안에서만** 찾는다.
+ * 주소가 같다고 다른 아이디가 등록한 계정의 비밀번호로 메일함을 열면 안 된다.
  */
 async function resolveMailbox(
   accountId: string | undefined,
   folder: string,
+  user: string,
 ): Promise<{ settings: ImapConfig } | { error: string }> {
   const id = String(accountId || '');
+  const mine = ownerFilter(user);
 
   if (/^[a-f0-9]{24}$/i.test(id)) {
-    const account = await MailAccount.findById(id).lean();
+    const account = await MailAccount.findOne({ _id: id, ...mine }).lean();
     if (!account) return { error: '이 메일을 받은 메일 계정이 삭제되어 첨부파일을 받을 수 없습니다.' };
     return { settings: toImapConfig(account, folder) };
   }
@@ -72,7 +79,8 @@ async function resolveMailbox(
   if (!user) return { error: '이 메일을 받은 메일함 정보를 찾을 수 없습니다.' };
 
   // 계정은 몇 개 되지 않는다 — 대소문자만 무시하고 주소로 맞춘다 (정규식 이스케이프 실수 여지를 없앤다)
-  const all: any[] = await MailAccount.find({}).lean();
+  // 'main' 메일은 마스터 몫이므로 마스터 계정들 중에서만 찾는다 (남의 아이디 계정으로 대신 열지 않는다)
+  const all: any[] = await MailAccount.find(mine).lean();
   const same = all.find((a) => String(a.smtpUser || '').toLowerCase() === user);
   if (same) return { settings: toImapConfig(same, folder) };
 
@@ -102,10 +110,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const wantInline = url.searchParams.get('inline') === '1';
 
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
     const mail: any = await InboundMail.findById(id, {
       subject: 1, uid: 1, folder: 1, accountId: 1, attachments: 1,
     }).lean();
     if (!mail) return fail(404, '메일을 찾을 수 없습니다.');
+    // 남의 계정 메일이면 첨부 목록도 보지 않고 끝낸다 — 404 로 있는지도 알려주지 않는다
+    if (!canUseAccount(scope, mail.accountId)) return NextResponse.json(NOT_YOURS, { status: 404 });
 
     // 화면에 보여준 목록과 같은 기준으로 고른다 (본문 삽입 이미지는 목록에서 뺐다)
     const list = (mail.attachments || []).filter((a: any) => !a.inline);
@@ -120,7 +133,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     // ① 계정은 정확히 — 추측으로 다른 계정을 열지 않는다
-    const resolved = await resolveMailbox(mail.accountId, mail.folder);
+    const resolved = await resolveMailbox(mail.accountId, mail.folder, scope.user);
     if ('error' in resolved) return fail(409, resolved.error);
     const settings = resolved.settings;
     const { stream } = await openAttachmentStream(settings, {

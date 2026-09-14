@@ -74,7 +74,8 @@ function sourceFilter(source?: string, batch?: string) {
       badEmailAt: { $exists: false },
     };
   }
-  return { stage: 'verified' };
+  // 검증 완료에서도 중복으로 감춘 곳·엉뚱한 주소는 검토에 띄우지 않는다 (stage-counts reviewNeeded 와 같은 조건)
+  return { stage: 'verified', dupHiddenAt: { $exists: false }, badEmailAt: { $exists: false } };
 }
 
 function buildPending(q?: string, country?: string, source?: string, batch?: string) {

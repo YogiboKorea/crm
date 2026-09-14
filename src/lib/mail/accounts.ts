@@ -11,6 +11,17 @@ import { MailAccount } from '@/models/MailAccount';
 import { decryptSecret } from '@/lib/crypto';
 import { ECOUNT_IMAP_HOST, ECOUNT_IMAP_PORT } from '@/models/MailSettings';
 import type { ImapConfig } from './imap';
+import { isMasterUser, masterIds } from '@/lib/masters';
+
+/**
+ * 계정 조회 범위 — lib/mail/scope.ts ownerFilter 와 같은 규칙.
+ * user 를 안 넘기면(크론·예약 발송처럼 사람이 없는 실행) 마스터 몫(회사 계정)으로 본다.
+ * 예약은 만들 때 이미 그 사람 계정으로 검사해 mailAccountId 가 박혀 있으므로, 실행 시점에는 id 로 찾기만 한다.
+ */
+function ownerScope(user?: string | null): Record<string, any> {
+  if (!user) return { owner: { $in: masterIds() } };
+  return isMasterUser(user) ? { owner: { $in: masterIds() } } : { owner: user };
+}
 
 export interface MailAccountSummary {
   accountId: string;      // MailAccount._id 문자열 — InboundMail.accountId 로 쓴다
@@ -46,9 +57,13 @@ export function toImapConfig(account: any, folder = 'INBOX'): ImapConfig {
   };
 }
 
-/** 수집 대상 계정 목록 — 활성 계정만, 기본 계정이 앞에 온다 */
-export async function listMailAccounts(): Promise<any[]> {
-  return MailAccount.find({ isActive: { $ne: false } })
+/**
+ * 수집 대상 계정 목록 — 활성 계정만, 기본 계정이 앞에 온다.
+ * user 를 넘기면 그 사람 계정만, 'system' 이면 전부(크론 수집 — 모든 사람의 메일을 모아 둔다).
+ */
+export async function listMailAccounts(user?: string | null): Promise<any[]> {
+  const scope = user === 'system' ? {} : ownerScope(user);
+  return MailAccount.find({ ...scope, isActive: { $ne: false } })
     .sort({ isDefault: -1, createdAt: 1 })
     .lean();
 }
@@ -68,14 +83,17 @@ export function summarize(account: any): MailAccountSummary {
  * accountId 로 계정 하나를 찾는다.
  * 'default' 를 넘기면 기본 계정, 없으면 첫 활성 계정.
  */
-export async function resolveAccount(accountId?: string): Promise<any | null> {
+export async function resolveAccount(accountId?: string, user?: string | null): Promise<any | null> {
+  // 'system' — 크론 수집처럼 사람이 없는 실행. 계정 id 를 그대로 믿는다.
+  const scope = user === 'system' ? {} : ownerScope(user);
   if (accountId && accountId !== 'default' && accountId !== 'all') {
-    const found = await MailAccount.findById(accountId).lean();
-    if (found) return found;
+    if (!/^[0-9a-f]{24}$/i.test(String(accountId))) return null;
+    // 남의 계정 id 를 넘기면 대신 자기 기본 계정을 돌려주지 않는다 — null (호출하는 쪽에서 거절)
+    return MailAccount.findOne({ _id: accountId, ...scope }).lean();
   }
   return (
-    await MailAccount.findOne({ isDefault: true, isActive: { $ne: false } }).lean()
-    || await MailAccount.findOne({ isActive: { $ne: false } }).lean()
+    await MailAccount.findOne({ ...scope, isDefault: true, isActive: { $ne: false } }).lean()
+    || await MailAccount.findOne({ ...scope, isActive: { $ne: false } }).lean()
   );
 }
 
@@ -93,14 +111,20 @@ export async function resolveAccount(accountId?: string): Promise<any | null> {
  * 받은 메일에 답장하는 경로(/api/mail/reply)는 해당하지 않는다 — 답장은 그 메일을 받은
  * 계정으로 나가야 상대 메일함에서 같은 대화로 이어진다.
  */
-export async function resolveOutreachAccount(accountId?: string | null): Promise<{ account: any | null; error?: string }> {
+export async function resolveOutreachAccount(
+  accountId?: string | null,
+  user?: string | null,
+): Promise<{ account: any | null; error?: string }> {
   const id = String(accountId || '').trim();
+  // 'system' — 예약 발송 실행(schedule-runner). 예약을 만들 때 이미 그 사람 계정인지 검사했다.
+  const scope = user === 'system' ? {} : ownerScope(user);
   if (id && id !== 'default') {
     if (!/^[0-9a-f]{24}$/i.test(id)) return { account: null, error: CHOSEN_ACCOUNT_GONE };
-    const acc = await MailAccount.findOne({ _id: id, isActive: { $ne: false } }).lean();
+    const acc = await MailAccount.findOne({ _id: id, ...scope, isActive: { $ne: false } }).lean();
     return acc ? { account: acc } : { account: null, error: CHOSEN_ACCOUNT_GONE };
   }
-  const def = await MailAccount.findOne({ isDefault: true, isActive: { $ne: false } }).lean();
+  const def = await MailAccount.findOne({ ...scope, isDefault: true, isActive: { $ne: false } }).lean()
+    || await MailAccount.findOne({ ...scope, isActive: { $ne: false } }).sort({ createdAt: 1 }).lean();
   return def ? { account: def } : { account: null, error: NO_OUTREACH_ACCOUNT };
 }
 

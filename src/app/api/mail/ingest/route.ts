@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { runIngest } from '@/lib/mail/ingest';
 import { listMailAccounts } from '@/lib/mail/accounts';
+import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
+import dbConnect from '@/lib/mongodb';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;   // 폴더 여러 개를 돌면 오래 걸린다
@@ -17,6 +19,10 @@ export const maxDuration = 300;   // 폴더 여러 개를 돌면 오래 걸린�
  * AI 분석(유료)은 Phase 5 에서 별도 엔드포인트로 붙는다.
  */
 export async function POST(req: Request) {
+  // [메일 가져오기]는 누른 사람의 계정만 돈다 — 남의 메일함에 붙지 않게
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
   let body: any = {};
   try {
     body = await req.json();
@@ -26,7 +32,9 @@ export async function POST(req: Request) {
 
   try {
     // 수신 계정 = 등록된 발송 계정(MailAccount). 이카운트는 SMTP/IMAP 자격증명이 같다.
-    const accounts = await listMailAccounts();
+    // user 를 넘겨 자기 계정만 센다 — 남의 계정이 있다고 "등록됨" 으로 보이면 안 된다.
+    await dbConnect();
+    const accounts = await listMailAccounts(user);
     if (!accounts.length) {
       return NextResponse.json({
         success: false,
@@ -38,8 +46,10 @@ export async function POST(req: Request) {
       limit: body?.limit,
       recent: body?.recent,
       folders: Array.isArray(body?.folders) ? body.folders : undefined,
-      // 'all' 이면 등록된 활성 계정 전부, 미지정이면 기본 계정
+      // 'all' 이면 자기 활성 계정 전부, 미지정이면 자기 기본 계정.
+      // 남의 계정 id 를 넣으면 runIngest 가 계정 없음으로 끝낸다 (user 범위로 찾으므로).
       accountId: body?.accountId,
+      user,
     });
 
     return NextResponse.json({

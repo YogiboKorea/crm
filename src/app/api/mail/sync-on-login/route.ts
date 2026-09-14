@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { runIngest } from '@/lib/mail/ingest';
 import { MailSyncState } from '@/models/MailSyncState';
-import { MailAccount } from '@/models/MailAccount';
+import { listMailAccounts } from '@/lib/mail/accounts';
+import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -35,6 +36,10 @@ const COOLDOWN_MIN = Number(process.env.LOGIN_SYNC_COOLDOWN_MIN) || 10;
 const LOGIN_FETCH_LIMIT = 30;
 
 export async function POST(req: Request) {
+  // 로그인한 사람의 계정만 당겨온다 (lib/mail/scope.ts)
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
   try {
     await dbConnect();
 
@@ -44,13 +49,16 @@ export async function POST(req: Request) {
       force = body?.force === true;
     } catch { /* 본문 없이도 동작 */ }
 
-    // 등록된 계정이 없으면 할 일이 없다 (설정 전 상태)
-    const accountCount = await MailAccount.countDocuments({ isActive: { $ne: false } });
-    if (!accountCount) {
+    // 자기 계정이 없으면 할 일이 없다 (설정 전 상태).
+    // 남의 계정 수로 판단하면 계정 없는 사람도 수집을 돌리게 된다.
+    const myAccounts = await listMailAccounts(user);
+    if (!myAccounts.length) {
       return NextResponse.json({ success: true, skipped: 'no-account', ran: false });
     }
 
-    const latest = await MailSyncState.findOne({ lastSyncAt: { $ne: null } })
+    // 쿨다운도 자기 계정 기준 — 다른 사람이 방금 수집했다고 내 메일함을 건너뛰면 안 된다
+    const myAccountIds = myAccounts.map((a: any) => String(a._id));
+    const latest = await MailSyncState.findOne({ accountId: { $in: myAccountIds }, lastSyncAt: { $ne: null } })
       .sort({ lastSyncAt: -1 })
       .select('lastSyncAt')
       .lean<any>();
@@ -69,7 +77,8 @@ export async function POST(req: Request) {
       });
     }
 
-    const r = await runIngest({ accountId: 'all', limit: LOGIN_FETCH_LIMIT });
+    // 'all' 이어도 user 범위 안의 계정 전부다 — 로그인한 사람 몫만 돈다
+    const r = await runIngest({ accountId: 'all', limit: LOGIN_FETCH_LIMIT, user });
 
     return NextResponse.json({
       success: true,

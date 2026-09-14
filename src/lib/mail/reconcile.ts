@@ -20,6 +20,7 @@ import { InboundMail } from '@/models/InboundMail';
 import { Lead } from '@/models/Lead';
 import { findSpecialFolder, fetchEnvelopes, type ImapConfig, type EnvelopeInfo } from './imap';
 import { normalizeSubject } from './thread';
+import { moveRepliedToNegotiating } from './stage-on-reply';
 
 /** 한 번에 훑을 최대 통수 — 보낸메일함은 최근 것만 봐도 충분하다 */
 const SENT_SCAN = 400;
@@ -170,7 +171,11 @@ export async function syncSentReplies(
       },
     );
     out.matched++;
-    if (target.leadId) clearedLeads.add(target.leadId);
+    if (target.leadId) {
+      clearedLeads.add(target.leadId);
+      // 웹메일·아웃룩·휴대폰에서 답한 것도 CRM 에서 답한 것과 똑같이 [대화 진행 중] 으로 옮긴다
+      await moveRepliedToNegotiating(target.leadId);
+    }
   }
 
   // 리드의 '회신 필요' 도 함께 내린다 — 화면 배지가 실제와 맞아야 한다

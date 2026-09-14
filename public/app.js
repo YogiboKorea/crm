@@ -642,7 +642,12 @@ function updateNavBadges(counts) {
       delete el.dataset.count;
       return;
     }
-    const n = key === 'contacted' ? ((s.queued || 0) + (s.contacted || 0)) : (s[key] || 0);
+    // AI 검증 완료 배지는 [2차 검토 필요] 수 — 검증 성공 전체(메일 없는 곳 포함)를 띄우면
+    // 검토 카드의 숫자와 달라 "몇 곳을 봐야 하나" 가 헷갈린다 (대표님 요청 2026-09-14)
+    const reviewNeeded = counts.verifiedSub && counts.verifiedSub.reviewNeeded;
+    const n = key === 'contacted' ? ((s.queued || 0) + (s.contacted || 0))
+      : (key === 'verified' && typeof reviewNeeded === 'number') ? reviewNeeded
+      : (s[key] || 0);
     el.textContent = n.toLocaleString();
     el.dataset.count = String(n);
   });
@@ -2084,15 +2089,21 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
     // 2차 검토 대상은 **메일 주소가 있는 곳**이다 (검토 화면 진행바와 같은 기준).
     // 전체 검증 완료 수(541)를 그대로 쓰면 검토를 누르는 순간 '0 / 317' 로 바뀌어 헷갈린다.
     const serverNoEmail = _stageCountsCache?.verifiedSub?.noEmail;
-    const emailReadyCount = (typeof serverVerified === 'number' && serverVerified > localReady)
-      ? Math.max(0, serverVerified - (typeof serverNoEmail === 'number' ? serverNoEmail : 0))
-      : localReady;
+    const serverHidden = _stageCountsCache?.verifiedSub?.hidden || 0;
+    const serverReviewNeeded = _stageCountsCache?.verifiedSub?.reviewNeeded;
+    const emailReadyCount = typeof serverReviewNeeded === 'number'
+      ? serverReviewNeeded
+      : (typeof serverVerified === 'number' && serverVerified > localReady)
+        ? Math.max(0, serverVerified - (typeof serverNoEmail === 'number' ? serverNoEmail : 0))
+        : localReady;
     // "승인 완료 / 검토 남음" 은 readyForOutreach 로 세던 값이라 늘 전체와 같았다.
     // 지금 의미 있는 수는 "발송 리스트로 옮긴 곳"뿐이라 그것만 쓴다.
     const queuedCount = (_stageCountsCache?.stages?.queued) || 0;
 
     // 아직 안 고른 곳 — 직접 검토가 할 일이 남아 있는지
-    const notPicked = Math.max(0, emailReadyCount - queuedCount);
+    // [발송 관리]로 옮긴 곳은 stage 가 queued 로 바뀌어 emailReadyCount 에서 이미 빠져 있다.
+    // 여기서 queuedCount 를 또 빼면 옮긴 수만큼 두 번 줄어든다 (예전: 371 인데 367 로 떴다).
+    const notPicked = emailReadyCount;
 
     // 두 가지를 한 줄에 나란히 두지 않는다.
     //
@@ -2143,7 +2154,7 @@ function renderStageBanner(stageInfo, totalCount, filteredCount) {
                 <div style="font-size:11px;color:#3b82f6;margin-top:3px;line-height:1.5"
                      title="메일 주소 대신 문의폼·인스타 DM 등으로만 연락되는 곳은 메일을 보낼 수 없어 2차 검토에서 뺍니다. 목록 위 [📭 이메일 없음] 칩에서 볼 수 있습니다.">
                   검증 성공 <b>${serverVerified.toLocaleString()}</b>곳 중 메일 주소가 있는 곳<br>
-                  <span style="color:#64748b">(메일 주소 없음 ${serverNoEmail.toLocaleString()}곳 제외)</span>
+                  <span style="color:#64748b">(메일 주소 없음 ${serverNoEmail.toLocaleString()}곳${serverHidden ? ` · 중복 ${serverHidden.toLocaleString()}곳` : ''} 제외)</span>
                 </div>` : ''}
               </div>
               <div style="width:1px;height:46px;background:#93c5fd"></div>
@@ -3158,12 +3169,17 @@ function renderComposeModal() {
       const val = lead[v.key] || '';
       out[v.key] = val || v.example;
     }
+    // 변수 목록을 아직 못 받았어도 회사명 등은 그 회사 값으로
+    for (const k of ['Company', 'Country', 'BuyerContact', 'Title', 'Email', 'Phone']) {
+      if (lead[k]) out[k] = lead[k];
+    }
     out.SenderName = '요기보';
     out.SenderCompany = 'Yogico';
     out.SenderEmail = _mailerEnvCache?.from || 'partnerships@yogico.kr';
     return out;
   };
-  const renderClient = (src, vars) => (src || '').replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (_, k) => vars[k] != null ? String(vars[k]) : `{{${k}}}`);
+  // [회사명] 같은 한글 마커도 바꾼다 — 발송관리 미리보기(outboxSubstitute)·서버 발송과 같은 규칙
+  const renderClient = (src, vars) => outboxSubstitute(src, vars);
   const previewVars = previewLead ? buildVars(previewLead) : example;
   const previewSubject = renderClient(_composeState.subject, previewVars);
   const previewBody = renderClient(_composeState.body, previewVars);
@@ -11273,14 +11289,85 @@ function outboxPreviewVars(lead) {
   for (const v of (state.email.variables || [])) {
     out[v.key] = (lead && lead[v.key]) || v.example || '';
   }
+  // 변수 목록을 아직 못 받았어도 회사명 등은 그 회사 값으로 보이게 한다
+  for (const k of ['Company', 'Country', 'BuyerContact', 'Title', 'Email', 'Phone']) {
+    if (lead && lead[k]) out[k] = lead[k];
+  }
   out.SenderName = '요기보';
   out.SenderCompany = 'Yogico';
   out.SenderEmail = _mailerEnvCache?.from || 'partnerships@yogico.kr';
   return out;
 }
-function outboxSubstitute(src, vars) {
-  return (src || '').replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g,
-    (_, k) => vars[k] != null && vars[k] !== '' ? String(vars[k]) : `{{${k}}}`);
+// 한글 마커 → 변수. 서버 lib/mailer.ts KO_ALIAS_TO_KEY 와 같아야 미리보기와 실제 발송이 같다.
+// (예전에는 {{Company}} 만 바꿔서, 양식에 [회사명] 을 쓰면 미리보기에 [회사명] 이 그대로 떠
+//  "어느 회사에 가는 메일인지" 헷갈렸다 — 대표님 피드백 2026-09-14)
+const OUTBOX_KO_MARKERS = {
+  '회사명': 'Company', '상대회사': 'Company', '상대 회사명': 'Company',
+  '받는사람': 'BuyerContact', '담당자': 'BuyerContact', '담당자 이름': 'BuyerContact',
+  '담당자 직함': 'Title', '담당자 이메일': 'Email', '담당자 전화번호': 'Phone', '국가': 'Country',
+};
+/**
+ * 양식의 {{Key}} · [한글마커] 를 그 회사 값으로 바꾼다.
+ * opts.html      — 바뀐 자리를 노란 표시로 감싼 HTML 을 돌려준다 (회사마다 바뀌는 자리가 보이게)
+ * opts.escapeText — 원문이 평문일 때 나머지 글자를 이스케이프한다 (html 과 함께)
+ */
+function outboxSubstitute(src, vars, opts = {}) {
+  const text = String(src || '');
+  const re = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}|\[([^\[\]\n]+?)\]/g;
+  let out = '';
+  let last = 0;
+  let m;
+  const esc = (t) => (opts.html && opts.escapeText ? escapeHtml(t) : t);
+  while ((m = re.exec(text))) {
+    out += esc(text.slice(last, m.index));
+    last = m.index + m[0].length;
+    const key = m[1] || OUTBOX_KO_MARKERS[String(m[2] || '').trim()];
+    const val = key && vars[key] != null && vars[key] !== '' ? String(vars[key]) : null;
+    if (!key || val == null) { out += esc(m[0]); continue; }
+    out += opts.html
+      ? `<span class="ob-var" title="회사마다 바뀌는 자리" style="background:#fef3c7;color:#92400e;border-radius:4px;padding:0 3px;font-weight:700">${escapeHtml(val)}</span>`
+      : val;
+  }
+  return out + esc(text.slice(last));
+}
+/** 테스트 메일 받을 주소 — 사람이 적은 주소가 있으면 그것, 없으면 보내는 계정(본인 메일) */
+function outboxTestTo() {
+  if (_outboxCompose.testToEdited && _outboxCompose.testTo) return _outboxCompose.testTo;
+  const acc = outreachAccounts().find((a) => a._id === _outboxCompose.mailAccountId) || outreachAccount();
+  return (acc && (acc.fromAddress || acc.smtpUser)) || '';
+}
+
+/** 🧪 테스트 메일 보내기 — 저장된 양식으로 실제 발송과 같은 모양을 만들어 바로 보낸다 (/api/mail/test-send) */
+async function sendOutboxTestMail(ready) {
+  const to = (document.getElementById('obTestTo')?.value || '').trim();
+  if (!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(to)) { alert('받을 메일 주소를 확인해 주세요.'); return; }
+  if (!_outboxCompose.templateId) { alert('메일 양식을 먼저 고르세요.'); return; }
+  const lead = ready.find((l) => l.leadId === _outboxCompose.previewLeadId) || ready[0];
+  const acc = outreachAccounts().find((a) => a._id === _outboxCompose.mailAccountId) || outreachAccount();
+  const note = _outboxCompose.dirty ? '\n\n※ 이 화면에서 고친 문구가 아니라 저장된 양식으로 보냅니다 (업체 발송도 저장된 양식으로 나갑니다).' : '';
+  if (!confirm(`테스트 메일을 보냅니다.\n\n받는 주소  ${to}\n보내는 주소  ${acc ? (acc.fromAddress || acc.smtpUser) : '(대표 계정)'}\n회사명 자리  ${(lead && lead.Company) || '예시 회사'}${note}`)) return;
+  const btn = document.getElementById('obTestSendBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 보내는 중...'; }
+  try {
+    const r = await safeJsonFetch('/api/mail/test-send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, templateId: _outboxCompose.templateId, previewLeadId: lead && lead.leadId, mailAccountId: _outboxCompose.mailAccountId || undefined }),
+    });
+    if (!r?.success) throw new Error(r?.error || '보내지 못했습니다');
+    alert(`✅ 테스트 메일을 보냈습니다${r.dryRun ? ' (DRY RUN — 실제로는 나가지 않음)' : ''}\n\n${r.to} 메일함을 확인하세요.\n제목: ${r.subject}${r.attachments ? `\n첨부 ${r.attachments}개` : ''}`);
+  } catch (e) {
+    alert(`테스트 메일을 보내지 못했습니다: ${(e && e.message) || e}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🧪 테스트 메일 보내기'; }
+  }
+}
+
+/** 미리보기 받는 사람 칸 — 회사명과 주소를 함께 */
+function outboxPreviewToHtml(lead) {
+  if (!lead) return '—';
+  return `<span style="font-family:inherit;font-weight:800;color:var(--text-primary)">${escapeHtml(lead.Company || '')}</span>`
+    + ` <span style="font-family:monospace">${escapeHtml(lead.Email || '—')}</span>`;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -11307,6 +11394,8 @@ var _outboxCompose = {
   // 100곳을 한 번에 쏘면 수신 서버가 대량 발송으로 본다. 같은 도메인으로
   // 실거래 메일도 나가기 때문에 평판이 깎이면 그쪽까지 스팸함으로 간다.
   batchSize: 100,                 // 100곳씩 나눠 예약 (대표님 결정 2026-09-14)
+  testTo: '',                     // 🧪 테스트 메일 받을 주소 — 비어 있으면 보내는 계정(본인 메일)
+  testToEdited: false,            // 사람이 직접 고쳤으면 계정을 바꿔도 덮지 않는다
   intervalMinutes: 10,
   startNow: true,
   startAt: '',         // startNow=false 일 때 쓰는 datetime-local 값
@@ -11990,6 +12079,13 @@ function outboxBindComposeInputs(ready) {
   });
   // 계정을 바꾸면 안내 문구(대표 계정이 아닌 주소 경고)도 바뀌어야 해서 다시 그린다
   accSel?.addEventListener('change', () => { _outboxCompose.mailAccountId = accSel.value; renderOutboxPage(); });
+  // 테스트 메일 주소 — 직접 고치면 그 주소를 기억한다. 비우면 다시 본인 메일(보내는 계정)로 돌아간다.
+  const testToEl = document.getElementById('obTestTo');
+  testToEl?.addEventListener('input', () => {
+    _outboxCompose.testTo = testToEl.value.trim();
+    _outboxCompose.testToEdited = !!_outboxCompose.testTo;
+  });
+  document.getElementById('obTestSendBtn')?.addEventListener('click', () => sendOutboxTestMail(ready));
   prevSel?.addEventListener('change', () => {
     _outboxCompose.previewLeadId = prevSel.value;
     outboxRefreshPreview(ready);
@@ -12062,11 +12158,13 @@ function outboxRefreshPreview(ready) {
   const to = document.getElementById('obPvTo');
   const sj = document.getElementById('obPvSubject');
   const bd = document.getElementById('obPvBody');
-  if (to) to.textContent = (lead && lead.Email) || '—';
-  if (sj) sj.textContent = outboxSubstitute(_outboxCompose.subject, vars) || '(제목 없음)';
+  if (to) to.innerHTML = outboxPreviewToHtml(lead);
+  if (sj) sj.innerHTML = outboxSubstitute(_outboxCompose.subject, vars, { html: true, escapeText: true }) || '(제목 없음)';
   if (bd) {
-    const t = outboxSubstitute(_outboxCompose.body, vars);
-    bd.innerHTML = t.includes('<') ? t : escapeHtml(t).split('\n').join('<br>');
+    const raw = _outboxCompose.body || '';
+    bd.innerHTML = raw.includes('<')
+      ? outboxSubstitute(raw, vars, { html: true })
+      : outboxSubstitute(raw, vars, { html: true, escapeText: true }).split('\n').join('<br>');
   }
 }
 
@@ -12102,9 +12200,12 @@ function outboxReadyHtml(ready, lock) {
     || (_mailAccounts || [])[0] || null;
 
   // 어떤 자리가 회사마다 달라지는지 — 이게 '묶음 발송'의 핵심이라 눈에 띄어야 한다
+  // {{Company}} 와 [회사명] 둘 다 센다 — 양식은 대부분 [회사명] 으로 쓴다
   const usedVars = [...new Set(
-    `${_outboxCompose.subject} ${_outboxCompose.body}`.match(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g) || [],
-  )].map((m) => m.replace(/[{}\s]/g, ''));
+    (`${_outboxCompose.subject} ${_outboxCompose.body}`.match(/\{\{\s*[A-Za-z0-9_]+\s*\}\}|\[[^\[\]\n]+?\]/g) || [])
+      .filter((m) => m.startsWith('{{') || OUTBOX_KO_MARKERS[m.slice(1, -1).trim()])
+      .map((m) => (m.startsWith('{{') ? m.replace(/\s/g, '') : m)),
+  )];
 
   const byCountry = new Map();
   ready.forEach((l) => byCountry.set(l.Country || '-', (byCountry.get(l.Country || '-') || 0) + 1));
@@ -12117,7 +12218,7 @@ function outboxReadyHtml(ready, lock) {
           📦 ${ready.length.toLocaleString()}곳에 같은 메일을 한 번에
         </div>
         <div style="font-size:12.5px;color:#1e40af;line-height:1.6;margin-top:3px">
-          문구는 하나만 씁니다. <b>${usedVars.length ? usedVars.map((v) => `{{${escapeHtml(v)}}}`).join(' · ') : '{{Company}}'}</b>
+          문구는 하나만 씁니다. <b>${usedVars.length ? usedVars.map((v) => escapeHtml(v)).join(' · ') : '[회사명]'}</b>
           자리만 회사마다 바뀝니다.
         </div>
       </div>
@@ -12144,6 +12245,18 @@ function outboxReadyHtml(ready, lock) {
               <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">보내는 계정</span>
               <div style="margin-top:3px">${outreachAccountBoxHtml('obAcc', _outboxCompose.mailAccountId)}</div>
             </label>
+          </div>
+
+          <!-- 🧪 테스트 메일 — 업체에 보내기 전에 실제로 나갈 모양 그대로 내 메일함으로 한 통 -->
+          <div id="obTestBox" style="margin:0 0 10px;padding:9px 11px;border:1px dashed #a5b4fc;border-radius:8px;background:#eef2ff">
+            <div style="font-size:11px;font-weight:800;color:#3730a3;margin-bottom:5px">🧪 테스트 메일
+              <span style="font-weight:400;color:#4338ca">· 지금 미리보기 회사 기준으로, 제목 앞에 [테스트]를 붙여 바로 보냅니다 (업체 발송 기록에는 남지 않음)</span></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <input id="obTestTo" type="email" value="${escapeAttr(outboxTestTo())}" placeholder="받을 주소 (기본: 보내는 계정 = 본인 메일)"
+                style="flex:1;min-width:180px;padding:6px 9px;font-size:12.5px;border:1px solid #c7d2fe;border-radius:6px;background:var(--bg-surface);color:var(--text-primary)">
+              <button type="button" id="obTestSendBtn"
+                style="padding:6px 13px;font-size:12px;font-weight:700;border:1px solid #4f46e5;background:#4f46e5;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap">🧪 테스트 메일 보내기</button>
+            </div>
           </div>
 
           <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">제목</span>
@@ -12181,15 +12294,17 @@ function outboxReadyHtml(ready, lock) {
                       background:var(--surface-1)">
             <div style="padding:8px 12px;border-bottom:1px solid var(--border-subtle);
                         font-size:11.5px;color:var(--text-tertiary)">
-              받는 사람 <b id="obPvTo" style="color:var(--text-secondary);font-family:monospace">${escapeHtml((preview && preview.Email) || '—')}</b>
+              받는 사람 <b id="obPvTo" style="color:var(--text-secondary)">${outboxPreviewToHtml(preview)}</b>
             </div>
             <div id="obPvSubject" style="padding:9px 12px;border-bottom:1px solid var(--border-subtle);
                         font-size:13px;font-weight:700;color:var(--text-primary);word-break:break-word">
-              ${escapeHtml(subj) || '(제목 없음)'}
+              ${outboxSubstitute(_outboxCompose.subject, vars, { html: true, escapeText: true }) || '(제목 없음)'}
             </div>
             <div id="obPvBody" style="padding:11px 13px;font-size:12.5px;line-height:1.7;color:var(--text-secondary);
                         max-height:290px;overflow:auto;word-break:break-word">
-              ${body.includes('<') ? body : escapeHtml(body).split('\n').join('<br>')}
+              ${(_outboxCompose.body || '').includes('<')
+                ? outboxSubstitute(_outboxCompose.body, vars, { html: true })
+                : outboxSubstitute(_outboxCompose.body, vars, { html: true, escapeText: true }).split('\n').join('<br>')}
             </div>
           </div>
         </div>
@@ -13155,6 +13270,19 @@ function openMailAccountModal(editId) {
             <ol id="macGuideSteps" style="margin:0;padding-left:20px;font-size:12px;color:#0f172a;line-height:1.7"></ol>
           </div>
 
+          <!-- 로그인 거절(535) 때 뜨는 안내 — 저장 실패 처리에서 보여준다 -->
+          <div id="macAuthHelp" hidden style="padding:12px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:10px">
+            <div style="font-size:12.5px;font-weight:800;color:#991b1b;margin-bottom:6px">🚫 메일 서버가 로그인을 거절했습니다 — 아래를 차례로 확인하세요</div>
+            <ol style="margin:0;padding-left:20px;font-size:12px;color:#0f172a;line-height:1.75">
+              <li><b>비밀번호</b> — ERP 로그인 비밀번호가 아니라 <b>메일(웹메일) 비밀번호</b>인지, 한/영·Caps Lock 확인</li>
+              <li><b>이카운트 웹메일 로그인 → 개인기능설정 → 외부연동설정</b></li>
+              <li><b>"해외 로그인 차단" → 사용안함</b> (이 앱의 서버는 해외 IP 로 잡혀 이 설정이 켜져 있으면 막힙니다)</li>
+              <li><b>"메일 클라이언트 사용" → 사용</b></li>
+              <li>설정을 바꾼 뒤 다시 <b>[저장]</b> — 틀린 시도를 여러 번 했다면 몇 분 뒤에 시도</li>
+            </ol>
+            <div style="font-size:11px;color:#7f1d1d;margin-top:6px">메뉴 이름은 이카운트 화면에 따라 조금 다를 수 있습니다. 회사 관리자 계정에서만 바꿀 수 있는 경우도 있습니다.</div>
+          </div>
+
           <!-- ② 로그인 정보 -->
           <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
             <label style="font-size:12px;color:#1e40af;font-weight:800;text-transform:uppercase;letter-spacing:0.5px">② 로그인 정보</label>
@@ -13372,7 +13500,20 @@ function openMailAccountModal(editId) {
       await loadMailAccounts(true);
       renderMailAccountsTool();
     } catch (e) {
-      alert('저장 실패: ' + (e.message || 'unknown'));
+      const msg = String((e && e.message) || 'unknown');
+      // 535 / Invalid login 은 비밀번호가 틀렸을 때만 나는 게 아니다.
+      // 이카운트는 [해외 로그인 차단]·[메일 클라이언트 사용 안 함] 상태에서도 같은 오류로 막는다
+      // (Vercel 서버에서 접속하면 해외 IP 로 잡혀 막힌다 — 실제로 설정을 바꿔야 나갔다, 2026-09-14).
+      // 그래서 오류 문구만 띄우지 않고 무엇을 바꿔야 하는지 폼 안에 크게 보여준다.
+      const authFail = /535|invalid login|authentication failed|auth.*fail|login.*fail/i.test(msg);
+      const box = document.getElementById('macAuthHelp');
+      if (box) {
+        box.hidden = !authFail;
+        if (authFail) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      alert('저장 실패: ' + msg + (authFail
+        ? '\n\n메일 서버가 로그인을 거절했습니다. 비밀번호가 맞다면 이카운트 설정 때문일 가능성이 큽니다.\n폼 안의 빨간 안내(이카운트에서 바꿀 설정)를 확인해 주세요.'
+        : ''));
       btn.disabled = false; btn.textContent = isEdit ? '💾 수정' : '+ 저장 & 연결 테스트';
     }
   });

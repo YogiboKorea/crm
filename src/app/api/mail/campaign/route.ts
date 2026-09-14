@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resolveOutreachAccount } from '@/lib/mail/accounts';
-import { cookies } from 'next/headers';
-import { jwtVerify } from 'jose';
+import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 import dbConnect from '@/lib/mongodb';
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { EmailTemplate } from '@/models/EmailTemplate';
@@ -11,18 +10,6 @@ import { loadTemplateAttachments } from '@/lib/mail/template-attachments';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret');
-
-async function currentUser(): Promise<string | null> {
-  const c = await cookies();
-  const token = c.get('admin_session')?.value;
-  if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return (payload as any).user as string;
-  } catch { return null; }
-}
 
 /**
  * POST /api/mail/campaign — 발송 리스트를 실제 발송 예약으로 펼친다.
@@ -47,8 +34,8 @@ async function currentUser(): Promise<string | null> {
  * }
  */
 export async function POST(req: Request) {
-  const user = await currentUser();
-  if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const leadIds: string[] = Array.isArray(body.leadIds) ? body.leadIds : [];
@@ -110,7 +97,8 @@ export async function POST(req: Request) {
     }
 
     // 고른 계정(없으면 대표 계정)으로 예약을 깐다. 그 계정이 없으면 예약을 만들지 않는다.
-    const { account: outreach, error: accError } = await resolveOutreachAccount(body.mailAccountId);
+    // user 를 넘겨 자기 계정만 — 예약 실행은 id 만 믿으므로 남의 계정 id 는 여기서 막는다.
+    const { account: outreach, error: accError } = await resolveOutreachAccount(body.mailAccountId, user);
     if (!outreach) {
       return NextResponse.json({ success: false, error: accError }, { status: 400 });
     }

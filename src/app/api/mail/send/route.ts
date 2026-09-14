@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resolveOutreachAccount } from '@/lib/mail/accounts';
+import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { EmailTemplate } from '@/models/EmailTemplate';
@@ -37,6 +38,11 @@ export const maxDuration = 60;
  *   { success, requested, sent, failed, dryRun, results: [{leadId, ok, messageId?, error?}] }
  */
 export async function POST(req: Request) {
+  // 보내는 계정은 로그인한 아이디 몫 안에서만 고른다 (lib/mail/scope.ts).
+  // 아이디 없이 계정을 찾으면 마스터 계정으로 잡혀 남의 주소로 나갈 수 있다.
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
   // 잠금 중에도 테스트 주소(TEST_RECIPIENTS)로는 나가야 발송~수신 흐름을
   // 끝까지 확인할 수 있다. 그래서 요청 전체를 여기서 막지 않고, 아래 발송
   // 루프에서 받는 주소별로 거른다. 테스트 주소가 하나도 없으면 전면 차단이다.
@@ -84,8 +90,9 @@ export async function POST(req: Request) {
   let fromOverride: any = undefined;
   let usedAccount: any = null;
   // 화면에서 고른 계정으로 보낸다. 안 골랐으면 대표 계정 (lib/mail/accounts.ts resolveOutreachAccount).
+  // user 를 넘겨 자기 계정만 — 남의 계정 id 를 넣으면 계정 없음으로 거절된다.
   {
-    const { account: acc, error: accError } = await resolveOutreachAccount(mailAccountId);
+    const { account: acc, error: accError } = await resolveOutreachAccount(mailAccountId, user);
     if (!acc) {
       return NextResponse.json({ success: false, error: accError }, { status: 400 });
     }

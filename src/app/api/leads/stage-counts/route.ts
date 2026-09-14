@@ -71,8 +71,8 @@ export async function GET() {
     // 나오고, 화면에는 "승인됨 409" 로 떠서 실제 발송 리스트(queued, 1건)와
     // 어긋났다. 지금 기준은 "발송 리스트로 옮겼는가" = stage 'queued' 다.
     // approved 는 옛 화면 호환으로만 남긴다.
-    const verifiedSub = { approved: 0, pending: 0, noEmail: 0, all: stages.verified, queued: stages.queued };
-    const [vApproved, vNoEmail] = await Promise.all([
+    const verifiedSub = { approved: 0, pending: 0, noEmail: 0, all: stages.verified, queued: stages.queued, reviewNeeded: 0, hidden: 0 };
+    const [vApproved, vNoEmail, vReviewNeeded] = await Promise.all([
       Lead.countDocuments({ stage: 'verified', readyForOutreach: true, deleted: { $ne: true } }),
       // '보낼 수 있는 메일 주소가 없다' 의 기준은 검토 화면(review/route.ts REAL_EMAIL)과 같아야 한다.
       // 예전에는 빈칸·'Not found' 만 셌다(68). 실제로는 'Contact form on site'·'DM via Instagram' 처럼
@@ -81,9 +81,22 @@ export async function GET() {
         stage: 'verified', deleted: { $ne: true },
         Email: { $not: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ },
       }),
+      // [2차 검토 필요] — 사이드바 배지·검토 카드·검토 화면 진행바가 모두 이 수를 쓴다 (review/route.ts 와 같은 조건).
+      // 중복으로 감춘 곳(dupHiddenAt)·주소가 그 회사 것이 아닌 곳(badEmailAt)은 뺀다 —
+      // 넣으면 같은 회사를 두 번 검토하고 두 번 보내게 된다. (예전: 371 로 떠서 실제 목록과 8곳 어긋남)
+      // [발송 관리]로 옮긴 곳은 stage 가 queued 로 바뀌므로 여기서 이미 빠진다.
+      Lead.countDocuments({
+        stage: 'verified', deleted: { $ne: true },
+        Email: { $regex: /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/ },
+        dupHiddenAt: { $exists: false },
+        badEmailAt: { $exists: false },
+      }),
     ]);
     verifiedSub.approved = vApproved;
     verifiedSub.noEmail = vNoEmail;
+    verifiedSub.reviewNeeded = vReviewNeeded;
+    // 메일 주소는 있지만 중복·엉뚱한 주소라 검토에서 뺀 곳
+    verifiedSub.hidden = Math.max(0, stages.verified - vNoEmail - vReviewNeeded);
     verifiedSub.pending = stages.verified - vApproved - vNoEmail;
     if (verifiedSub.pending < 0) verifiedSub.pending = 0;
 

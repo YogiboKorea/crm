@@ -4,6 +4,9 @@ import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
 import { MailAccount } from '@/models/MailAccount';
 import { sendMail } from '@/lib/mailer';
+import { getMailScope, canUseAccount, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { resolveOutreachAccount } from '@/lib/mail/accounts';
+import { moveRepliedToNegotiating } from '@/lib/mail/stage-on-reply';
 import { buildSignatureBlock } from '@/lib/template-vars';
 import { decryptSecret } from '@/lib/crypto';
 
@@ -43,18 +46,28 @@ export async function POST(req: Request) {
 
   try {
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
     const mail: any = await InboundMail.findById(inboundMailId).lean();
     if (!mail) return NextResponse.json({ success: false, error: '원본 메일을 찾을 수 없습니다' }, { status: 404 });
+    // 내 메일함에 온 메일에만 답할 수 있다 (아이디별 메일 분리 — lib/mail/scope.ts)
+    if (!canUseAccount(scope, mail.accountId)) return NextResponse.json(NOT_YOURS, { status: 404 });
 
     const to = mail.from?.address;
     if (!to) return NextResponse.json({ success: false, error: '원본 메일에 발신 주소가 없습니다' }, { status: 400 });
 
     // ── 발송 계정 ──
-    const account: any = body?.mailAccountId
-      ? await MailAccount.findById(body.mailAccountId).lean()
-      : await MailAccount.findOne({ isDefault: true, isActive: true }).lean()
-        || await MailAccount.findOne({ isActive: true }).lean();
+    // 1) 화면이 고른 계정(내 것만)  2) 이 메일을 받은 계정 — 상대 메일함에서 같은 주소로 대화가 이어진다
+    // 3) 내 기본 계정.  남의 계정으로는 보내지 않는다.
+    let account: any = null;
+    if (body?.mailAccountId) {
+      account = (await resolveOutreachAccount(String(body.mailAccountId), scope.user)).account;
+      if (!account) return NextResponse.json({ success: false, error: '고른 보내는 계정을 쓸 수 없습니다' }, { status: 400 });
+    } else if (/^[0-9a-f]{24}$/i.test(String(mail.accountId || ''))) {
+      account = await MailAccount.findOne({ _id: mail.accountId, isActive: { $ne: false } }).lean();
+    }
+    if (!account) account = (await resolveOutreachAccount(undefined, scope.user)).account;
     if (!account) {
       return NextResponse.json({ success: false, error: '발송할 메일 계정이 없습니다. 설정에서 등록하세요.' }, { status: 400 });
     }
@@ -127,7 +140,7 @@ export async function POST(req: Request) {
     // ── 원본 메일을 '답변완료' 로 ──
     await InboundMail.updateOne(
       { _id: mail._id },
-      { $set: { status: 'replied', 'analysis.needsReply': false } },
+      { $set: { status: 'replied', 'analysis.needsReply': false, repliedAt: now } },
     );
 
     // ── 리드에 발송 이력 기록 ──
@@ -153,6 +166,8 @@ export async function POST(req: Request) {
           },
         },
       );
+      // 답장 받은 업체에 우리가 다시 답했으면 → [대화 진행 중] (대표님 요청 2026-09-14)
+      await moveRepliedToNegotiating(mail.leadId);
     }
 
     return NextResponse.json({

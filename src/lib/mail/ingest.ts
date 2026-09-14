@@ -124,6 +124,11 @@ export interface IngestOptions {
    *   미지정          → 기본 계정
    */
   accountId?: string;
+  /**
+   * 누가 돌렸는가 (lib/mail/scope.ts). 로그인한 사람이면 그 사람 계정만 모은다.
+   * 비우면 크론 같은 시스템 실행 — 모든 사람의 계정을 모은다.
+   */
+  user?: string | null;
 }
 
 /**
@@ -483,12 +488,13 @@ export async function runIngest(opts: IngestOptions = {}): Promise<IngestResult>
   // ── 수집 대상 계정 ──
   // 등록된 발송 계정(MailAccount)을 그대로 수신 계정으로 쓴다.
   // 이카운트는 SMTP/IMAP 자격증명이 같아서 비밀번호를 새로 받을 필요가 없다.
-  const allAccounts = await listMailAccounts();
+  const runAs = opts.user || 'system';
+  const allAccounts = await listMailAccounts(runAs);
   let accounts: any[];
   if (opts.accountId === 'all') {
     accounts = allAccounts;
   } else {
-    const one = await resolveAccount(opts.accountId);
+    const one = await resolveAccount(opts.accountId, runAs);
     accounts = one ? [one] : [];
   }
 

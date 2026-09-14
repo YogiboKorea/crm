@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resolveOutreachAccount } from '@/lib/mail/accounts';
-import { cookies } from 'next/headers';
-import { jwtVerify } from 'jose';
+import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 import dbConnect from '@/lib/mongodb';
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { EmailTemplate } from '@/models/EmailTemplate';
@@ -12,25 +11,13 @@ import { MailAccount } from '@/models/MailAccount';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret');
-
-async function currentUser(): Promise<string | null> {
-  const c = await cookies();
-  const token = c.get('admin_session')?.value;
-  if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return (payload as any).user as string;
-  } catch { return null; }
-}
-
 /**
  * GET  /api/mail/schedule                 → 예약 큐 목록
  * POST /api/mail/schedule                 → 새 예약 등록
  */
 export async function GET(req: Request) {
-  const user = await currentUser();
-  if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status') || 'pending';
@@ -67,8 +54,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const user = await currentUser();
-  if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const leadIds: string[] = Array.isArray(body.leadIds) ? body.leadIds : [];
@@ -95,7 +82,8 @@ export async function POST(req: Request) {
   if (!att.ok) return NextResponse.json({ success: false, error: att.error }, { status: 400 });
 
   // 고른 계정(없으면 대표 계정)을 예약에 적어 둔다 — 발송 시각에 그 계정으로 나간다.
-  const { account: outreach, error: accError } = await resolveOutreachAccount(mailAccountId);
+  // 예약 실행(schedule-runner)은 id 만 믿고 보내므로, 여기서 자기 계정인지 반드시 걸러야 한다.
+  const { account: outreach, error: accError } = await resolveOutreachAccount(mailAccountId, user);
   if (!outreach) return NextResponse.json({ success: false, error: accError }, { status: 400 });
 
   const leads = await Lead.find({ leadId: { $in: leadIds } }, { leadId: 1, Email: 1 }).lean();

@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
 import { Lead } from '@/models/Lead';
 import { tidyMailText } from '@/lib/mail/text';
+import { getMailScope, mailFilter, canUseAccount, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
 
@@ -11,15 +12,22 @@ export const runtime = 'nodejs';
  *
  * 목록은 본문을 빼고 내려주므로(문서당 평균 71KB) 상세는 여기서 따로 읽는다.
  * 같은 스레드의 다른 메일도 함께 주어 대화 흐름을 볼 수 있게 한다.
+ * 로그인한 아이디가 볼 수 있는 계정의 메일만 연다 (lib/mail/scope.ts).
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
     const mail: any = await InboundMail.findById(id).lean();
     if (!mail) {
       return NextResponse.json({ success: false, error: '메일을 찾을 수 없습니다' }, { status: 404 });
+    }
+    // 남의 계정 메일은 id 를 알아도 못 연다 — 403 이 아니라 404 로, 그런 메일이 있는지도 알려주지 않는다
+    if (!canUseAccount(scope, mail.accountId)) {
+      return NextResponse.json(NOT_YOURS, { status: 404 });
     }
 
     // 연결된 리드
@@ -32,9 +40,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     // 같은 대화의 다른 메일 (본문 없이 — 목록만)
+    // 같은 스레드라도 다른 아이디의 계정으로 오간 메일은 빼야 한다 — 참조로 걸린 남의 메일이 새어 나온다
     const thread: any[] = mail.threadKey
       ? await InboundMail.find(
-          { threadKey: mail.threadKey, _id: { $ne: mail._id } },
+          { threadKey: mail.threadKey, _id: { $ne: mail._id }, ...mailFilter(scope) },
           { subject: 1, from: 1, date: 1, direction: 1, status: 1 },
         ).sort({ date: 1 }).limit(30).lean()
       : [];
@@ -100,6 +109,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const body = await req.json();
     await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
+    // 고치기 전에 내 메일인지 먼저 본다 — 남의 메일 상태·메모를 id 만으로 바꾸지 못하게
+    const mail: any = await InboundMail.findById(id, { accountId: 1, leadId: 1 }).lean();
+    if (!mail || !canUseAccount(scope, mail.accountId)) {
+      return NextResponse.json(NOT_YOURS, { status: 404 });
+    }
 
     const set: any = {};
     if (body.status) set.status = body.status;
@@ -118,12 +135,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ success: false, error: '변경할 내용이 없습니다' }, { status: 400 });
     }
 
-    await InboundMail.updateOne({ _id: id }, { $set: set });
+    // 범위 조건을 수정 쿼리에도 한 번 더 건다 (위 확인과 수정 사이에 계정이 바뀌는 경우까지)
+    await InboundMail.updateOne({ _id: id, ...mailFilter(scope) }, { $set: set });
 
-    // 회신 완료로 표시하면 리드의 '회신 필요' 도 내린다
+    // 회신 완료로 표시하면 리드의 '회신 필요' 도 내린다 (리드는 모두가 함께 쓴다)
     if (set.status === 'replied' || set['analysis.needsReply'] === false) {
-      const m: any = await InboundMail.findById(id, { leadId: 1 }).lean();
-      if (m?.leadId) await Lead.updateOne({ leadId: m.leadId }, { $set: { needsReply: false } });
+      if (mail.leadId) await Lead.updateOne({ leadId: mail.leadId }, { $set: { needsReply: false } });
     }
 
     return NextResponse.json({ success: true });
