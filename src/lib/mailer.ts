@@ -49,6 +49,8 @@ export interface SendMailInput {
   text?: string;              // 텍스트 본문
   replyTo?: string;
   headers?: Record<string, string>;
+  // 첨부파일 — 이미 받아 온 내용 (lib/mail/template-attachments.ts loadTemplateAttachments)
+  attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
   // ── 특정 MailAccount 로 발송 시 아래 3개 전달 (없으면 env 기본) ──
   smtpConfig?: {
     host: string;
@@ -156,6 +158,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
       text: input.text,
       replyTo: input.replyTo,
       headers: input.headers,
+      attachments: input.attachments?.length ? input.attachments : undefined,
     });
     return { ok: true, messageId: info.messageId };
   } catch (e: any) {

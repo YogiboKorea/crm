@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getOutreachAccount, NO_OUTREACH_ACCOUNT } from '@/lib/mail/accounts';
+import { resolveOutreachAccount } from '@/lib/mail/accounts';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
@@ -7,6 +7,7 @@ import { EmailSchedule } from '@/models/EmailSchedule';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { Lead } from '@/models/Lead';
 import { MAX_SEND_COUNT_PER_LEAD } from '@/lib/send-limits';
+import { loadTemplateAttachments } from '@/lib/mail/template-attachments';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -70,6 +71,9 @@ export async function POST(req: Request) {
 
     const tpl = await EmailTemplate.findById(templateId).lean();
     if (!tpl) return NextResponse.json({ success: false, error: '메일 양식을 찾을 수 없습니다' }, { status: 400 });
+    // 첨부 주소가 깨져 있으면 예약을 깔기 전에 알린다 — 발송 시각에 줄줄이 실패로 떨어지는 것보다 낫다
+    const att = await loadTemplateAttachments((tpl as any).attachments);
+    if (!att.ok) return NextResponse.json({ success: false, error: att.error }, { status: 400 });
 
     const leads: any[] = await Lead.find(
       { leadId: { $in: leadIds }, deleted: { $ne: true } },
@@ -105,10 +109,10 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
-    // 영업 메일은 대표 계정으로만 나간다 (lib/mail/accounts.ts). 없으면 예약을 만들지 않는다.
-    const outreach: any = await getOutreachAccount();
+    // 고른 계정(없으면 대표 계정)으로 예약을 깐다. 그 계정이 없으면 예약을 만들지 않는다.
+    const { account: outreach, error: accError } = await resolveOutreachAccount(body.mailAccountId);
     if (!outreach) {
-      return NextResponse.json({ success: false, error: NO_OUTREACH_ACCOUNT }, { status: 400 });
+      return NextResponse.json({ success: false, error: accError }, { status: 400 });
     }
 
     const batchId = `camp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;

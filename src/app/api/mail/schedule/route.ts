@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getOutreachAccount, NO_OUTREACH_ACCOUNT } from '@/lib/mail/accounts';
+import { resolveOutreachAccount } from '@/lib/mail/accounts';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { EmailTemplate } from '@/models/EmailTemplate';
+import { loadTemplateAttachments } from '@/lib/mail/template-attachments';
 import { Lead } from '@/models/Lead';
 import { MailAccount } from '@/models/MailAccount';
 
@@ -89,12 +90,13 @@ export async function POST(req: Request) {
 
   const tpl = await EmailTemplate.findById(templateId).lean();
   if (!tpl) return NextResponse.json({ success: false, error: '템플릿을 찾을 수 없음' }, { status: 404 });
+  // 첨부 주소가 깨져 있으면 예약 전에 알린다 (발송 시각에 실패로 떨어지기 전에)
+  const att = await loadTemplateAttachments((tpl as any).attachments);
+  if (!att.ok) return NextResponse.json({ success: false, error: att.error }, { status: 400 });
 
-  // 영업 메일은 대표 계정으로만 나간다 — 넘어온 계정 대신 대표 계정을 기록한다.
-  // (실제 발송 때도 schedule-runner 가 그 시점의 대표 계정으로 다시 고른다)
-  void mailAccountId;
-  const outreach: any = await getOutreachAccount();
-  if (!outreach) return NextResponse.json({ success: false, error: NO_OUTREACH_ACCOUNT }, { status: 400 });
+  // 고른 계정(없으면 대표 계정)을 예약에 적어 둔다 — 발송 시각에 그 계정으로 나간다.
+  const { account: outreach, error: accError } = await resolveOutreachAccount(mailAccountId);
+  if (!outreach) return NextResponse.json({ success: false, error: accError }, { status: 400 });
 
   const leads = await Lead.find({ leadId: { $in: leadIds } }, { leadId: 1, Email: 1 }).lean();
   const validLeads = (leads as any[]).filter((l) => {

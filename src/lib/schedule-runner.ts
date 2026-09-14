@@ -1,12 +1,12 @@
 import { OUTBOUND_LOCKED, OUTBOUND_LOCK_MESSAGE, canSendTo, TEST_RECIPIENTS } from './outbound-lock';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { Lead } from '@/models/Lead';
-import { MailAccount } from '@/models/MailAccount';
 import { sendMail, renderTemplate } from './mailer';
 import { buildVarsFromLead, buildSignatureBlock } from './template-vars';
 import { decryptSecret } from './crypto';
 import { checkSendGuard } from './send-limits';
-import { NO_OUTREACH_ACCOUNT } from './mail/accounts';
+import { resolveOutreachAccount } from './mail/accounts';
+import { loadTemplateAttachments } from './mail/template-attachments';
 
 /**
  * 단일 예약 항목을 실제로 발송 · Lead.emailHistory 기록 · stage 전이 (verified→contacted)
@@ -42,15 +42,14 @@ export async function processScheduleItem(doc: any) {
   let smtpConfig: any = undefined;
   let fromOverride: any = undefined;
   let accProfile: any = null;
-  // 보내는 계정은 **지금의 대표 계정**이다 (lib/mail/accounts.ts getOutreachAccount).
-  // 예약에 적힌 mailAccountId 는 쓰지 않는다 — 예약을 걸 때 테스트 계정이 골라져 있었어도
-  // 실제 발송은 대표 계정으로 나가야 한다. 대표 계정이 없으면 보내지 않고 실패로 남긴다
-  // (예전처럼 .env 의 SMTP 로 조용히 대신 보내지 않는다).
+  // 보내는 계정 = 예약을 걸 때 고른 계정 (적힌 게 없으면 대표 계정).
+  // 그 계정이 지워졌거나 사용 중지면 다른 주소로 대신 보내지 않고 실패로 남긴다
+  // (예전처럼 .env 의 SMTP 로 조용히 대신 보내지도 않는다).
   {
-    const acc = await MailAccount.findOne({ isDefault: true, isActive: { $ne: false } });
+    const { account: acc, error: accError } = await resolveOutreachAccount(doc.mailAccountId);
     if (!acc) {
       doc.status = 'failed';
-      doc.lastError = NO_OUTREACH_ACCOUNT;
+      doc.lastError = accError || 'no account';
       doc.attempts += 1;
       await doc.save();
       return { ok: false, error: doc.lastError };
@@ -62,7 +61,7 @@ export async function processScheduleItem(doc: any) {
         user: acc.smtpUser, pass: decryptSecret(acc.smtpPassEnc),
       };
       fromOverride = { name: acc.fromName || acc.smtpUser, address: acc.fromAddress };
-      accProfile = acc.toObject();
+      accProfile = acc;
     } catch (e: any) {
       doc.status = 'failed'; doc.lastError = `계정 복호화 실패: ${e?.message || 'unknown'}`; doc.attempts += 1;
       await doc.save();
@@ -109,14 +108,20 @@ export async function processScheduleItem(doc: any) {
     console.log(`[schedule:DRY_RUN] to=${doc.to} subject=${renderedSubject.slice(0, 60)}`);
     result = { ok: true, dryRun: true, messageId: `dryrun-sched-${Date.now()}` };
   } else {
-    result = await sendMail({
-      to: doc.to,
-      subject: renderedSubject,
-      html: htmlPayload,
-      text: textPayload,
-      smtpConfig,
-      fromOverride,
-    });
+    // 양식의 첨부를 보내는 순간 받아서 붙인다. 못 받으면 보내지 않고 실패로 남긴다
+    // (아래 else 갈래 — 발송함에 사유가 뜨고, 주소를 고친 뒤 다시 보낼 수 있다).
+    const att = await loadTemplateAttachments(tpl.attachments);
+    result = att.ok
+      ? await sendMail({
+          to: doc.to,
+          subject: renderedSubject,
+          html: htmlPayload,
+          text: textPayload,
+          attachments: att.files,
+          smtpConfig,
+          fromOverride,
+        })
+      : { ok: false, error: att.error };
   }
 
   doc.attempts += 1;

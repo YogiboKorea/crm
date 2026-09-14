@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { TEMPLATE_VARS, TEMPLATE_VAR_GROUPS } from '@/lib/template-vars';
+import { normalizeTemplateAttachments } from '@/lib/mail/template-attachments';
 
 export const runtime = 'nodejs';
 
@@ -40,6 +41,8 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    const atts = normalizeTemplateAttachments(body.attachments);
+    if (!atts.ok) return NextResponse.json({ success: false, error: atts.error }, { status: 400 });
     await dbConnect();
     const t = await EmailTemplate.create({
       name: String(body.name).trim(),
@@ -50,6 +53,7 @@ export async function POST(req: Request) {
       purpose: body.purpose || 'intro',
       isActive: body.isActive !== false,
       appendAccountSignature: body.appendAccountSignature !== false,
+      attachments: atts.list,
       createdBy: body.createdBy || '',
     });
     return NextResponse.json({ success: true, template: t });

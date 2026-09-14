@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { EmailTemplate } from '@/models/EmailTemplate';
+import { normalizeTemplateAttachments } from '@/lib/mail/template-attachments';
 
 export const runtime = 'nodejs';
 
@@ -29,6 +30,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const allowed = ['name', 'language', 'subject', 'body', 'bodyIsHtml', 'purpose', 'isActive', 'appendAccountSignature'];
     for (const k of allowed) {
       if (Object.prototype.hasOwnProperty.call(body, k)) update[k] = body[k];
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'attachments')) {
+      const atts = normalizeTemplateAttachments(body.attachments);
+      if (!atts.ok) return NextResponse.json({ success: false, error: atts.error }, { status: 400 });
+      update.attachments = atts.list;
     }
     await dbConnect();
     const t = await EmailTemplate.findByIdAndUpdate(id, { $set: update }, { new: true });

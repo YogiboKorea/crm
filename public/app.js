@@ -3100,9 +3100,8 @@ async function openComposeModal(scope) {
     _composeState.subject = defaultTpl.subject;
     _composeState.body = defaultTpl.body;
   }
-  // 발송 계정 — 대표 계정으로 고정한다 (대표님 결정 2026-09-14).
-  // 예전에는 테스트 계정(isTestSender)을 먼저 골라서 실제 발송이 fe@ 로 나갈 뻔했다.
-  // 보내는 계정 = 대표 계정 (서버도 실제 발송 때 대표 계정으로 고정한다)
+  // 발송 계정 — 열 때는 대표 계정으로 골라 둔다. 선택칸에서 등록된 다른 계정으로 바꿀 수 있다.
+  // (예전에는 테스트 계정(isTestSender)을 먼저 골라서 실제 발송이 fe@ 로 나갈 뻔했다 — 기본은 늘 대표 계정)
   _composeState.mailAccountId = outreachAccount()?._id || null;
 
   await refreshMailerEnv();
@@ -3283,7 +3282,7 @@ function renderComposeModal() {
                 </div>`;
               })()}
               <label style="font-size:11px;color:var(--text-secondary);font-weight:700">📮 발송 계정</label>
-              <div style="margin-top:2px">${outreachAccountBoxHtml()}</div>
+              <div style="margin-top:2px">${outreachAccountBoxHtml('composeAccountSel', _composeState.mailAccountId)}</div>
               ${(_mailAccounts || []).length === 0 ? `
                 <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px">
                   💡 <b>📬 메일 계정</b> 페이지에서 계정을 등록하면 여기서 선택 가능
@@ -4373,7 +4372,9 @@ const STAGE_QUICK_MOVES = {
   //   "지금은 아니다"     → 보관함 (나중에 다시 볼 수도)
   replied:       ['negotiating', 'partner', 'failed', 'archived'],
   negotiating:   ['partner', 'archived'],
-  partner:       ['negotiating', 'archived'],
+  // 파트너십 확정에서 [대화 진행 중]으로 되돌리는 버튼은 뺐다 (대표님 요청 2026-09-14) —
+  // 관계가 끝났거나 잘못 넣은 곳은 파트너십 화면의 [🗑 파트너십에서 삭제]로 뺀다.
+  partner:       ['archived'],
   // 보관함·검증 실패에서 하는 일은 '잘못 뺐다 → 되돌리기' 하나다.
   // 검증 대기·가져오기는 사이드바에서 숨긴 단계라, 그리로 보내면 업체가 어디에도 안 보이게 된다.
   archived:      ['verified'],
@@ -6959,6 +6960,7 @@ async function renderRelationshipDetail() {
   els.content.querySelectorAll('.rel-stage-move').forEach((b) => {
     b.addEventListener('click', () => moveRelationshipStage(leadId, b.dataset.to, company));
   });
+  els.content.querySelector('.rel-remove')?.addEventListener('click', () => removeRelationshipLead(leadId, company));
 
   // 이전 대화 펼치기 — 한 번 펼치면 다시 접지 않는다.
   // 읽는 중에 접히면 보던 자리를 잃는다.
@@ -7012,10 +7014,13 @@ function relDetailHeadHtml(company, lead, card, tone) {
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:17px;padding-top:15px;
                   border-top:1px solid ${tone}33">
         <span style="font-size:11.5px;color:var(--text-tertiary);font-weight:700;align-self:center">단계 옮기기</span>
-        ${_rel.stage !== 'negotiating' ? `<button type="button" class="rel-stage-move" data-to="negotiating"
+        <!-- 파트너십 확정 → [대화 진행 중으로] 되돌리기는 뺐다 (대표님 요청 2026-09-14).
+             확정된 파트너를 다시 협의 단계로 내리는 일은 실제로 없고, 잘못 넣었거나
+             관계가 끝난 곳은 목록에서 빼면 된다 → [🗑 파트너십에서 삭제]. -->
+        ${_rel.stage === 'partner' ? `<button type="button" class="rel-remove"
+          title="파트너 목록에서 뺍니다. DB 에서 지우지 않아 필요하면 되살릴 수 있고, 주고받은 메일은 받은 메일함에 그대로 남습니다"
           style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
-                 border:1px solid var(--border-default);background:var(--bg-surface);
-                 color:var(--text-secondary)">🤝 대화 진행 중으로</button>` : ''}
+                 border:1px solid #fca5a5;background:var(--bg-surface);color:#b91c1c">🗑 파트너십에서 삭제</button>` : ''}
         ${_rel.stage !== 'partner' ? `<button type="button" class="rel-stage-move" data-to="partner"
           style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
                  border:1px solid #7c3aed;background:#7c3aed;color:#fff">⭐ 파트너십 확정으로</button>` : ''}
@@ -7173,6 +7178,37 @@ function relTimelineItemHtml(t, i) {
 }
 
 /** 단계 옮기기 — 확정되거나 물러날 때 */
+/**
+ * 파트너십 확정 목록에서 업체를 삭제 처리한다 (/api/leads/[id]/remove — DB 에서 지우지 않는 삭제).
+ * 주고받은 메일은 받은 메일함에 그대로 남고, 걸려 있던 예약 발송은 함께 취소된다.
+ */
+async function removeRelationshipLead(leadId, company) {
+  if (!confirm(`[${company}] 을(를) 파트너십 확정 목록에서 삭제합니다.\n\n` +
+    '· 주고받은 메일은 받은 메일함에 그대로 남습니다\n' +
+    '· 걸려 있던 예약 발송이 있으면 함께 취소됩니다\n' +
+    '· DB 에서 지우지는 않아, 잘못 지웠으면 되살릴 수 있습니다\n\n진행할까요?')) return;
+
+  const lead = (_rel.items || []).find((x) => x.leadId === leadId);
+  const id = lead && lead._id;
+  if (!id) { alert('이 업체의 내부 번호를 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.'); return; }
+  try {
+    const r = await safeJsonFetch(`/api/leads/${encodeURIComponent(id)}/remove`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: '파트너십에서 삭제' }),
+    });
+    if (!r?.success) throw new Error(r?.error || '삭제 실패');
+    _rel.items = (_rel.items || []).filter((x) => x.leadId !== leadId);
+    _rel.open = null;
+    _rel.thread = null;
+    invalidateServerPage();
+    loadStageCounts(true);
+    renderRelationshipsPage();
+  } catch (e) {
+    alert(`삭제하지 못했습니다: ${(e && e.message) || e}`);
+  }
+}
+
 async function moveRelationshipStage(leadId, to, company) {
   const label = { negotiating: '대화 진행 중', partner: '파트너십 확정', archived: '보관함' }[to] || to;
   if (!confirm(`[${company}] 을(를) [${label}] 로 옮깁니다.\n\n대화 이력은 그대로 남습니다. 진행할까요?`)) return;
@@ -9856,6 +9892,7 @@ const DEFAULT_TEMPLATE_EDITOR = {
   bodyIsHtml: false,
   isActive: true,
   appendAccountSignature: true,   // 발송 시 계정 서명 자동 부착
+  attachments: [],                // [{ name, url }] — 보낼 때 서버가 주소에서 받아 붙인다
 };
 
 async function loadEmailTemplates() {
@@ -9897,6 +9934,7 @@ function selectTemplate(templateId) {
         bodyIsHtml: !!t.bodyIsHtml,
         isActive: t.isActive !== false,
         appendAccountSignature: t.appendAccountSignature !== false,
+        attachments: (t.attachments || []).map((a) => ({ name: a.name || '', url: a.url })),
       };
     }
   } else {
@@ -10266,6 +10304,9 @@ function renderTemplateListPage(templates) {
                     ${t.isActive === false
                       ? '<span style="padding:2px 9px;background:var(--bg-surface-hover);color:var(--text-tertiary);border-radius:99px;font-size:10.5px;font-weight:700">사용 안 함</span>'
                       : ''}
+                    ${(t.attachments || []).length
+                      ? `<span title="${escapeAttr(t.attachments.map((a) => a.name).join(', '))}" style="padding:2px 9px;background:#fffbeb;color:#92400e;border:1px solid #fde68a;border-radius:99px;font-size:10.5px;font-weight:700">📎 첨부 ${t.attachments.length}</span>`
+                      : ''}
                   </div>
 
                   <div style="display:flex;align-items:baseline;gap:7px;margin-top:9px;min-width:0">
@@ -10395,7 +10436,8 @@ function openTemplateEditor(id, seed) {
     isActive: t.isActive !== false,
     appendAccountSignature: t.appendAccountSignature !== false,
     adPrefix: t.adPrefix === true,
-  } : { ...DEFAULT_TEMPLATE_EDITOR, language: 'en', bodyIsHtml: true };
+    attachments: (t.attachments || []).map((a) => ({ name: a.name || '', url: a.url })),
+  } : { ...DEFAULT_TEMPLATE_EDITOR, language: 'en', bodyIsHtml: true, attachments: [] };
   state.email.dirty = !!seed;      // 복사본은 저장이 필요한 상태로 연다
   state.email.mode = 'edit';
   renderB2BEmailManager();
@@ -10562,6 +10604,7 @@ async function renderB2BEmailManager() {
           <div style="width:1px;background:#cbd5e1;margin:0 3px"></div>
           <button type="button" id="tplInsertLink" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a;color:#1d4ed8;font-weight:700" title="선택한 글자에 링크 걸기">🔗 링크</button>
           <button type="button" id="tplUnlink" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="링크 해제">링크해제</button>
+          <button type="button" id="tplInsertImage" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#047857;font-weight:700" title="cafe24 오픈호스팅 등에 올린 이미지 주소로 본문에 그림을 넣습니다">🖼 이미지</button>
           <div style="width:1px;background:#cbd5e1;margin:0 3px"></div>
           <button type="button" data-cmd="removeFormat" style="padding:6px 10px;background:white;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:12px;color:#0f172a" title="서식 지우기">서식해제</button>
           <div style="flex:1"></div>
@@ -10570,6 +10613,37 @@ async function renderB2BEmailManager() {
         <div id="templateBodyRich" contenteditable="true"
           style="width:100%;flex:1;padding:16px 20px;border:1px solid #cbd5e1;border-top:none;border-radius:0 0 8px 8px;font-size:14px;font-family:inherit;min-height:340px;line-height:1.75;background:#ffffff;color:#0f172a;outline:none;overflow-y:auto">${ed.bodyIsHtml && ed.body ? ed.body : (ed.body ? escapeHtml(ed.body).replace(/\n/g, '<br>') : '')}</div>
       </div>
+
+        <!-- 첨부파일 — 파일을 이 앱에 올리지 않고 주소로 둔다 (lib/mail/template-attachments.ts).
+             보내는 순간 서버가 그 주소에서 받아 파일로 붙인다. cafe24 오픈호스팅 주소를 그대로 쓰면 된다. -->
+        <div id="tplAttachBox" style="padding:12px 14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px">
+          <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:7px">📎 첨부파일
+            <span style="font-weight:400">· cafe24 오픈호스팅 등에 올린 <b>파일 주소</b>를 넣으면 보낼 때 파일로 붙여 보냅니다 (최대 5개 · 합계 10MB)</span></div>
+          ${(ed.attachments || []).length ? `
+          <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px">
+            ${(ed.attachments || []).map((a, i) => `
+            <div class="tpl-att-row" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff;border:1px solid #fde68a;border-radius:7px;font-size:12px;min-width:0">
+              <span>📎</span>
+              <b style="color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%">${escapeHtml(a.name || '첨부파일')}</b>
+              <a href="${escapeAttr(a.url)}" target="_blank" rel="noopener noreferrer" title="새 창에서 파일 열어보기"
+                 style="flex:1;min-width:0;color:#64748b;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(a.url)}</a>
+              <button type="button" class="tpl-att-del" data-idx="${i}"
+                style="padding:3px 9px;font-size:11px;border:1px solid #fca5a5;background:#fff;color:#b91c1c;border-radius:6px;cursor:pointer;flex-shrink:0">빼기</button>
+            </div>`).join('')}
+          </div>` : ''}
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input id="tplAttUrl" type="url" placeholder="https://…/catalog.pdf  (파일 주소)"
+              style="flex:2;min-width:200px;padding:7px 9px;border:1px solid #fcd34d;border-radius:6px;font-size:12px;background:#fff;color:#0f172a">
+            <input id="tplAttName" type="text" placeholder="받는 쪽에 보일 파일 이름 (비우면 주소의 이름)"
+              style="flex:1;min-width:160px;padding:7px 9px;border:1px solid #fcd34d;border-radius:6px;font-size:12px;background:#fff;color:#0f172a">
+            <button type="button" id="tplAttAdd"
+              style="padding:7px 14px;font-size:12px;font-weight:700;border:1px solid #d97706;background:#f59e0b;color:#fff;border-radius:6px;cursor:pointer">+ 첨부 추가</button>
+          </div>
+          <div style="font-size:10.5px;color:#92400e;margin-top:7px;line-height:1.6">
+            첨부는 <b>[💾 저장]</b>해야 반영됩니다. 주소에서 파일을 못 받으면 메일을 보내지 않고 사유를 알려드립니다.<br>
+            처음 연락하는 메일에 파일이 붙어 있으면 스팸함으로 갈 확률이 올라갑니다 — 첫 메일은 <b>🔗 링크</b>, 답장이 온 뒤 파일을 권장합니다.
+          </div>
+        </div>
 
         <!-- 서명 미리보기 (선택한 계정 기반) -->
         <div style="padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px">
@@ -10631,6 +10705,7 @@ async function renderB2BEmailManager() {
                 <div class="tpl-preview-body" style="padding:14px 16px;font-size:13px;line-height:1.65;color:#111827">${/<[a-z][\s\S]*>/i.test(body) ? renderMailBodyHtml(body) : escapeHtml(body).split(String.fromCharCode(10)).join('<br>')}</div>
               </div>
               <div style="margin-top:6px;font-size:10px;color:#64748b">🎯 샘플: <b>${escapeHtml(sampleCompany)}</b> · 실제 발송 시 각 리드별 회사명으로 치환</div>
+              ${(ed.attachments || []).length ? `<div class="tpl-preview-atts" style="margin-top:4px;font-size:11px;color:#92400e">📎 함께 붙는 파일: ${(ed.attachments || []).map((a) => `<b>${escapeHtml(a.name || '첨부파일')}</b>`).join(' · ')}</div>` : ''}
             `;
           })()}
         </div>
@@ -10790,6 +10865,75 @@ async function renderB2BEmailManager() {
   const unlinkBtn = document.getElementById('tplUnlink');
   keepFocus(unlinkBtn);
   unlinkBtn?.addEventListener('click', () => { document.execCommand('unlink', false, null); syncRich(); });
+
+  // 이미지 — 파일을 올리지 않고 **주소**로 넣는다 (cafe24 오픈호스팅 등).
+  // 그림을 메일에 통째로 박으면(data:) Gmail·Outlook 이 지우거나 스팸 점수를 올린다.
+  // 주소로 넣으면 받는 쪽 메일 프로그램이 그 주소에서 그림을 불러온다.
+  // width 를 적어 두는 이유: Outlook(PC)은 max-width 를 무시해 큰 그림이 옆으로 삐져나간다.
+  const imgBtn = document.getElementById('tplInsertImage');
+  keepFocus(imgBtn);
+  imgBtn?.addEventListener('click', () => {
+    const richEl = document.getElementById('templateBodyRich');
+    if (!richEl) return;
+    const sel = window.getSelection();
+    const saved = sel && sel.rangeCount && richEl.contains(sel.getRangeAt(0).commonAncestorContainer)
+      ? sel.getRangeAt(0).cloneRange() : null;
+    const url = (prompt('이미지 주소를 넣어주세요 (cafe24 오픈호스팅 등에 올린 이미지)\n예: https://…/product.jpg', 'https://') || '').trim();
+    if (!url || url === 'https://') return;
+    if (!/^https?:\/\//i.test(url)) { alert('이미지 주소는 http:// 또는 https:// 로 시작해야 합니다.'); return; }
+    const probe = new Image();
+    probe.onload = () => {
+      const w = Math.min(600, probe.naturalWidth || 600);
+      richEl.focus();
+      const s2 = window.getSelection();
+      const r = saved || document.createRange();
+      if (!saved) { r.selectNodeContents(richEl); r.collapse(false); }
+      s2.removeAllRanges();
+      s2.addRange(r);
+      document.execCommand('insertHTML', false,
+        `<img src="${escapeAttr(url)}" alt="" width="${w}" style="max-width:100%;height:auto;border:0;display:block;margin:8px 0">`);
+      syncRich();
+    };
+    probe.onerror = () => alert('이 주소에서 이미지를 불러오지 못했습니다.\n주소가 이미지 파일(…jpg · png · gif)을 가리키는지 확인해주세요.');
+    probe.src = url;
+  });
+  // 그림 파일을 본문에 바로 붙여넣으면 data: 로 박힌다 → 막고 [🖼 이미지]로 안내한다
+  document.getElementById('templateBodyRich')?.addEventListener('paste', (e) => {
+    const items = [...(e.clipboardData?.items || [])];
+    if (items.some((it) => it.kind === 'file' && /^image\//.test(it.type))) {
+      e.preventDefault();
+      alert('그림 파일은 본문에 바로 붙여넣을 수 없습니다.\ncafe24 오픈호스팅에 올린 뒤 [🖼 이미지] 버튼으로 주소를 넣어주세요.');
+    }
+  });
+
+  // 첨부파일 — 주소를 목록에 더한다. 저장해야 서버에 남고, 보낼 때 서버가 받아서 붙인다.
+  const addAttachment = () => {
+    const urlEl = document.getElementById('tplAttUrl');
+    const nameEl = document.getElementById('tplAttName');
+    const url = (urlEl?.value || '').trim();
+    if (!url) { urlEl?.focus(); return; }
+    if (!/^https?:\/\//i.test(url)) { alert('파일 주소는 http:// 또는 https:// 로 시작해야 합니다.'); return; }
+    const cur = state.email.editor.attachments || [];
+    if (cur.length >= 5) { alert('첨부파일은 5개까지 붙일 수 있습니다.'); return; }
+    if (cur.some((a) => a.url === url)) { alert('이미 붙인 주소입니다.'); return; }
+    let name = (nameEl?.value || '').trim();
+    if (!name) {
+      try { name = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() || ''); } catch { name = ''; }
+    }
+    state.email.editor.attachments = [...cur, { name: name || 'attachment', url }];
+    state.email.dirty = true;
+    renderB2BEmailManager();
+  };
+  document.getElementById('tplAttAdd')?.addEventListener('click', addAttachment);
+  ['tplAttUrl', 'tplAttName'].forEach((id) => document.getElementById(id)?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addAttachment(); }
+  }));
+  document.querySelectorAll('.tpl-att-del').forEach((b) => b.addEventListener('click', () => {
+    const i = Number(b.dataset.idx);
+    state.email.editor.attachments = (state.email.editor.attachments || []).filter((_, k) => k !== i);
+    state.email.dirty = true;
+    renderB2BEmailManager();
+  }));
 
   // [회사명] 마커 삽입
   document.getElementById('insertCompanyMarker')?.addEventListener('mousedown', (e) => e.preventDefault());
@@ -11765,26 +11909,40 @@ async function runOutboxCampaign(ready, lock) {
 
 /** 양식·계정·미리보기 대상이 비어 있거나 사라졌으면 채워 넣는다 */
 /**
- * 영업 메일을 보내는 계정 = 대표 계정 (서버 lib/mail/accounts.ts getOutreachAccount 와 같은 규칙).
- * 화면에서 고를 수 없게 한다 — 서버도 실제 발송 때 대표 계정으로 고정하므로, 선택칸을 두면
- * "고른 계정으로 나간다" 는 잘못된 기대만 준다.
+ * 영업 메일을 보내는 계정 — 기본은 대표 계정, 등록된 다른 계정으로 바꿀 수 있다
+ * (대표님 요청 2026-09-14: "고정하지 말고 계정이 등록돼 있으면 변경 가능하게").
+ * 서버(lib/mail/accounts.ts resolveOutreachAccount)도 고른 계정으로 보낸다.
  */
+function outreachAccounts() {
+  return (_mailAccounts || []).filter((a) => a.isActive !== false);
+}
+/** 기본으로 골라 둘 계정 = 대표 계정 (없으면 첫 활성 계정) */
 function outreachAccount() {
-  return (_mailAccounts || []).find((a) => a.isDefault && a.isActive !== false) || null;
+  const list = outreachAccounts();
+  return list.find((a) => a.isDefault) || list[0] || null;
+}
+/** 지금 골라 둔 계정이 아직 쓸 수 있으면 그대로, 아니면 대표 계정 */
+function keepOrDefaultAccountId(id) {
+  return outreachAccounts().some((a) => a._id === id) ? id : (outreachAccount()?._id || null);
 }
 
-/** 발송 화면에 보여줄 '보내는 계정' 표시 (고를 수 없음) */
-function outreachAccountBoxHtml() {
-  const a = outreachAccount();
-  if (!a) {
+/** 발송 화면의 '보내는 계정' 선택칸 */
+function outreachAccountBoxHtml(selectId, selectedId) {
+  const list = outreachAccounts();
+  if (!list.length) {
     return `<div style="padding:9px 11px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;
                         font-size:12px;color:#991b1b;line-height:1.6">
-      대표 계정이 없어 보낼 수 없습니다. <b>[📬 메일 계정 관리]</b>에서 대표 계정을 지정하세요.</div>`;
+      등록된 메일 계정이 없어 보낼 수 없습니다. <b>[📬 메일 계정 관리]</b>에서 계정을 등록하세요.</div>`;
   }
-  return `<div style="padding:8px 11px;border-radius:8px;background:var(--bg-surface-alt);border:1px solid var(--border-default)">
-      <div style="font-size:13px;font-weight:800;color:var(--text-primary)">${escapeHtml(a.fromAddress || a.smtpUser)}
-        <span style="font-size:10px;font-weight:800;color:#1e40af;background:#dbeafe;border-radius:4px;padding:1px 5px;margin-left:4px">대표 계정</span></div>
-      <div style="font-size:10.5px;color:var(--text-tertiary);margin-top:2px">영업 메일은 대표 계정으로만 나갑니다 · 바꾸려면 [📬 메일 계정 관리]</div>
+  const cur = list.find((a) => a._id === selectedId) || outreachAccount();
+  return `<select id="${selectId}" class="outreach-acc-sel" style="width:100%;padding:7px 9px;font-size:12.5px;font-weight:700;
+            border:1px solid var(--border-default);border-radius:7px;background:var(--bg-surface);color:var(--text-primary)">
+      ${list.map((a) => `<option value="${escapeAttr(a._id)}" ${a._id === cur._id ? 'selected' : ''}>${escapeHtml(a.fromAddress || a.smtpUser)}${a.isDefault ? ' · 대표' : ''}${a.accountName ? ` (${escapeHtml(a.accountName)})` : ''}</option>`).join('')}
+    </select>
+    <div class="outreach-acc-hint" style="font-size:10.5px;margin-top:3px;line-height:1.5;color:${cur.isDefault ? 'var(--text-tertiary)' : '#b45309'}">
+      ${cur.isDefault
+        ? '기본은 대표 계정 · 등록된 다른 계정으로 바꿀 수 있습니다'
+        : '⚠ 대표 계정이 아닌 주소로 나갑니다 · 답장도 이 메일함으로 옵니다'}
     </div>`;
 }
 
@@ -11798,9 +11956,8 @@ function outboxSyncCompose(ready) {
     _outboxCompose.body = t.body || '';
     _outboxCompose.dirty = false;
   }
-  // 보내는 계정은 언제나 대표 계정 (outreachAccount). 한 번 정해 두면 대표 계정을 바꿔도 따라가지 않으므로
-  // 매번 다시 맞춘다.
-  _outboxCompose.mailAccountId = outreachAccount()?._id || null;
+  // 보내는 계정 — 고른 계정이 아직 쓸 수 있으면 그대로, 처음이거나 지워졌으면 대표 계정.
+  _outboxCompose.mailAccountId = keepOrDefaultAccountId(_outboxCompose.mailAccountId);
   if (!ready.some((l) => l.leadId === _outboxCompose.previewLeadId)) {
     _outboxCompose.previewLeadId = ready[0]?.leadId || null;
   }
@@ -11831,7 +11988,8 @@ function outboxBindComposeInputs(ready) {
     _outboxCompose.dirty = false;
     renderOutboxPage();
   });
-  accSel?.addEventListener('change', () => { _outboxCompose.mailAccountId = accSel.value; });
+  // 계정을 바꾸면 안내 문구(대표 계정이 아닌 주소 경고)도 바뀌어야 해서 다시 그린다
+  accSel?.addEventListener('change', () => { _outboxCompose.mailAccountId = accSel.value; renderOutboxPage(); });
   prevSel?.addEventListener('change', () => {
     _outboxCompose.previewLeadId = prevSel.value;
     outboxRefreshPreview(ready);
@@ -11984,7 +12142,7 @@ function outboxReadyHtml(ready, lock) {
             </label>
             <label style="flex:1;min-width:130px">
               <span style="font-size:11px;font-weight:700;color:var(--text-tertiary)">보내는 계정</span>
-              <div style="margin-top:3px">${outreachAccountBoxHtml()}</div>
+              <div style="margin-top:3px">${outreachAccountBoxHtml('obAcc', _outboxCompose.mailAccountId)}</div>
             </label>
           </div>
 
@@ -12036,6 +12194,12 @@ function outboxReadyHtml(ready, lock) {
           </div>
         </div>
       </div>
+
+      ${tpl && (tpl.attachments || []).length ? `
+      <div id="obAttachNote" style="padding:9px 17px;border-top:1px solid #fde68a;background:#fffbeb;font-size:12px;color:#92400e;line-height:1.6">
+        📎 이 양식에는 파일 <b>${tpl.attachments.length}개</b>가 함께 붙어 나갑니다:
+        ${tpl.attachments.map((a) => `<b>${escapeHtml(a.name || '첨부파일')}</b>`).join(' · ')}
+      </div>` : ''}
 
       <!-- 어떻게 내보낼지 — 한 번에 쏟지 않기 위한 설정 -->
       <div style="padding:13px 17px;border-top:1px solid var(--border-default);background:var(--bg-surface)">

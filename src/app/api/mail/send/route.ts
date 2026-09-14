@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { NO_OUTREACH_ACCOUNT } from '@/lib/mail/accounts';
+import { resolveOutreachAccount } from '@/lib/mail/accounts';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { EmailTemplate } from '@/models/EmailTemplate';
@@ -8,6 +8,7 @@ import { sendMail, renderTemplate } from '@/lib/mailer';
 import { buildVarsFromLead, buildSignatureBlock } from '@/lib/template-vars';
 import { decryptSecret } from '@/lib/crypto';
 import { checkSendGuard } from '@/lib/send-limits';
+import { loadTemplateAttachments } from '@/lib/mail/template-attachments';
 import { OUTBOUND_LOCKED, OUTBOUND_LOCK_MESSAGE, canSendTo, TEST_RECIPIENTS } from '@/lib/outbound-lock';
 
 export const runtime = 'nodejs';
@@ -82,13 +83,11 @@ export async function POST(req: Request) {
   let smtpConfig: any = undefined;
   let fromOverride: any = undefined;
   let usedAccount: any = null;
-  // 영업 메일은 **대표 계정**으로만 나간다 (lib/mail/accounts.ts getOutreachAccount).
-  // 화면이 넘긴 mailAccountId 는 보지 않는다 — 선택칸에서 다른 계정을 골랐어도 대표 계정으로 나간다.
-  void mailAccountId;
+  // 화면에서 고른 계정으로 보낸다. 안 골랐으면 대표 계정 (lib/mail/accounts.ts resolveOutreachAccount).
   {
-    const acc = await MailAccount.findOne({ isDefault: true, isActive: { $ne: false } });
+    const { account: acc, error: accError } = await resolveOutreachAccount(mailAccountId);
     if (!acc) {
-      return NextResponse.json({ success: false, error: NO_OUTREACH_ACCOUNT }, { status: 400 });
+      return NextResponse.json({ success: false, error: accError }, { status: 400 });
     }
     try {
       smtpConfig = {
@@ -113,6 +112,14 @@ export async function POST(req: Request) {
   const appendSignature = tpl?.appendAccountSignature !== false;   // 템플릿 없으면 기본 true
   const sigHtml  = accProfile && appendSignature ? buildSignatureBlock(accProfile, { html: true })  : '';
   const sigText  = accProfile && appendSignature ? buildSignatureBlock(accProfile, { html: false }) : '';
+
+  // 양식에 첨부가 있으면 **보내기 전에** 한 번 받아 둔다 (모든 업체에 같은 파일).
+  // 하나라도 못 받으면 한 통도 보내지 않는다 — 첨부 빠진 메일이 나가는 것보다 낫다.
+  const attLoad = await loadTemplateAttachments(tpl?.attachments);
+  if (!attLoad.ok) {
+    return NextResponse.json({ success: false, error: attLoad.error }, { status: 400 });
+  }
+  const attachments = attLoad.files;
 
   const now = new Date().toISOString();
   const results: any[] = [];
@@ -185,6 +192,7 @@ export async function POST(req: Request) {
         subject: renderedSubject,
         html: htmlPayload,
         text: textPayload,
+        attachments,
         smtpConfig,
         fromOverride,
       });
