@@ -1,0 +1,909 @@
+{
+ "at": "2026-09-14T06:15:20.108Z",
+ "applied": [
+  {
+   "_id": "69fc25f40878decc8b45f8e7",
+   "leadId": "nabea-mal-144",
+   "company": "nabeauco",
+   "country": "Malaysia",
+   "oldEmail": "",
+   "newEmail": "general@nabeauco.com",
+   "source": "https://home.nabeauco.com/contact-us/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "69fc25f40878decc8b45f901",
+   "leadId": "shine-bra-170",
+   "company": "Shine International",
+   "country": "Brazil",
+   "oldEmail": "",
+   "newEmail": "info@shineinternational.com.br",
+   "source": "https://shineinternational.com.br/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "69fc25f40878decc8b45f8c3",
+   "leadId": "gold-rus-108",
+   "company": "GOLD APPLE",
+   "country": "Russia",
+   "oldEmail": "",
+   "newEmail": "ctd@goldapple.ru",
+   "source": "https://seller.goldapple.ru/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a01cdbf971ea3c4aebb8940",
+   "leadId": "lead-1778502993858-ot8xd",
+   "company": "Yami (Yamibuy)",
+   "country": "USA",
+   "oldEmail": "Brand inquiry via yami.com",
+   "newEmail": "homebeautybd@yami.com",
+   "source": "https://www.yami.com/en/article/1757849",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a1d395467c19fababd8c2fa",
+   "leadId": "lead-1780300116599-50-an0rp",
+   "company": "BiY Asia",
+   "country": "Cambodia",
+   "oldEmail": "Contact form on site",
+   "newEmail": "hello.biyasia@gmail.com",
+   "source": "https://biy.asia/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a1d395467c19fababd8c308",
+   "leadId": "lead-1780300116600-84-vk39t",
+   "company": "GEK (gek.ba)",
+   "country": "Bosnia and Herzegovina",
+   "oldEmail": "Contact form on site",
+   "newEmail": "hello@gek.ba",
+   "source": "https://www.gek.ba/kontakt",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a1d395467c19fababd8c316",
+   "leadId": "lead-1780300116600-116-z1nwi",
+   "company": "K-Mart Rwanda",
+   "country": "Rwanda",
+   "oldEmail": "Contact form on site",
+   "newEmail": "kmartrwanda@gmail.com",
+   "source": "https://www.k-martrwanda.com/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a1d395467c19fababd8c318",
+   "leadId": "lead-1780300116600-119-2f67o",
+   "company": "Kara Korean Wholesale Store (Kathmandu)",
+   "country": "Nepal",
+   "oldEmail": "Contact form on Facebook",
+   "newEmail": "karakoreanstore@gmail.com",
+   "source": "https://www.karakoreanbeauty.com/contact",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a1d395467c19fababd8c34b",
+   "leadId": "lead-1780300116600-218-gt3tl",
+   "company": "Shopzetu",
+   "country": "Kenya",
+   "oldEmail": "Contact form on site",
+   "newEmail": "support@shopzetu.com",
+   "source": "https://www.shopzetu.com/pages/contact-us",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a1d395467c19fababd8c3d8",
+   "leadId": "lead-1780300116601-565-ef8mq",
+   "company": "Korean Mart Bangladesh (koreanmartbd.com)",
+   "country": "Bangladesh",
+   "oldEmail": "Contact form on site",
+   "newEmail": "koreanmart.bd@gmail.com",
+   "source": "https://koreanmartbd.com/contactus/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a2b526f2df10a2f4a56ca0f",
+   "leadId": "lead-1781224047184-224-095kl",
+   "company": "Milmul Distribution",
+   "country": "Malaysia",
+   "oldEmail": "Contact form on site",
+   "newEmail": "milmuldistribution@gmail.com",
+   "source": "https://www.milmuldistribution.com/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a2b526f2df10a2f4a56ca25",
+   "leadId": "lead-1781224047185-342-88fj2",
+   "company": "Belle Lab",
+   "country": "Vietnam",
+   "oldEmail": "Not found publicly",
+   "newEmail": "ecommerce@bellelab.co",
+   "source": "https://bellelab.co/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a2b526f2df10a2f4a56ca3c",
+   "leadId": "lead-1781224047186-540-67jpw",
+   "company": "Beautrium",
+   "country": "Thailand",
+   "oldEmail": "Contact form on site",
+   "newEmail": "ecommerce@thebeautrium.com",
+   "source": "https://play.google.com/store/apps/details?id=com.beautytalk.beautrium&hl=en_US",
+   "sourceType": "directory",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a2b526f2df10a2f4a56caa8",
+   "leadId": "lead-1781224047188-958-6wsf8",
+   "company": "Mint Cosmetics",
+   "country": "Vietnam",
+   "oldEmail": "Not found publicly",
+   "newEmail": "mintshop07@gmail.com",
+   "source": "https://mint07.com/lien-he-cua-hang-my-pham-xach-tay-us-uk-phap-nhat-han-gia-re-chinh-hang-co-bill/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593f19",
+   "leadId": "lead-1783396756255-91-9012t",
+   "company": "Bloom & Beauty (bloomandbeauty.lk)",
+   "country": "Sri Lanka",
+   "oldEmail": "Contact form on site",
+   "newEmail": "info@bloomandbeauty.lk",
+   "source": "https://bloomandbeauty.lk/contact-us/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593f29",
+   "leadId": "lead-1783396756256-139-mpqq6",
+   "company": "Eleven 11 Korea",
+   "country": "Ecuador",
+   "oldEmail": "Contact via Instagram DM",
+   "newEmail": "eleven11korea.ec@gmail.com",
+   "source": "https://www.eleven11korea.com/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593f42",
+   "leadId": "lead-1783396756256-226-c2mja",
+   "company": "Kalon (kalon.shop)",
+   "country": "Guatemala",
+   "oldEmail": "Contact form on site",
+   "newEmail": "info@kalon.shop",
+   "source": "https://kalon.shop/inicio/venta-al-por-mayor/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593f4c",
+   "leadId": "lead-1783396756256-245-wpyn8",
+   "company": "KoCos (Korean Cosmetics Georgia)",
+   "country": "Georgia",
+   "oldEmail": "Contact via Instagram DM",
+   "newEmail": "info@kocos.ge",
+   "source": "https://kocos.ge/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593f5a",
+   "leadId": "lead-1783396756257-299-e9liy",
+   "company": "Kosmeticos (K-Osmeticos)",
+   "country": "Chile",
+   "oldEmail": "DM via Instagram / contact form",
+   "newEmail": "hola@kosmeticos.cl",
+   "source": "https://kosmeticos.cl/contacto/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593f77",
+   "leadId": "lead-1783396756257-450-l9gym",
+   "company": "SKIN1004 Mongolia (Exclusive Distributor)",
+   "country": "Mongolia",
+   "oldEmail": "DM via Instagram",
+   "newEmail": "info@skin1004.mn",
+   "source": "https://skin1004.mn/contact",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593f99",
+   "leadId": "lead-1783396756263-632-vgmat",
+   "company": "My Asia A&K Beauty (Krzysztof Chwesiuk)",
+   "country": "Poland",
+   "oldEmail": "Contact form on site",
+   "newEmail": "wholesale@holika.pl",
+   "source": "https://www.holika.pl/en/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593f9d",
+   "leadId": "lead-1783396756263-721-lziao",
+   "company": "All About Skin Mauritius",
+   "country": "Mauritius",
+   "oldEmail": "DM via Instagram",
+   "newEmail": "allaboutskin1413@gmail.com",
+   "source": "https://allaboutskin.mu/contact-us/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593fa2",
+   "leadId": "lead-1783396756263-740-af1er",
+   "company": "Baha1004",
+   "country": "Bahamas",
+   "oldEmail": "DM on Facebook",
+   "newEmail": "shop@baha1004.com",
+   "source": "https://baha1004.com/contact/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593fb3",
+   "leadId": "lead-1783396756263-776-2b388",
+   "company": "Beauty Square Kenya",
+   "country": "Kenya",
+   "oldEmail": "Contact form on site",
+   "newEmail": "info@beautysquareke.co",
+   "source": "https://beautysquareke.co/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593fc2",
+   "leadId": "lead-1783396756263-825-i33x5",
+   "company": "COSE beauty",
+   "country": "Mongolia",
+   "oldEmail": "Contact form on site",
+   "newEmail": "online@cose.mn",
+   "source": "https://cose.mn/mn",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593fc3",
+   "leadId": "lead-1783396756263-829-h1r2e",
+   "company": "Cosmetica Koreeana Moldova (koreanbeauty.md)",
+   "country": "Moldova",
+   "oldEmail": "DM via Instagram",
+   "newEmail": "info@koreashop.md",
+   "source": "https://koreashop.md/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593fcc",
+   "leadId": "lead-1783396756264-855-duw28",
+   "company": "Dreamskin Haven",
+   "country": "Kenya",
+   "oldEmail": "Contact via Instagram/site",
+   "newEmail": "buddy@dreamskinhaven.co.ke",
+   "source": "https://dreamskinhaven.co.ke/contact-us/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a593fd6",
+   "leadId": "lead-1783396756264-891-znq6p",
+   "company": "Glow Korean GT",
+   "country": "Guatemala",
+   "oldEmail": "DM via Instagram",
+   "newEmail": "info@glowkoreangt.com",
+   "source": "https://glowkoreangt.com/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a594006",
+   "leadId": "lead-1783396756264-1012-vzana",
+   "company": "Kbeauty Stop CR",
+   "country": "Costa Rica",
+   "oldEmail": "DM via Instagram",
+   "newEmail": "bellezacoreanasrl@gmail.com",
+   "source": "https://kbeautystop.com/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a594022",
+   "leadId": "lead-1783396756265-1095-9c8us",
+   "company": "Korean Cosmetics Tanzania (koreancosmetics_tz)",
+   "country": "Tanzania",
+   "oldEmail": "Contact via Instagram DM",
+   "newEmail": "info@koreancosmetics.co.tz",
+   "source": "https://koreancosmetics.co.tz/contact-us/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a59402e",
+   "leadId": "lead-1783396756265-1121-nbc2b",
+   "company": "Kosmetics CR",
+   "country": "Costa Rica",
+   "oldEmail": "DM via Instagram",
+   "newEmail": "sales@kosmeticscr.com",
+   "source": "https://kosmeticscr.com/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a594048",
+   "leadId": "lead-1783396756265-1223-l6ffb",
+   "company": "Original Korean Cosmetics (OKC)",
+   "country": "Uzbekistan",
+   "oldEmail": "Contact form on site",
+   "newEmail": "info@okc.uz",
+   "source": "https://okc.uz/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a594071",
+   "leadId": "lead-1783396756266-1350-4eub3",
+   "company": "Veli Store",
+   "country": "Georgia",
+   "oldEmail": "Contact form on site",
+   "newEmail": "info@veli.store",
+   "source": "https://veli.store/en/business/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a594077",
+   "leadId": "lead-1783396756266-1375-axiuo",
+   "company": "Audere Beaute",
+   "country": "Mauritius",
+   "oldEmail": "Not found publicly",
+   "newEmail": "info@auderebeaute.com",
+   "source": "https://auderebeaute.com/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a4c7994e1e3119f8a59407e",
+   "leadId": "lead-1783396756266-1418-vtb9f",
+   "company": "Korean Kosmetics Kenya",
+   "country": "Kenya",
+   "oldEmail": "Not found publicly",
+   "newEmail": "koreankosmeticskenya@gmail.com",
+   "source": "https://www.facebook.com/koreankosmeticske/about_contact_and_basic_info",
+   "sourceType": "official-social",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a5bf75501f8c4cd3a15a020",
+   "leadId": "lead-1784411989737-335-5pmc3",
+   "company": "Korexpert",
+   "country": "Ukraine",
+   "oldEmail": "Contact form on site",
+   "newEmail": "request@korexpert.com",
+   "source": "https://korexpert.com/en/contacts/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a5bf75501f8c4cd3a15a036",
+   "leadId": "lead-1784411989739-618-0u4xz",
+   "company": "KoreaShopABC Egypt",
+   "country": "Egypt",
+   "oldEmail": "Not found publicly",
+   "newEmail": "info@koreashopabc.com",
+   "source": "https://koreashopabc.com/pages/contact",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a5bf75501f8c4cd3a15a041",
+   "leadId": "lead-1784411989740-840-ppz3w",
+   "company": "Beauty Junkie TT (@beautyjunkiett)",
+   "country": "Trinidad and Tobago",
+   "oldEmail": "DM via Instagram",
+   "newEmail": "beautyjunkiett@gmail.com",
+   "source": "https://beautyjunkiett.com/policies/refund-policy",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a69edb4ec974a2d7c441df5",
+   "leadId": "lead-1785327028522-1656-08o1a",
+   "company": "French House BSB LLP (Французский Дом / Beautymania)",
+   "country": "Kazakhstan",
+   "oldEmail": "Not found publicly",
+   "newEmail": "sale@bma.kz",
+   "source": "https://french-house.kz/contacts/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a69edb4ec974a2d7c441df2",
+   "leadId": "lead-1785327028521-1629-6ns1u",
+   "company": "BB-mania (Korean cosmetics retail chain)",
+   "country": "Kazakhstan",
+   "oldEmail": "Not found publicly",
+   "newEmail": "info@bb-mania.kz",
+   "source": "https://bb-mania.kz/contact/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a69edb4ec974a2d7c441dcc",
+   "leadId": "lead-1785327028503-634-aw8aa",
+   "company": "CommBeauty",
+   "country": "Liberia",
+   "oldEmail": "Not found publicly",
+   "newEmail": "commbeauty@outlook.com",
+   "source": "https://www.commbeauty.com/contact-us",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a7f68",
+   "leadId": "lead-1785372262637-33-qezky",
+   "company": "Korean Cosmetic Cyprus",
+   "country": "Cyprus",
+   "oldEmail": "DM via Facebook page",
+   "newEmail": "koreancosmeticcy@gmail.com",
+   "source": "https://www.koreancosmetic.cy/",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a7f7b",
+   "leadId": "lead-1785372262637-52-q1b9j",
+   "company": "Mi Mi Korean Cosmetics",
+   "country": "Myanmar",
+   "oldEmail": "Not found publicly",
+   "newEmail": "mimikoreancosmetics@gmail.com",
+   "source": "https://www.mimicosmetickorea.com/policies/privacy-policy",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a808c",
+   "leadId": "lead-1785372262642-325-95egn",
+   "company": "Korean Beauty Clinic and Care Pvt. Ltd.",
+   "country": "Nepal",
+   "oldEmail": "DM via Facebook",
+   "newEmail": "kscclinicnepal@gmail.com",
+   "source": "https://www.kscclinicnepal.com/contact",
+   "sourceType": "company-site",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a818d",
+   "leadId": "lead-1785372262646-582-10l3d",
+   "company": "The Face Shop Oman",
+   "country": "Oman",
+   "oldEmail": "Contact form on site",
+   "newEmail": "tfscservice@tfsoman.com",
+   "source": "https://thefaceshop.om/contact-us/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a81f8",
+   "leadId": "lead-1785372262648-689-pn8nd",
+   "company": "Lenzer Trade OÜ",
+   "country": "Estonia",
+   "oldEmail": "Not found publicly",
+   "newEmail": "info@theskinhouse.ee",
+   "source": "https://theskinhouse.ee/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a8457",
+   "leadId": "lead-1785372262656-1296-kr5ea",
+   "company": "Korean Cosmetics In Lebanon",
+   "country": "Lebanon",
+   "oldEmail": "DM via Instagram",
+   "newEmail": "info@koreancosmeticsinlebanon.com",
+   "source": "https://www.koreancosmeticsww.com/policies/terms-of-service",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a849c",
+   "leadId": "lead-1785372262658-1365-ojrf4",
+   "company": "Loverte",
+   "country": "Estonia",
+   "oldEmail": "Contact form on site",
+   "newEmail": "info@loverte.com",
+   "source": "https://www.loverte.com/et/kontakt",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a8525",
+   "leadId": "lead-1785372262660-1502-ncksq",
+   "company": "Seoul Cosmetics Bulgaria",
+   "country": "Bulgaria",
+   "oldEmail": "Contact form on site",
+   "newEmail": "sales@cosmetic-express.bg",
+   "source": "https://www.serdikacenter.bg/obekti/magazini/seoul-cosmetics",
+   "sourceType": "directory",
+   "emailKind": "other-domain"
+  },
+  {
+   "_id": "6a6a9e75b1d01eb1a57a85d7",
+   "leadId": "lead-1785372262663-1680-32kdh",
+   "company": "Korean Beauty Store Kosovo (K-Farma / @kfarma.ks)",
+   "country": "Kosovo",
+   "oldEmail": "Not found publicly",
+   "newEmail": "info@kfarma-ks.com",
+   "source": "https://kfarma-ks.com/policies/privacy-policy",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a7a7e1886c9bb1490e99020",
+   "leadId": "germany-onewave-gmbh-won-chung-people-lead-1835",
+   "company": "ONEWAVE GmbH (Won Chung - people-lead)",
+   "country": "Germany",
+   "oldEmail": "Contact form on site",
+   "newEmail": "info@onewave.de",
+   "source": "https://www.onewave.de/contact",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a7a7e1886c9bb1490e99255",
+   "leadId": "philippines-dara-beauty-market-1548",
+   "company": "Dara Beauty Market",
+   "country": "Philippines",
+   "oldEmail": "DM via Facebook",
+   "newEmail": "dara@darabeautymarket.com",
+   "source": "https://darabeautymarket.com/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a7a7e1886c9bb1490e99524",
+   "leadId": "uae-chalhoub-group-faces-andrea-fetzer-people-lead-1829",
+   "company": "Chalhoub Group (Faces) — Andrea Fetzer (people-lead)",
+   "country": "UAE",
+   "oldEmail": "Not found publicly",
+   "newEmail": "info@chalhoub.com",
+   "source": "https://www.chalhoubgroup.com/en/contactus",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a7a7e1886c9bb1490e99558",
+   "leadId": "north-macedonia-k-shop-macedonia-kshopmacedonia-1846",
+   "company": "K-Shop Macedonia (kshopmacedonia)",
+   "country": "North Macedonia",
+   "oldEmail": "Not found publicly",
+   "newEmail": "vetil2005@gmail.com",
+   "source": "https://www.threads.com/@kshopmacedonia",
+   "sourceType": "official-social",
+   "emailKind": "freemail"
+  },
+  {
+   "_id": "6a7a7e1886c9bb1490e99519",
+   "leadId": "serbia-beauty-junkies-rs-beautyjunkies-rs-1939",
+   "company": "Beauty Junkies RS (beautyjunkies.rs)",
+   "country": "Serbia",
+   "oldEmail": "Not found publicly",
+   "newEmail": "info@beautyjunkies.rs",
+   "source": "https://beautyjunkies.rs/pages/contact",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a7a7e1886c9bb1490e99593",
+   "leadId": "portugal-occasion2smile-1951",
+   "company": "Occasion2Smile",
+   "country": "Portugal",
+   "oldEmail": "Not found publicly",
+   "newEmail": "geral@occasion2smile.com",
+   "source": "https://www.mitsocosmetics.com/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a7a7e1886c9bb1490e995f3",
+   "leadId": "romania-kbeauty-store-ro-1919",
+   "company": "KBeauty Store RO",
+   "country": "Romania",
+   "oldEmail": "DM via Facebook",
+   "newEmail": "office@kbeautystore.ro",
+   "source": "https://kbeautystore.ro/",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  },
+  {
+   "_id": "6a7a7e1886c9bb1490e99609",
+   "leadId": "chile-jumbo-cencosud-1883",
+   "company": "Jumbo (Cencosud)",
+   "country": "Chile",
+   "oldEmail": "Not found publicly",
+   "newEmail": "proveedores@cencosud.cl",
+   "source": "https://assets.jumbo.cl/uploads/2024/09/Acuerdo-Comercial-SM-Jumbo-Sta-Isabel-y-SPID-2024.pdf",
+   "sourceType": "company-site",
+   "emailKind": "company-domain"
+  }
+ ],
+ "skipped": [
+  {
+   "id": "eagle-mal-152",
+   "company": "EAGLEWINGS",
+   "email": "uxc8917@gmail.com",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "grica-per-179",
+   "company": "GRICA PHARMACARE GROUP",
+   "email": "info@gricagroup.com",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "desco-phi-155",
+   "company": "DESCORP",
+   "email": "descorpdpo@descorpinc.com",
+   "why": "영업용이 아닌 창구(개인정보·언론·채용 등): descorpdpo@descorpinc.com"
+  },
+  {
+   "id": "lead-1778502993857-jb5cm",
+   "company": "Memebox (Dino Ha)",
+   "email": "partner_mkt@memebox.com",
+   "why": "업체 상태 closed-or-changed"
+  },
+  {
+   "id": "lead-1778502993857-i3yyq",
+   "company": "Pan Pacific International Holdings (Don Quijote / MEGA Donki / Kira Kira Donki)",
+   "email": "tokumu@ppih.co.jp",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1778502993858-ndehj",
+   "company": "Guardian Singapore (DFI Retail Group)",
+   "email": "guardian.sg@dfiretailgroup.com",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1778502993858-301vs",
+   "company": "Holland & Barrett",
+   "email": "Suppliermanagementoffice@hollandandbarrett.com",
+   "why": "같은 주소를 쓰는 다른 업체: Holland & Barrett Retail Limited (trading as Holland & Barrett) (verified)"
+  },
+  {
+   "id": "lead-1778502993859-u5dxo",
+   "company": "Rossmann — Anna Bohland (Dirk Rossmann GmbH)",
+   "email": "einkauf@rossmann.de",
+   "why": "같은 주소를 쓰는 다른 업체: Dirk Rossmann GmbH (ROSSMANN) (verified)"
+  },
+  {
+   "id": "lead-1780300116600-140-cybdg",
+   "company": "Korean Kosmetics Kenya (Instagram + Nairobi shop)",
+   "email": "koreankosmeticskenya@gmail.com",
+   "why": "확인 담당이 페이지에서 확인하지 못함"
+  },
+  {
+   "id": "lead-1780300116600-279-g4hn3",
+   "company": "JOOR (US wholesale platform)",
+   "email": "seoul@joor.com",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1780300116600-355-8anc8",
+   "company": "Bliss Trading",
+   "email": "info@blisstrading.ca",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1780300116601-426-g7okl",
+   "company": "ARINSKIN (arinskin.shop)",
+   "email": "arinskin@outlook.com",
+   "why": "확인 담당이 페이지에서 확인하지 못함"
+  },
+  {
+   "id": "lead-1780300116601-535-3yigc",
+   "company": "KBC (Korea Beauty Cosmetics) — shopkbc.com",
+   "email": "koreanbeauty@shopkbc.com",
+   "why": "업체 상태 site-down"
+  },
+  {
+   "id": "lead-1780300116601-721-xywm8",
+   "company": "Liverpool — beauty / K-beauty",
+   "email": "atencion@liverpool.com.mx",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1781224047185-362-ioy6q",
+   "company": "Hanhstore",
+   "email": "hanhstore86@yahoo.com",
+   "why": "확인 담당이 페이지에서 확인하지 못함"
+  },
+  {
+   "id": "lead-1781224047185-394-t8hxi",
+   "company": "MinorB Kft",
+   "email": "salesminorbkft@gmail.com",
+   "why": "확인 담당이 페이지에서 확인하지 못함"
+  },
+  {
+   "id": "lead-1781224047187-630-t5w69",
+   "company": "Hasaki Beauty & Clinic",
+   "email": "hotro@hasaki.vn",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1781224047187-791-d4qqq",
+   "company": "Mongolian Beauty",
+   "email": "mongolianbeauty707@gmail.com",
+   "why": "같은 주소를 쓰는 다른 업체: Mongolian Beauty Cosmetics (mongolianbeauty.com) (verified)"
+  },
+  {
+   "id": "lead-1783396756256-240-xal9l",
+   "company": "KMarketTZ",
+   "email": "info@solunala.com",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1783396756264-852-l5bet",
+   "company": "Dream Shelves",
+   "email": "dreamshelves.sr@gmail.com",
+   "why": "같은 주소를 쓰는 다른 업체: DreamShelves (DreamShelves.SR) (verified)"
+  },
+  {
+   "id": "lead-1783396756264-964-0pimw",
+   "company": "K-Beauty BH (kbeauty.bh)",
+   "email": "Orders@kbeautybh.com",
+   "why": "확인 담당이 페이지에서 확인하지 못함"
+  },
+  {
+   "id": "lead-1784411989736-183-efgle",
+   "company": "GEK",
+   "email": "hello@gek.ba",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (GEK (gek.ba))"
+  },
+  {
+   "id": "lead-1784411989736-210-nmwl5",
+   "company": "Healthy Skin (healthyskin.eu)",
+   "email": "info@healthyskin.eu",
+   "why": "확인 담당이 페이지에서 확인하지 못함"
+  },
+  {
+   "id": "lead-1784411989737-422-5uydf",
+   "company": "OKC Original Korean Cosmetics (okc.official)",
+   "email": "info@okc.uz",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (Original Korean Cosmetics (OKC))"
+  },
+  {
+   "id": "lead-1785372262638-121-hvoqu",
+   "company": "BiY Asia (biy.asia)",
+   "email": "hello.biyasia@gmail.com",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (BiY Asia)"
+  },
+  {
+   "id": "lead-1785372262642-339-4c9eb",
+   "company": "Korean Cosmetics Georgia / KoCos (kocos_ge)",
+   "email": "info@kocos.ge",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (KoCos (Korean Cosmetics Georgia))"
+  },
+  {
+   "id": "lead-1785372262649-802-ojbz7",
+   "company": "Kapalua Trading S.A.",
+   "email": "ventas@kapalua.es",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1785372262649-838-nosgb",
+   "company": "Tigota",
+   "email": "customerservice@tigota.it",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1785372262649-854-0ksjl",
+   "company": "All About Skin Mauritius (@allaboutskin.mu)",
+   "email": "allaboutskin1413@gmail.com",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (All About Skin Mauritius)"
+  },
+  {
+   "id": "lead-1785372262653-1057-it01f",
+   "company": "Glow Korean GT (@glowkoreangt)",
+   "email": "Info@glowkoreangt.com",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (Glow Korean GT)"
+  },
+  {
+   "id": "lead-1785372262654-1138-39qlr",
+   "company": "K Market TZ (kmarkettz.com)",
+   "email": "info@solunala.com",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1785372262658-1392-7fmjm",
+   "company": "Mi Mi Korean Cosmetics",
+   "email": "mimikoreancosmetics@gmail.com",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (Mi Mi Korean Cosmetics)"
+  },
+  {
+   "id": "lead-1785372262661-1599-mz5dm",
+   "company": "Veli Store (veli.store)",
+   "email": "support@veli.store",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "lead-1785372262663-1681-ai65u",
+   "company": "Korean Cosmetics Tienda Online (KOCO)",
+   "email": "koreancosmeticspy@gmail.com",
+   "why": "확인 담당이 페이지에서 확인하지 못함"
+  },
+  {
+   "id": "lead-1785372262663-1705-18jhk",
+   "company": "Original Korean Cosmetics (OKC) Tashkent",
+   "email": "info@okc.uz",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (Original Korean Cosmetics (OKC))"
+  },
+  {
+   "id": "bangladesh-bd-online-korean-cosmetic-shop-1031",
+   "company": "BD Online Korean Cosmetic Shop",
+   "email": "bdonlinekoreancosmeticshop@gmail.com",
+   "why": "확인 담당이 페이지에서 확인하지 못함"
+  },
+  {
+   "id": "mongolia-cose-beauty-retail-cose-mn-863",
+   "company": "COSE beauty retail (cose.mn)",
+   "email": "online@cose.mn",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (COSE beauty)"
+  },
+  {
+   "id": "tanzania-cosmetics-from-korea-jumla-1623",
+   "company": "Cosmetics From Korea Jumla",
+   "email": "info@koreancosmetics.co.tz",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (Korean Cosmetics Tanzania (koreancosmetics_tz))"
+  },
+  {
+   "id": "tanzania-cosmetics-from-korea-jumla-1483",
+   "company": "Cosmetics From Korea Jumla",
+   "email": "info@koreancosmetics.co.tz",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (Korean Cosmetics Tanzania (koreancosmetics_tz))"
+  },
+  {
+   "id": "sweden-fab-beauty-bar-1949",
+   "company": "Fab Beauty Bar",
+   "email": "info@fab-beautybar.com",
+   "why": "업체 상태 site-down"
+  },
+  {
+   "id": "cyprus-korean-cosmetic-cyprus-1920",
+   "company": "Korean Cosmetic Cyprus",
+   "email": "koreancosmeticcy@gmail.com",
+   "why": "이번 결과 안에서 같은 주소가 두 곳 (Korean Cosmetic Cyprus)"
+  },
+  {
+   "id": "germany-dm-drogerie-markt-1890",
+   "company": "dm-drogerie markt",
+   "email": "servicecenter@dm.de",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "uk-whsmith-travel-1971",
+   "company": "WHSmith Travel",
+   "email": "customer.relations@whsmith.co.uk",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  },
+  {
+   "id": "china-shanghai-lily-beauty-cosmetics-co-ltd-lrlz-sse-605136-2004",
+   "company": "Shanghai Lily & Beauty Cosmetics Co., Ltd. (丽人丽妆 / LRLZ, SSE:605136)",
+   "email": "shlrlz@lrlz.com",
+   "why": "사람 검토로 제외 (영업 창구로 부적합)"
+  }
+ ]
+}
