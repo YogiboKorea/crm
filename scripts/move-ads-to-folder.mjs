@@ -29,10 +29,21 @@ const norm = (s = '') => {
   for (let i = 0; i < 30; i++) { const n = x.replace(RP, ''); if (n === x) break; x = n.trim(); }
   return x.replace(/\s+/g, ' ').replace(/[「」『』]/g, '').trim().toLowerCase();
 };
-const keyOf = (subject, group, messageId) => {
+/**
+ * WARNING: src/lib/mail/thread.ts 의 threadKey() 와 글자 하나까지 같아야 한다.
+ *
+ * 전에 여기서 `g:폴더|s:제목` 이라는 제 나름의 형식을 썼다가 54통을 망쳤다.
+ * 앱은 `scope::제목` 으로 만들기 때문에, 이 스크립트가 손댄 메일은
+ * 새 메일이 와도 같은 대화로 안 묶였다 (2건은 실제로 쪼개져 있었다).
+ * 스레드 키는 형식 자체가 계약이다 - 비슷하게가 아니라 같아야 한다.
+ *
+ * scope 는 폴더이고, 폴더가 없으면 보낸 사람의 도메인이다. 이 폴백까지 같아야 한다.
+ */
+const keyOf = (subject, group, messageId, fromAddress) => {
   const s = norm(subject);
   if (!s) return `id:${messageId || 'unknown'}`;
-  return `g:${(group || '').toLowerCase()}|s:${s}`;
+  const scope = group || String(fromAddress || '').split('@')[1] || '';
+  return `${scope}::${s}`;
 };
 
 await mongoose.connect(process.env.MONGODB_URI);
@@ -46,7 +57,13 @@ const base = {
   group: { $ne: AD_FOLDER },
 };
 const autoOnly = { ...base, groupBy: { $nin: HUMAN } };
-const target = INCLUDE_MANUAL ? base : autoOnly;
+// 자동발송으로 분류됐어도 **실제로 처리할 일**이 있는 메일은 옮기지 않는다.
+// 예: 로그인 본인인증 변경 요청, 세금계산서 확인 요청. 광고 폴더에 들어가면 묻힌다.
+// AI 분석이 급함(high)·보통(mid)으로 본 것은 제외하고, --include-actionable 로만 포함한다.
+const INCLUDE_ACTIONABLE = process.argv.includes('--include-actionable');
+const notActionable = { 'analysis.urgency': { $nin: ['high', 'mid'] } };
+const target0 = INCLUDE_MANUAL ? base : autoOnly;
+const target = INCLUDE_ACTIONABLE ? target0 : { ...target0, ...notActionable };
 
 const nAll = await M.countDocuments(base);
 const nAuto = await M.countDocuments(autoOnly);
@@ -82,14 +99,14 @@ if (!APPLY) {
 }
 
 // 옮긴다 — 폴더가 바뀌면 스레드 키도 다시 만들어야 대화가 안 쪼개진다
-const docs = await M.find(target).project({ subject: 1, messageId: 1 }).toArray();
+const docs = await M.find(target).project({ subject: 1, messageId: 1, from: 1 }).toArray();
 let moved = 0;
 const CHUNK = 300;
 for (let i = 0; i < docs.length; i += CHUNK) {
   const ops = docs.slice(i, i + CHUNK).map((d) => ({
     updateOne: {
       filter: { _id: d._id },
-      update: { $set: { group: AD_FOLDER, groupBy: 'auto-ad', threadKey: keyOf(d.subject, AD_FOLDER, d.messageId) } },
+      update: { $set: { group: AD_FOLDER, groupBy: 'auto-ad', threadKey: keyOf(d.subject, AD_FOLDER, d.messageId, d.from?.address) } },
     },
   }));
   if (ops.length) moved += (await M.bulkWrite(ops)).modifiedCount;

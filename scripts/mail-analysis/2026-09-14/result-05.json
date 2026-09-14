@@ -1,0 +1,299 @@
+[
+ {
+  "id": "6aa23e8f8f83165dc75cfea8",
+  "classification": "system",
+  "lang": "ko",
+  "topic": "쿠팡 광고 — AI스마트광고 자동규칙으로 일예산 20% 증액 (09-09)",
+  "summary": "쿠팡 광고 자동규칙이 09-09 17:36에 실행되어 AI스마트광고 일예산이 20% 올라갔다는 알림입니다. 09-08부터 매일 반복되고 있습니다.",
+  "keyPoints": [
+   "캠페인: AI스마트광고",
+   "오후 6시 전 일예산 80% 소진 시 20% 자동 증액",
+   "적용 일시 2026.09.09 17:36"
+  ],
+  "intent": "자동규칙 실행 결과를 알린다.",
+  "needsReply": false,
+  "replyReason": "",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "대응 불필요"
+ },
+ {
+  "id": "6aa26a398f83165dc75d0dbd",
+  "classification": "b2b",
+  "lang": "en",
+  "translationSubject": "RE: RE: 브랜드 프레젠테이션",
+  "translationBody": "David 님, Hoon 님,\n\n샘플 통관이 또 막혔습니다.\n\nFedEx에서 첨부한 신고서에 서명해 달라고 합니다. 첨부 서류에 서명해 주실 수 있을까요?\n\n또한 인보이스를 Blue Marble Ltd.가 아니라 저 개인(Arielle Cohen) 앞으로 발행해 주셔야 합니다. 그리고 인보이스에 '샘플'이 아니라 '화장품(cosmetic products)'이라고 적혀 있으면 도움이 될 것 같습니다.\n\n회사 앞으로 온 소포에 '샘플'이라고 적혀 있으면 이것저것 묻기 시작한다고 합니다.\n\n통관할 수 있도록 서명한 신고서와 수정된 인보이스를 받을 수 있을지 알려주세요.\n\n감사합니다,\nArielle",
+  "topic": "Blue Marble — 이스라엘 샘플 FedEx 통관 보류: 신고서 서명·인보이스 수신인/품명 변경 요청",
+  "summary": "Blue Marble Arielle Cohen 대표가 요기코가 보낸 샘플이 이스라엘 FedEx 통관에서 다시 막혔다고 알렸습니다. FedEx가 요구한 신고서에 요기코 서명이 필요하고, 인보이스를 회사가 아닌 Arielle 개인 앞으로, 품명을 '샘플' 대신 '화장품'으로 바꿔 달라고 요청했습니다. 품명 변경은 실제 거래 성격(무상 샘플)과 다르게 신고하는 것이 될 수 있어 관세 규정 확인이 필요합니다.",
+  "keyPoints": [
+   "상황: 샘플 통관 재차 보류 (FedEx 이스라엘)",
+   "요청 ① FedEx 신고서(첨부)에 요기코 서명",
+   "요청 ② 인보이스 수신인을 Blue Marble Ltd. → Arielle Cohen 개인으로 변경",
+   "요청 ③ 인보이스 품명을 'samples' → 'cosmetic products'로 변경",
+   "⚠ 무상 샘플을 다른 품명으로 신고하면 허위 신고 문제가 생길 수 있음 — 포워더·관세사 확인 권장",
+   "첨부 2건 (FedEx 신고서 등)"
+  ],
+  "intent": "막힌 샘플 통관을 풀기 위해 서류를 다시 받고 싶어 한다.",
+  "needsReply": true,
+  "replyReason": "통관 해제에 필요한 서명과 인보이스 수정을 직접 요청했고, 답이 없으면 샘플이 계속 묶인다.",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "high",
+  "suggestedAction": "FedEx 신고서 서명본 회신, 인보이스 수신인 변경은 진행하되 품명은 사실대로(상업적 가치 없는 샘플 등) 적는 방안을 FedEx·관세사와 확인 후 회신"
+ },
+ {
+  "id": "6aa23e8f8f83165dc75cfea7",
+  "classification": "partner",
+  "lang": "ko",
+  "topic": "오늘의집 — 요기보 9/8자 특별 인증가(특가뱃지) 재검수 후보 상품 안내",
+  "summary": "오늘의집이 요기보 상품 중 9/8 기준 특가뱃지를 붙일 수 있는 후보 목록을 보냈습니다. 9/9자 안내와 같은 절차로, 가격 인하 후 엑셀 양식 그대로 구글폼으로 제출하면 됩니다.",
+  "keyPoints": [
+   "첨부 엑셀: 9/8 기준 특가뱃지 후보 상품",
+   "가격 인하 → 구글폼 제출, 특가 유지 1주일",
+   "9/9자 안내가 이어서 옴 — 최신 목록 기준으로 판단"
+  ],
+  "intent": "특가뱃지 참여를 유도한다.",
+  "needsReply": false,
+  "replyReason": "회신 불가 메일이며 구글폼으로 제출한다.",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "최신(9/9자) 후보 목록 기준으로 검토"
+ },
+ {
+  "id": "6aa26a388f83165dc75d0dbc",
+  "classification": "b2b",
+  "lang": "en",
+  "translationSubject": "Re: Nap X 케어라벨 및 포장 아트워크 수정본",
+  "translationBody": "Jay 님,\n\n네, Nap X 업데이트 데이터와 스퀴지보 포장 데이터 받았습니다. 감사합니다!\n\n공장과 조율하겠습니다.\n\n생산은 10월 20일 출항(ETD) 예정입니다.\n지난주에 막 발주를 넣은 터라 아직 지연은 없습니다.\n지연이나 다른 소식이 생기면 알려드리겠습니다.\n\n출시 계획은 여전히 10월 중순쯤인가요?\n\n감사합니다,\nRyo",
+  "topic": "요기보 재팬 — Nap X·스퀴지보 데이터 수령, ETD 10/20, 출시 시점 확인 질문",
+  "summary": "요기보 재팬 Ryo가 Nap X 업데이트 데이터와 스퀴지보 포장 데이터를 받아 공장과 조율하겠다고 했습니다. 생산 출항은 10월 20일 예정이고 현재 지연은 없으며, 출시 계획이 여전히 10월 중순인지 물었습니다. 이후 메일에서 출시 계획에 변동이 없다고 정리됐습니다.",
+  "keyPoints": [
+   "Nap X 업데이트 데이터·스퀴지보 포장 데이터 수령",
+   "생산 ETD 2026-10-20, 지난주 발주로 현재 지연 없음",
+   "질문: 출시 계획이 10월 중순 그대로인지 → 이후 '변동 없음'으로 확인"
+  ],
+  "intent": "데이터 수령을 알리고 출시 일정을 확인한다.",
+  "needsReply": false,
+  "replyReason": "Jay 님이 답해 출시 계획 변동 없음으로 정리됐다.",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "대응 불필요"
+ },
+ {
+  "id": "6aa26a388f83165dc75d0dba",
+  "classification": "b2b",
+  "lang": "en",
+  "translationSubject": "Re: 스퀴지보 커스텀 제작 문의",
+  "translationBody": "Jay 님,\n\n생산 일정은 이전 메일에서 바뀐 것이 없습니다.\n세 번째 고객사의 최종 승인을 받는 즉시 제조에 들어갈 수 있고, 약 2개월이 걸립니다. (발주 이후 기준)\n\n1. 생산 일정\n공장 발주부터 선적까지 리드타임은 약 2개월입니다.\n샘플을 만들 텐데, 지금부터 약 14일 걸립니다.\n\n샘플은 핑크만 만들면 되죠? 그린은 안 만들어도 되나요?\n\n감사합니다,\nRyo",
+  "topic": "요기보 재팬 — 커스텀 스퀴지보 생산 약 2개월·샘플 14일, 샘플 색상(핑크만?) 확인 질문",
+  "summary": "요기보 재팬 Ryo가 커스텀 스퀴지보는 고객사 최종 승인 후 발주부터 선적까지 약 2개월, 샘플은 약 14일 걸린다고 다시 안내했습니다. 샘플을 핑크만 만들고 그린은 안 만들어도 되는지 물었습니다. 이후 공장 재협상으로 본생산~출고가 1.5개월로 줄었습니다.",
+  "keyPoints": [
+   "본생산: 고객사 최종 승인 → 발주 후 선적까지 약 2개월 (이후 1.5개월로 단축)",
+   "샘플 제작 약 14일",
+   "질문: 샘플 색상 핑크만 제작, 그린은 제외해도 되는지"
+  ],
+  "intent": "일정을 재확인하고 샘플 색상을 확정하고 싶어 한다.",
+  "needsReply": false,
+  "replyReason": "후속 메일로 일정 논의가 이어졌다. 다만 샘플 색상 답변이 오갔는지는 메일에서 확인되지 않는다.",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "mid",
+  "suggestedAction": "샘플 색상(핑크만 vs 그린 포함) 답변이 전달됐는지 확인 — 안 됐다면 바로 회신"
+ },
+ {
+  "id": "6aa23e8f8f83165dc75cfea6",
+  "classification": "partner",
+  "lang": "ko",
+  "topic": "29CM — 9월 이구데이(9/29) 참여 제안, 취합 마감 오늘 9/14(월) 18시",
+  "summary": "29CM 이소라 님이 매월 29일 전사 프로모션 '이구데이' 9월 참여를 제안했습니다. 본편은 9/29(화) 하루, 티징 9/27~28, 연장 9/30이며 참여 신청 마감이 9/14(월) 18시입니다. 최근 29% 쿠폰 최대 할인 한도가 없어져 고단가 가구 매출에 유리하다고 강조했습니다.",
+  "keyPoints": [
+   "취합 마감: 2026-09-14(월) 18:00 — 마감 후 접수 불가",
+   "일정: 티징 9/27~28 · 본편 9/29(화) · 연장 9/30(수)",
+   "① 이구데이 29% 쿠폰: 브랜드 60% 분담, 원데이 온라인 최저가 유지",
+   "② 베스트 브랜드 30% 쿠폰: 60% 분담 — 이구데이와 동시 참여 불가, 미선정 시 29%로 자동 전환(29% 견적서도 필수)",
+   "첫구매 30% 쿠폰(브랜드 40% 분담), 장바구니 18%·15% 쿠폰은 29CM 100% 부담",
+   "29% 쿠폰 최대 할인 한도 폐지 — 고단가 가구에 유리"
+  ],
+  "intent": "요기보를 월간 최대 프로모션에 참여시키려 한다.",
+  "needsReply": false,
+  "replyReason": "회신이 아니라 구글폼으로 신청한다. 마감이 오늘이다.",
+  "deadline": "2026-09-14",
+  "deadlineText": "기획전 취합 마감일 : 2026. 09. 14(월) 18시 (마감 이후 취합 받지 않습니다.)",
+  "deadlineType": "event",
+  "urgency": "high",
+  "suggestedAction": "참여할 거면 오늘 18시 전에 할인견적서 구글폼 제출 — 29% vs 베스트 브랜드 30% 중 선택, 60% 분담 손익 확인(9/10부터 수수료 감면 없음)"
+ },
+ {
+  "id": "6aa26a388f83165dc75d0db7",
+  "classification": "ad",
+  "lang": "ko",
+  "topic": "히로인스 — 추석 전후 구매 흐름 자료와 입점·체험단 영업",
+  "summary": "3060 엄마 소셜 플랫폼 히로인스(Paradigm Shift)가 작년 추석 전후 주문 데이터(추석 전 2.46배, 연휴 후 2.67배)를 소개하며 체험단·앱 노출·기획전 운영을 제안하는 영업 메일입니다. 미팅 예약 링크가 있습니다.",
+  "keyPoints": [
+   "히로인스 회원 50만+, MAU 10만+",
+   "작년 추석 전 일평균 주문 2.46배, 연휴 후 2.67배",
+   "제안: 체험단, 앱 내 노출, 기획전·공동구매, 자사몰 유입",
+   "9/14에 같은 발신자의 재촉 메일이 옴"
+  ],
+  "intent": "추석 시즌 광고·입점 상품을 팔려고 한다.",
+  "needsReply": false,
+  "replyReason": "요청하지 않은 영업 메일이다.",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "관심 없으면 대응 불필요"
+ },
+ {
+  "id": "6aa23e8f8f83165dc75cfea5",
+  "classification": "unknown",
+  "lang": "ko",
+  "topic": "개인 네이버 주소에서 온 본문 없는 메일 — 'N/C사 테스트 값' 첨부 12건",
+  "summary": "개인 네이버 주소(이빈)에서 md@yogico.kr로 제목만 '0909 N/C사 테스트 값 제공 OR 가능'이고 본문 없이 첨부파일 12건이 온 메일입니다. 내용을 판단할 근거가 첨부뿐이라 분류를 확정하지 않았습니다. 사내 담당자가 개인 메일로 보낸 업무 자료일 수도 있고, 모르는 발신자의 첨부라면 열기 전에 확인이 필요합니다.",
+  "keyPoints": [
+   "발신: 이빈 <greenostrich448@naver.com> (개인 네이버 주소)",
+   "제목: 0909 N/C사 테스트 값 제공 OR 가능",
+   "본문 없음 · 첨부 12건",
+   "발신자가 사내·거래처 인물인지 확인 필요"
+  ],
+  "intent": "테스트 결과 자료를 전달한 것으로 보인다 (본문이 없어 추정).",
+  "needsReply": false,
+  "replyReason": "본문에 요청 사항이 없다.",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "mid",
+  "suggestedAction": "MD 담당자가 발신자(이빈)를 아는지 확인 후 첨부 열람 — 모르는 사람이면 첨부 열지 말 것"
+ },
+ {
+  "id": "6aa26a388f83165dc75d0db6",
+  "classification": "b2b",
+  "lang": "en",
+  "translationSubject": "SV: 성분에디터 최종 아트워크",
+  "translationBody": "David 님,\n\n성분에디터 – 딥 콜라겐 파워 부스팅 마스크 – 1차 포장 – 승인\n성분에디터 – 딥 콜라겐 히알루-B5 하이드레이팅 마스크 – 1차 포장 – 승인\n성분에디터 – 핑크 PDRN 캡슐 크림 – 2차 포장 – 미승인 – 언어 누락 (DK/NO/SE/NL/FR/FI/PT/ES/IT/ENG/DE/CZ/SK/RO/EE)!\n성분에디터 – 핑크 PDRN 캡슐 크림 – 1차 포장 – 미승인 – 리플렛이 있으니 \"EN Cream ES Crema FR Créme…\" 문구는 빼도 됩니다. 이 문구를 넣는다면 모든 언어를 다 넣어야 합니다..! 빼는 것을 권장합니다.\n성분에디터 – 핑크 PDRN 캡슐 크림 – 리플렛 – 승인\n성분에디터 – 딥 콜라겐 배리어 세럼 미스트 – 2차 포장 – 승인\n성분에디터 – 딥 콜라겐 배리어 세럼 미스트 – 2차 포장 – 미승인 – '설명서 참조' 기호는 있는데 리플렛이 없나요? 모든 언어로 주의사항(CAUTION)과 사용법(HOW TO USE)이 빠져 있습니다!\n\n거의 다 왔습니다 😊\n\nAnnelene Nørager Madsen - 구매 어시스턴트\nDangaard Group A/S",
+  "topic": "Dangaard — 성분에디터 아트워크 첫 검토(9/9 새벽): 캡슐 크림·세럼 미스트 일부 미승인 (이후 전부 승인)",
+  "summary": "Dangaard Annelene의 성분에디터 아트워크 첫 검토 결과입니다. 핑크 PDRN 캡슐 크림 1·2차 포장은 언어 누락으로, 딥 콜라겐 배리어 세럼 미스트 한 건은 리플렛 없이 '설명서 참조' 기호만 있고 주의사항·사용법이 빠져 미승인이었습니다. 이후 수정본으로 9/10 8건 모두 최종 승인됐습니다.",
+  "keyPoints": [
+   "핑크 PDRN 캡슐 크림 2차 포장 — 15개 언어 누락으로 미승인",
+   "핑크 PDRN 캡슐 크림 1차 포장 — 일부 언어 문구 삭제 권장, 미승인",
+   "배리어 세럼 미스트 — 설명서 기호 있으나 리플렛 없음, 전 언어 CAUTION·HOW TO USE 누락",
+   "9/10 최종본으로 전부 승인 완료"
+  ],
+  "intent": "아트워크 수정 사항을 전달한다.",
+  "needsReply": false,
+  "replyReason": "수정본으로 9/10 전체 승인됐다.",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "대응 불필요 (최종 승인 완료)"
+ },
+ {
+  "id": "6aa23e8e8f83165dc75cfea0",
+  "classification": "ad",
+  "lang": "ko",
+  "topic": "프로그레스미디어 — 배너 소재 제작 협업 대시보드 소개·온라인 미팅 요청",
+  "summary": "광고 제작사 프로그레스미디어 노민규 대리가 배너 소재 제작 요청부터 피드백·최종 확정까지 한곳에서 관리하는 대시보드를 소개하며 10~15분 온라인 소개 미팅을 요청했습니다. '함께 진행하는 배너 제작 업무'를 언급하지만 대표 주소로 회사소개서와 기술제안서를 보낸 형태라, 실제 거래 중인 업체인지 확인이 필요합니다.",
+  "keyPoints": [
+   "제안: 배너 소재 제작 대시보드 (요청·시안·피드백·확정 단계 관리)",
+   "브랜드 담당자 직접 참여·수정, 경쟁사 광고 레퍼런스(Meta·Google) 제공",
+   "10~15분 온라인 소개 미팅 요청",
+   "대용량 첨부: 회사소개서 2026 3Q, Website AI Readiness 기술제안서 (~2026-10-09)",
+   "'함께 진행하는 업무' 언급 — 실제 거래처인지 확인 필요"
+  ],
+  "intent": "자사 제작 서비스와 대시보드를 도입시키려 한다.",
+  "needsReply": false,
+  "replyReason": "실제 거래 중인 업체가 아니라면 영업 메일이다.",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "마케팅팀에 프로그레스미디어와 실제 거래 중인지 확인, 아니면 대응 불필요"
+ },
+ {
+  "id": "6aa23e8e8f83165dc75cfe9f",
+  "classification": "system",
+  "lang": "ko",
+  "topic": "요기보 에이전트 작업 지시 (09-09) — 착수 지연 3건",
+  "summary": "사내 요기보 에이전트의 09-09 작업 지시 알림입니다. 새 지시는 없고 착수 지연 3건이 이어지고 있습니다.",
+  "keyPoints": [
+   "G2-2026-08-01 — 38일 경과",
+   "G3-003 — 38일 경과",
+   "G4-주말시험-롯데안산 — 35일 경과"
+  ],
+  "intent": "착수가 늦어진 작업을 알린다.",
+  "needsReply": false,
+  "replyReason": "",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "최신(09-13) 지시 기준으로 처리"
+ },
+ {
+  "id": "6aa23e8e8f83165dc75cfe9d",
+  "classification": "system",
+  "lang": "ko",
+  "topic": "쿠팡 공급사 — 공급 관리 리포트 업데이트 알림",
+  "summary": "쿠팡 공급사 시스템이 보낸 공급 관리 리포트(A00126327) 업데이트 알림입니다. 본문은 링크를 눌러 확인하라는 한 줄뿐입니다.",
+  "keyPoints": [
+   "쿠팡 [Supplier] Supply Management Report A00126327 업데이트",
+   "상세 내용은 쿠팡 공급사 포털에서 확인"
+  ],
+  "intent": "리포트 업데이트를 알린다.",
+  "needsReply": false,
+  "replyReason": "",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "필요 시 쿠팡 공급사 포털에서 확인"
+ },
+ {
+  "id": "6aa23e8e8f83165dc75cfe9b",
+  "classification": "system",
+  "lang": "ko",
+  "topic": "요기보 에이전트 결정 브리핑 (09-08) — 결정 13건, 기한 초과 3건",
+  "summary": "사내 요기보 에이전트의 09-08 결정 브리핑입니다. 이후 브리핑과 같은 내용으로 기한 초과 3건, 힉스필드 토큰 만료 경고가 들어 있습니다.",
+  "keyPoints": [
+   "기한 14일 초과 3건: G2-2026-08-01, G3-003, G4-주말시험-롯데안산",
+   "higgsfield 토큰 만료, 크레딧 확인 12.7일 경과"
+  ],
+  "intent": "밀린 결정과 시스템 오류를 알린다.",
+  "needsReply": false,
+  "replyReason": "",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "최신(09-13) 브리핑 기준으로 처리"
+ },
+ {
+  "id": "6aa23e8e8f83165dc75cfe9a",
+  "classification": "system",
+  "lang": "ko",
+  "topic": "쿠팡 광고 — AI스마트광고 자동규칙으로 일예산 20% 증액 (09-08)",
+  "summary": "쿠팡 광고 자동규칙이 09-08 17:37에 실행되어 AI스마트광고 일예산이 20% 올라갔다는 알림입니다. 이후 09-13까지 6일 연속 증액됐습니다.",
+  "keyPoints": [
+   "캠페인: AI스마트광고",
+   "오후 6시 전 일예산 80% 소진 시 20% 자동 증액",
+   "적용 일시 2026.09.08 17:37 — 이후 6일 연속 반복"
+  ],
+  "intent": "자동규칙 실행 결과를 알린다.",
+  "needsReply": false,
+  "replyReason": "",
+  "deadline": "",
+  "deadlineText": "",
+  "deadlineType": "",
+  "urgency": "low",
+  "suggestedAction": "6일 연속 증액 중 — 일예산 기본값을 올릴지, 광고 효율을 점검할지 판단"
+ }
+]

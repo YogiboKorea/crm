@@ -10,8 +10,16 @@ const uri = env.match(/^MONGODB_URI=(.*)$/m)[1].trim().replace(/^["']|["']$/g, '
 await mongoose.connect(uri);
 const db = mongoose.connection.db;
 
-// 어제까지 받은 것만. 오늘 것은 아직 들어오는 중이라 다음 회차에 돌린다.
-const until = new Date(); until.setHours(0, 0, 0, 0);
+// 기본은 어제까지 받은 것만. 오늘 것은 아직 들어오는 중이라 다음 회차에 돌린다.
+// --include-today 를 주면 지금 이 순간까지 받은 것을 전부 뽑는다
+// ("오늘 온 것까지 다 해놔 달라" 는 요청일 때).
+const INCLUDE_TODAY = process.argv.includes('--include-today');
+// --out <폴더> — 회차마다 폴더를 나눠, 이미 넣은 예전 batch 파일을 덮지 않게 한다
+const outIdx = process.argv.indexOf('--out');
+const OUT_DIR = outIdx > 0 ? process.argv[outIdx + 1] : 'scripts/mail-analysis';
+
+const until = new Date();
+if (!INCLUDE_TODAY) until.setHours(0, 0, 0, 0);
 const mails = await db.collection('inboundmails').find({
   classification: { $nin: ['ad', 'system'] },
   direction: { $ne: 'out' },
@@ -19,7 +27,7 @@ const mails = await db.collection('inboundmails').find({
   'analysis.method': { $ne: 'ai' },
   date: { $lt: until },
 }).sort({ date: -1 }).toArray();
-console.log('기준: ' + until.toISOString().slice(0, 10) + ' 이전 수신분');
+console.log('기준: ' + until.toISOString() + (INCLUDE_TODAY ? ' (오늘 포함 · 지금까지)' : ' 이전 수신분'));
 
 // 리드 회사명을 붙여준다 — 우리가 먼저 콜드메일을 보낸 곳인지가 판단에 크게 작용한다
 const leadIds = [...new Set(mails.map((m) => m.leadId).filter(Boolean))];
@@ -45,11 +53,11 @@ const out = mails.map((m) => {
   };
 });
 
-fs.mkdirSync('scripts/mail-analysis', { recursive: true });
+fs.mkdirSync(OUT_DIR, { recursive: true });
 const CHUNK = 25;
 let files = 0;
 for (let i = 0; i < out.length; i += CHUNK) {
-  const p = `scripts/mail-analysis/batch-${String(files + 1).padStart(2, '0')}.json`;
+  const p = `${OUT_DIR}/batch-${String(files + 1).padStart(2, '0')}.json`;
   fs.writeFileSync(p, JSON.stringify(out.slice(i, i + CHUNK), null, 1), 'utf8');
   files++;
 }

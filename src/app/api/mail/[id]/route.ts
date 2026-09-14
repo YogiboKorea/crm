@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
 import { Lead } from '@/models/Lead';
+import { tidyMailText } from '@/lib/mail/text';
 
 export const runtime = 'nodejs';
 
@@ -61,9 +62,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         trashedAt: mail.trashedAt || null,
         leadId: mail.leadId || '',
         leadMatchedBy: mail.leadMatchedBy || null,
-        // 인용부를 걷어낸 본문을 먼저 보여주고, 원문은 토글로
-        body: mail.bodyStripped || mail.raw?.text || '',
-        bodyFull: mail.raw?.text || '',
+        // 인용부를 걷어낸 본문을 먼저 보여주고, 원문은 토글로.
+        // 표로 짠 HTML 메일의 텍스트판은 빈 줄투성이라 다듬어서 내보낸다 (lib/mail/text.ts).
+        // hasQuoted 는 아래에서 **원본 길이**로 판단하므로 다듬기 전 값을 쓴다.
+        body: tidyMailText(mail.bodyStripped || mail.raw?.text || ''),
+        bodyFull: tidyMailText(mail.raw?.text || ''),
         hasQuoted: Boolean(mail.bodyStripped && mail.raw?.text && mail.bodyStripped.length < mail.raw.text.length),
         html: mail.raw?.html || '',
         attachments: (mail.attachments || []).filter((a: any) => !a.inline),

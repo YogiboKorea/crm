@@ -297,6 +297,66 @@ export async function fetchAttachment(
 }
 
 /**
+ * 첨부파일 1개를 **흘려보내는 방식**으로 받아온다 (다운로드 화면용).
+ *
+ * 위의 fetchAttachment 는 파일 전체를 메모리에 모았다가 한 번에 돌려준다.
+ * 그 방식은 Vercel 에서 막힌다 — 함수 응답이 4.5MB 를 넘으면 413 으로 끊기는데,
+ * 받은 메일 첨부에는 18MB 영상·25MB 압축파일이 실제로 있다.
+ * Vercel 문서상 **스트리밍 응답은 이 제한을 받지 않는다**. 그래서 메일 서버에서
+ * 받는 조각을 그대로 브라우저로 넘긴다. 메모리도 파일 크기만큼 쓰지 않는다.
+ *
+ * 연결은 스트림이 끝나거나(end) 실패하거나(error) 브라우저가 끊을 때(cancel)
+ * 정리한다. 중간에 정리하면 전송이 잘리므로 반환 전에 닫지 않는다.
+ */
+export async function openAttachmentStream(
+  settings: ImapConfig,
+  { folder, uid, partId }: { folder: string; uid: number; partId: string },
+): Promise<{ stream: ReadableStream<Uint8Array>; meta: any }> {
+  if (!folder || !uid || !partId) {
+    throw new Error('첨부파일 위치 정보가 없습니다. 메일을 다시 수집하면 받아올 수 있습니다.');
+  }
+  requireConfig(settings);
+  const client = buildClient(settings);
+  try {
+    await client.connect();
+  } catch (e) {
+    throw friendlyImapError(e, settings);
+  }
+
+  let lock: { release: () => void } | null = null;
+  let closed = false;
+  const cleanup = async () => {
+    if (closed) return;
+    closed = true;
+    try { lock?.release(); } catch { /* 이미 풀림 */ }
+    try { await client.logout(); } catch { /* 종료 실패는 무시 */ }
+  };
+
+  try {
+    lock = await client.getMailboxLock(folder);
+    const dl: any = await client.download(String(uid), partId, { uid: true });
+    if (!dl?.content) throw new Error('메일 서버에서 첨부파일을 찾지 못했습니다. 원본 메일이 지워졌을 수 있습니다.');
+
+    const node = dl.content as NodeJS.ReadableStream & { destroy?: () => void };
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        node.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
+        node.on('end', () => { controller.close(); void cleanup(); });
+        node.on('error', (err: unknown) => { controller.error(err); void cleanup(); });
+      },
+      cancel() {
+        try { node.destroy?.(); } catch { /* 이미 닫힘 */ }
+        void cleanup();
+      },
+    });
+    return { stream, meta: dl.meta || {} };
+  } catch (e) {
+    await cleanup();
+    throw e;
+  }
+}
+
+/**
  * 보낸메일함·휴지통처럼 **역할이 정해진 폴더**의 실제 이름을 찾는다.
  * 이름은 메일함마다 다르므로 IMAP 이 알려주는 specialUse 를 먼저 쓴다.
  */

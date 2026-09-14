@@ -35,11 +35,21 @@ const norm = (s = '') => {
   for (let i = 0; i < 30; i++) { const n = x.replace(RP, ''); if (n === x) break; x = n.trim(); }
   return x.replace(/\s+/g, ' ').replace(/[「」『』]/g, '').trim().toLowerCase();
 };
-/** lib/mail/thread.ts 의 threadKey 와 같은 모양 */
-const keyOf = (subject, group, messageId) => {
+/**
+ * ⚠️ src/lib/mail/thread.ts 의 threadKey() 와 **글자 하나까지 같아야** 한다.
+ *
+ * 전에 여기서 `g:폴더|s:제목` 이라는 제 나름의 형식을 썼다가 54통을 망쳤다.
+ * 앱은 `scope::제목` 으로 만들기 때문에, 이 스크립트가 손댄 메일은
+ * 새 메일이 와도 같은 대화로 안 묶였다 (2건은 실제로 쪼개져 있었다).
+ * 스레드 키는 형식 자체가 계약이다 — 비슷하게 만들면 안 되고 같아야 한다.
+ *
+ * scope 는 폴더이고, 폴더가 없으면 **보낸 사람의 도메인**이다. 이 폴백까지 같아야 한다.
+ */
+const keyOf = (subject, group, messageId, fromAddress) => {
   const s = norm(subject);
   if (!s) return `id:${messageId || 'unknown'}`;
-  return `g:${(group || '').toLowerCase()}|s:${s}`;
+  const scope = group || String(fromAddress || '').split('@')[1] || '';
+  return `${scope}::${s}`;
 };
 
 await mongoose.connect(process.env.MONGODB_URI);
@@ -66,7 +76,7 @@ console.log(`   → 폴더 "${AD_FOLDER}" 로 이동 (미분류에서 빠집니�
 
 // ── ② 쪼개진 대화 합치기 ──
 const rows = await M.find({ trashedAt: null })
-  .project({ subject: 1, group: 1, threadKey: 1, messageId: 1 }).toArray();
+  .project({ subject: 1, group: 1, threadKey: 1, messageId: 1, from: 1 }).toArray();
 
 const bySubj = new Map();
 for (const r of rows) {
@@ -104,7 +114,7 @@ for (const [subj, list] of bySubj) {
   // 이름 있는 폴더가 하나라도 있으면 **무조건 그쪽**으로 몬다.
   // 개수로 고르면 미분류가 더 많을 때 애써 분류해둔 메일이 미분류로 끌려간다.
   const win = named.length ? named[0][0] : '';
-  const newKey = keyOf(subj, win, list[0].messageId);
+  const newKey = keyOf(subj, win, list[0].messageId, list[0].from?.address);
   const changed = list.filter((r) => r.threadKey !== newKey);
   if (changed.length) {
     merges.push({ subj, win, total: list.length, changed, folders: [...tally.keys()] });
@@ -140,7 +150,7 @@ if (adCount) {
 // 적용 ② — 폴더와 스레드 키를 함께 맞춘다
 let fixed = 0;
 for (const m of merges) {
-  const newKey = keyOf(m.subj, m.win, m.changed[0].messageId);
+  const newKey = keyOf(m.subj, m.win, m.changed[0].messageId, m.changed[0].from?.address);
   const ids = m.changed.map((r) => r._id);
   const r = await M.updateMany(
     { _id: { $in: ids } },

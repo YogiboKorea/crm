@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { tidyMailText } from '@/lib/mail/text';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
@@ -58,8 +59,8 @@ export async function GET(req: Request) {
       _id: String(m._id),
       subject: m.subject || '',
       // 인용부를 걷어낸 본문을 우선 보여준다 — 이전 대화가 통째로 딸려오면 읽을 수가 없다
-      body: m.bodyStripped || m.raw?.text || '',
-      bodyFull: m.raw?.text || '',
+      body: tidyMailText(m.bodyStripped || m.raw?.text || ''),
+      bodyFull: tidyMailText(m.raw?.text || ''),
       hasQuoted: Boolean(m.bodyStripped && m.raw?.text && m.bodyStripped.length < m.raw.text.length),
       from: m.from || {},
       lang: m.lang || '',

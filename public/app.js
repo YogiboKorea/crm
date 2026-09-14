@@ -291,6 +291,7 @@ async function init() {
   initThemeToggle();
   initSidebarToggle();
   initNavDrawer();
+  initAttachmentDownloads();
   initReviewBar();     // 상세 팝업의 이전/다음·판정 버튼
   // 저장된 페이지 크기 복원 (사용자가 이전에 선택한 값 유지)
   try {
@@ -7735,6 +7736,115 @@ function syncBodyScrollLock() {
 const lockBodyScroll = syncBodyScrollLock;
 const unlockBodyScroll = syncBodyScrollLock;
 
+// ═══ 받은 메일 첨부파일 내려받기 ═══════════════════════════════
+//
+// 예전에는 첨부가 "📎 파일이름 · 파일이름" 글자로만 떴고 받을 방법이 없었다.
+// 파일 내용은 DB 에 없고, 누를 때 서버가 메일함에서 그 파일만 받아온다
+// (/api/mail/[id]/attachment).
+//
+// 링크(<a download>)로 바로 걸지 않고 fetch 로 받는 이유:
+// 메일 서버 원본이 지워졌거나 계정 비밀번호가 바뀌면 서버가 오류 설명(JSON)을
+// 돌려준다. 링크로 걸면 그 오류 글이 "파일"로 저장돼 버려, 받았는데 안 열리는
+// 파일만 남는다. fetch 로 받으면 실패했을 때 무엇이 문제인지 그대로 알려줄 수 있다.
+
+/** 1234567 → "1.2MB" */
+function fmtAttachmentSize(n) {
+  const b = Number(n) || 0;
+  if (b >= 1024 * 1024) return (b / 1024 / 1024).toFixed(b >= 10 * 1024 * 1024 ? 0 : 1) + 'MB';
+  if (b >= 1024) return Math.round(b / 1024) + 'KB';
+  return b ? b + 'B' : '';
+}
+
+/** 형식별 아이콘 — 목록에서 무슨 파일인지 먼저 보이게 */
+function attachmentIcon(type, name) {
+  const t = String(type || '').toLowerCase();
+  const ext = String(name || '').split('.').pop().toLowerCase();
+  if (t.startsWith('image/')) return '🖼';
+  if (t === 'application/pdf' || ext === 'pdf') return '📕';
+  if (/sheet|excel|csv/.test(t) || ['xls', 'xlsx', 'csv'].includes(ext)) return '📊';
+  if (/presentation|powerpoint/.test(t) || ['ppt', 'pptx', 'key'].includes(ext)) return '📙';
+  if (/word/.test(t) || ['doc', 'docx', 'hwp', 'hwpx'].includes(ext)) return '📄';
+  if (/zip|compressed|rar|7z/.test(t) || ['zip', 'rar', '7z'].includes(ext)) return '🗜';
+  if (t.startsWith('video/')) return '🎞';
+  return '📎';
+}
+
+/**
+ * 첨부 목록을 누를 수 있는 단추로 그린다.
+ * mailId 는 받은 메일(InboundMail)의 id 여야 한다 — 보낸 메일 기록에는 첨부 위치가 없다.
+ */
+function attachmentChipsHtml(mailId, attachments, opts) {
+  const list = (attachments || []).filter((a) => a && !a.inline);
+  if (!mailId || !list.length) return '';
+  const small = opts && opts.small;
+  const chips = list.map((a, i) => `
+    <button type="button" class="mail-att-dl"
+      data-mail="${escapeAttr(mailId)}" data-att="${escapeAttr(a._id || '')}" data-i="${i}"
+      data-name="${escapeAttr(a.filename || '첨부파일')}"
+      title="눌러서 내려받기 — ${escapeAttr(a.filename || '')}"
+      style="display:inline-flex;align-items:center;gap:6px;max-width:100%;
+             padding:${small ? '4px 9px' : '6px 11px'};font-size:${small ? '11px' : '12px'};
+             border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#1e293b;
+             cursor:pointer;text-align:left;line-height:1.3">
+      <span style="flex:none">${attachmentIcon(a.contentType, a.filename)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${escapeHtml(a.filename || '첨부파일')}</span>
+      ${a.size ? `<span style="flex:none;color:#94a3b8;font-size:${small ? '10px' : '11px'}">${fmtAttachmentSize(a.size)}</span>` : ''}
+      <span class="mail-att-state" style="flex:none;color:#2563eb;font-weight:700">⬇</span>
+    </button>`).join('');
+  return `
+    <div style="margin-top:${small ? '8px' : '14px'}">
+      <div style="font-size:${small ? '10.5px' : '11px'};font-weight:700;color:#64748b;margin-bottom:6px">
+        📎 첨부파일 ${list.length}개 <span style="font-weight:400;color:#94a3b8">· 누르면 내려받습니다</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+    </div>`;
+}
+
+/** 모든 화면의 첨부 단추를 한 곳에서 처리한다 (화면이 다시 그려져도 동작하도록 위임) */
+function initAttachmentDownloads() {
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('.mail-att-dl');
+    if (!btn || btn.dataset.busy === '1') return;
+    e.preventDefault();
+    e.stopPropagation();   // 대화 카드 등 부모의 클릭(펼치기)으로 번지지 않게
+
+    const state = btn.querySelector('.mail-att-state');
+    const name = btn.dataset.name || '첨부파일';
+    const qs = btn.dataset.att ? `att=${encodeURIComponent(btn.dataset.att)}` : `i=${encodeURIComponent(btn.dataset.i || '0')}`;
+    btn.dataset.busy = '1';
+    if (state) state.textContent = '⏳';
+
+    try {
+      const res = await fetch(`/api/mail/${encodeURIComponent(btn.dataset.mail)}/attachment?${qs}`, {
+        credentials: 'same-origin',
+      });
+      const ctype = res.headers.get('content-type') || '';
+      if (!res.ok || ctype.includes('application/json')) {
+        let msg = `내려받지 못했습니다 (${res.status})`;
+        try { const j = await res.json(); if (j && j.error) msg = j.error; } catch { /* 본문 없음 */ }
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 60_000);
+      if (state) state.textContent = '✓';
+      setTimeout(() => { if (state) state.textContent = '⬇'; }, 2500);
+    } catch (err) {
+      if (state) state.textContent = '⚠';
+      alert(`${name}\n\n${err.message || err}`);
+      setTimeout(() => { if (state) state.textContent = '⬇'; }, 2500);
+    } finally {
+      btn.dataset.busy = '';
+    }
+  });
+}
+
 async function openMailDetailModal(mailId) {
   closeMailDetailModal();
   const root = document.createElement('div');
@@ -7766,7 +7876,8 @@ async function openMailDetailModal(mailId) {
 
   const aiBlock = a.method === 'ai' ? `
     <div style="margin:12px 0;padding:12px 14px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px">
-      <div style="font-size:10px;font-weight:800;color:#4338ca;margin-bottom:6px">🧠 AI 분석</div>
+      <div style="font-size:10px;font-weight:800;color:#15803d;margin-bottom:6px">✅ AI 분석 완료${a.analyzedAt
+        ? ` <span style="font-weight:500;color:#64748b">· ${escapeHtml(new Date(a.analyzedAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }))}</span>` : ''}</div>
       ${a.topic ? `<div style="font-size:13px;font-weight:700;color:#1e1b4b">${escapeHtml(a.topic)}</div>` : ''}
       ${a.summary ? `<div style="font-size:12.5px;color:#312e81;line-height:1.6;margin-top:4px">${escapeHtml(a.summary)}</div>` : ''}
       ${(a.keyPoints || []).length ? `<ul style="margin:8px 0 0;padding-left:18px;font-size:12px;color:#3730a3;line-height:1.7">
@@ -7850,7 +7961,13 @@ async function openMailDetailModal(mailId) {
         <div style="display:flex;align-items:center;gap:6px;flex:none;align-self:flex-start">
           <!-- 한 통만 분석한다. 목록의 일괄 분석 버튼은 뺐지만(비용이 예측되지 않아서)
                건당 1회는 비용이 정해져 있어 남겨둔다. -->
-          ${m.analysis?.method === 'ai' ? '' : `<button type="button" id="mdAnalyze"
+          <!-- 분석이 끝난 메일은 버튼을 그냥 없애지 않고 '완료'로 바꿔 둔다.
+               버튼이 사라지기만 하면 끝난 건지, 안 뜨는 건지 알 수가 없다. -->
+          ${m.analysis?.method === 'ai' ? `<span id="mdAnalyzed"
+            title="${escapeAttr('AI 분석 완료' + (m.analysis.analyzedAt ? ' · ' + new Date(m.analysis.analyzedAt).toLocaleString('ko-KR') : ''))}"
+            style="display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px;
+                   font-size:12px;font-weight:700;border:1px solid #bbf7d0;line-height:1;
+                   border-radius:8px;background:#f0fdf4;color:#15803d;white-space:nowrap;cursor:default">✅ AI 분석 완료</span>` : `<button type="button" id="mdAnalyze"
             style="display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px;
                    font-size:12px;font-weight:700;border:1px solid #c7d2fe;line-height:1;
                    border-radius:8px;background:#eef2ff;color:#4338ca;cursor:pointer;white-space:nowrap"
@@ -7879,8 +7996,7 @@ async function openMailDetailModal(mailId) {
           ${m.translation?.body ? '' : translateBtnHtml(m.body || '')}
           ${quoteBlock}
           ${transBlock}
-          ${(m.attachments || []).length ? `<div style="margin-top:12px;font-size:12px;color:#475569">
-            📎 ${m.attachments.map((x) => escapeHtml(x.filename)).join(' · ')}</div>` : ''}
+          ${attachmentChipsHtml(m.id, m.attachments)}
         </div>
         <div class="mail-reply">
           ${replyBoxHtml({ _id: m.id, subject: m.subject, from: m.from })}
@@ -8310,7 +8426,7 @@ async function openConversationModal(leadId) {
     const transId = `conv-trans-${i}`;
     const aiBlock = (!out && t.analyzedBy === 'ai')
       ? `<div style="margin-top:10px;padding:10px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px">
-           <div style="font-size:10px;font-weight:800;color:#4338ca;margin-bottom:6px">🧠 AI 분석</div>
+           <div style="font-size:10px;font-weight:800;color:#15803d;margin-bottom:6px">✅ AI 분석 완료</div>
            ${t.topic ? `<div style="font-size:12px;font-weight:700;color:#1e1b4b;margin-bottom:4px">${escapeHtml(t.topic)}</div>` : ''}
            ${t.summary ? `<div style="font-size:12px;color:#312e81;line-height:1.55">${escapeHtml(t.summary)}</div>` : ''}
            ${(t.keyPoints && t.keyPoints.length)
@@ -8335,10 +8451,9 @@ async function openConversationModal(leadId) {
          </div>`
       : '';
 
-    const attachBlock = (t.attachments && t.attachments.length)
-      ? `<div style="margin-top:8px;font-size:11px;color:#475569">
-           📎 ${t.attachments.map(a => escapeHtml(a.filename)).join(' · ')}
-         </div>`
+    // 받은 메일만 내려받을 수 있다 — 보낸 메일 기록에는 메일함 위치가 없다
+    const attachBlock = (!out && t._id && t.attachments && t.attachments.length)
+      ? attachmentChipsHtml(t._id, t.attachments, { small: true })
       : '';
 
     return `

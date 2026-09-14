@@ -91,23 +91,41 @@ if (!APPLY) { console.log('\n(미리보기입니다. 되돌리려면 --apply)');
 // 문제는 "광고로 찍혀 있다" 는 것뿐이고, 그래서 새 수집 규칙이 돌 때
 // 광고 폴더로 쓸려 갈 위험이 있는 것이다. 분류만 고치면 그 위험이 사라진다.
 //
-// 'other' 로 두는 이유: 무엇인지 단정하지 않으면서 광고가 아님만 표시한다.
-// 다음에 AI 분석이 돌면 b2b / inquiry 같은 제 이름을 찾아간다.
+// ⚠️ 'other' 를 쓰면 안 된다. 처음에 그렇게 짰다가 검증에서 잡혔다.
+//    classification 은 정해진 값만 쓰는 칸이다 (models/InboundMail.ts 의 enum).
+//    'other' 는 거기 없어서
+//      · 화면 이름표가 MAIL_CLASS 에 없어 '· 미분류' 로 떨어지는데
+//      · 정작 [미분류] 단추는 classification=unknown 으로 걸러서 못 찾는다
+//        → "미분류라고 적혀 있는데 미분류에서 안 보이는 메일" 이 된다
+//      · 나중에 mongoose 로 저장할 때 enum 검사에 걸릴 수도 있다
+//    (이 스크립트는 드라이버로 직접 써서 그 검사를 건너뛴다 — 그래서 더 위험하다)
+//
+// 대신 b2b 로 되돌린다. 같은 주소에서 온 20통이 이미 b2b 이고,
+// 본문도 상대 대표가 직접 쓴 회신이다. 근거 있는 값이다.
 const before = hits.map((h) => ({ _id: h._id, classification: h.classification, classifiedBy: h.classifiedBy }));
 console.log('\n되돌리기 전 상태 (문제 생기면 이 값으로 복구):');
 console.log(JSON.stringify(before, null, 1));
 
+/** models/InboundMail.ts 의 enum 과 반드시 같아야 한다 */
+const ALLOWED = ['b2b', 'inquiry', 'partner', 'newsletter', 'ad', 'system', 'unknown'];
+const TO = 'b2b';
+if (!ALLOWED.includes(TO)) {
+  console.log(`\n⚠ '${TO}' 는 쓸 수 없는 분류값입니다. 멈춥니다. (가능: ${ALLOWED.join(', ')})`);
+  await mongoose.disconnect();
+  process.exit(1);
+}
+
 const r = await M.updateMany(
   { _id: { $in: hits.map((h) => h._id) } },
-  { $set: { classification: 'other', classifiedBy: 'fix-misclassified' } },
+  { $set: { classification: TO, classifiedBy: 'fix-misclassified' } },
 );
-console.log(`\n되돌림 ${r.modifiedCount}통 → classification: 'other'`);
+console.log(`\n되돌림 ${r.modifiedCount}통 → classification: '${TO}'`);
 
 // 확인 — 정말 바뀌었나, 폴더는 그대로인가
 for (const h of hits) {
   const now = await M.findOne({ _id: h._id }, { projection: { subject: 1, classification: 1, group: 1 } });
   const folderOk = (now.group || '') === (h.group || '');
-  console.log(`  ${now.classification === 'other' ? 'OK ' : 'X  '} ${String(now.subject).slice(0, 44)}`);
+  console.log(`  ${now.classification === TO ? 'OK ' : 'X  '} ${String(now.subject).slice(0, 44)}`);
   console.log(`      분류 ${h.classification} → ${now.classification} · 폴더 ${folderOk ? '그대로' : '⚠ 바뀜!'} (${now.group || '미분류'})`);
 }
 await mongoose.disconnect();

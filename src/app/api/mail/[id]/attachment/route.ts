@@ -1,0 +1,156 @@
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/mongodb';
+import { InboundMail } from '@/models/InboundMail';
+import { MailAccount } from '@/models/MailAccount';
+import { toImapConfig } from '@/lib/mail/accounts';
+import { getMailSettings } from '@/lib/mail-settings';
+import type { ImapConfig } from '@/lib/mail/imap';
+import { openAttachmentStream } from '@/lib/mail/imap';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+// 메일 서버 접속 + 큰 파일 전송까지. Hobby 최대가 300초다.
+export const maxDuration = 300;
+
+/**
+ * GET /api/mail/[id]/attachment?att=<첨부 _id>&i=<순번> — 받은 메일의 첨부파일 내려받기.
+ *
+ * ── 왜 이렇게 만드나 ──
+ * 수집할 때 첨부파일 **내용은 저장하지 않는다** (lib/mail/parse.ts). 메일 한 통에
+ * 수십 MB 가 붙는 일이 흔해 DB 가 금방 찬다. 대신 계정·폴더·UID·파트 번호를
+ * 남겨 두었다가, 누를 때 메일 서버에서 그 파일만 받아와 흘려보낸다.
+ * (받아오는 함수는 예전부터 있었는데 부르는 곳이 없어서, 화면에는
+ *  파일 이름만 뜨고 받을 방법이 없었다.)
+ *
+ * ── 조심할 것 ──
+ * ① 계정을 **정확히** 찾는다. 기본 계정으로 대신 열면 같은 UID 의 **다른 메일**
+ *    첨부가 내려간다 — 조용히 틀린 파일을 주는 것이 가장 나쁘다.
+ * ② 브라우저에서 바로 열기(inline)는 이미지·PDF 만 허락한다. HTML·SVG 첨부를
+ *    우리 주소에서 열면 그 안의 스크립트가 로그인된 화면 권한으로 돈다.
+ *    피싱 메일 첨부가 실제로 들어오므로 나머지는 무조건 내려받기로만 준다.
+ * ③ 로그인 확인은 proxy.ts 가 /api 전체에 걸고 있다.
+ */
+const INLINE_SAFE = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf',
+]);
+
+/** 헤더에 넣을 파일 이름 — 한글 이름은 filename* 로, 옛 브라우저용 ASCII 이름도 함께 */
+function contentDisposition(kind: 'attachment' | 'inline', filename: string): string {
+  const safe = String(filename || 'attachment').replace(/[\r\n"\\]/g, '_');
+  const ascii = safe.replace(/[^\x20-\x7e]/g, '_') || 'attachment';
+  return `${kind}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
+}
+
+/**
+ * 이 메일을 받은 **바로 그 메일함**의 접속 정보를 찾는다.
+ *
+ * UID 는 메일함마다 따로 매겨진다. 다른 계정의 메일함을 열면 같은 번호의
+ * **엉뚱한 메일**이 나오고, 그 메일의 첨부가 조용히 내려간다.
+ *
+ * accountId 는 두 가지 모양으로 저장돼 있다.
+ *   · MailAccount 의 _id (계정을 여러 개 등록한 뒤 수집된 메일)
+ *   · 'main' (그 전, 수신 설정(MailSettings) 하나로 수집하던 시절의 메일)
+ * 'main' 메일은 **당시 수신 설정의 주소**가 받은 메일이다. 기본 계정이 아니다 —
+ * 실제로 기본 계정은 david@ 인데 'main' 메일 20통은 fe@ 메일함에서 왔다.
+ * 그래서 설정에 적힌 주소와 같은 계정을 찾고, 없으면 설정의 접속 정보를 그대로 쓴다.
+ */
+async function resolveMailbox(
+  accountId: string | undefined,
+  folder: string,
+): Promise<{ settings: ImapConfig } | { error: string }> {
+  const id = String(accountId || '');
+
+  if (/^[a-f0-9]{24}$/i.test(id)) {
+    const account = await MailAccount.findById(id).lean();
+    if (!account) return { error: '이 메일을 받은 메일 계정이 삭제되어 첨부파일을 받을 수 없습니다.' };
+    return { settings: toImapConfig(account, folder) };
+  }
+
+  // 'main' 또는 비어 있음 — 예전 수신 설정으로 받은 메일
+  const legacy: any = await getMailSettings();
+  const user = String(legacy?.imapUser || '').toLowerCase();
+  if (!user) return { error: '이 메일을 받은 메일함 정보를 찾을 수 없습니다.' };
+
+  // 계정은 몇 개 되지 않는다 — 대소문자만 무시하고 주소로 맞춘다 (정규식 이스케이프 실수 여지를 없앤다)
+  const all: any[] = await MailAccount.find({}).lean();
+  const same = all.find((a) => String(a.smtpUser || '').toLowerCase() === user);
+  if (same) return { settings: toImapConfig(same, folder) };
+
+  if (!legacy.imapPass) return { error: `${user} 메일함의 비밀번호가 없어 첨부파일을 받을 수 없습니다.` };
+  return {
+    settings: {
+      imapHost: legacy.imapHost, imapPort: legacy.imapPort, imapSecure: legacy.imapSecure !== false,
+      imapUser: legacy.imapUser, imapPass: legacy.imapPass, imapFolder: folder,
+    },
+  };
+}
+
+function fail(status: number, error: string) {
+  return NextResponse.json({ success: false, error }, { status });
+}
+
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const url = new URL(req.url);
+    const attId = url.searchParams.get('att') || '';
+    // ⚠️ i 가 없을 때 Number(null) 은 0 이다. 그대로 쓰면 "없는 첨부" 요청이
+    //    첫 번째 첨부로 바뀌어 **엉뚱한 파일이 조용히 내려간다** (검증에서 잡혔다).
+    //    i 는 값이 실제로 왔을 때만 숫자로 읽는다.
+    const iRaw = url.searchParams.get('i');
+    const idx = iRaw !== null && /^\d+$/.test(iRaw) ? Number(iRaw) : -1;
+    const wantInline = url.searchParams.get('inline') === '1';
+
+    await dbConnect();
+    const mail: any = await InboundMail.findById(id, {
+      subject: 1, uid: 1, folder: 1, accountId: 1, attachments: 1,
+    }).lean();
+    if (!mail) return fail(404, '메일을 찾을 수 없습니다.');
+
+    // 화면에 보여준 목록과 같은 기준으로 고른다 (본문 삽입 이미지는 목록에서 뺐다)
+    const list = (mail.attachments || []).filter((a: any) => !a.inline);
+    // att 를 줬으면 **그것만** 찾는다. 못 찾았다고 순번으로 대신하지 않는다.
+    const att = attId
+      ? list.find((a: any) => String(a._id) === attId) || null
+      : (idx >= 0 ? list[idx] || null : null);
+    if (!att) return fail(404, '첨부파일을 찾을 수 없습니다.');
+
+    if (!mail.uid || !mail.folder || !att.partId) {
+      return fail(409, '이 첨부파일은 위치 정보가 없어 받을 수 없습니다. 이카운트 웹메일에서 내려받으세요.');
+    }
+
+    // ① 계정은 정확히 — 추측으로 다른 계정을 열지 않는다
+    const resolved = await resolveMailbox(mail.accountId, mail.folder);
+    if ('error' in resolved) return fail(409, resolved.error);
+    const settings = resolved.settings;
+    const { stream } = await openAttachmentStream(settings, {
+      folder: mail.folder,
+      uid: Number(mail.uid),
+      partId: String(att.partId),
+    });
+
+    const type = String(att.contentType || 'application/octet-stream').toLowerCase();
+    // ② 바로 열기는 안전한 형식만
+    const inline = wantInline && INLINE_SAFE.has(type);
+
+    const headers: Record<string, string> = {
+      'Content-Type': inline ? type : (type || 'application/octet-stream'),
+      'Content-Disposition': contentDisposition(inline ? 'inline' : 'attachment', att.filename),
+      'X-Content-Type-Options': 'nosniff',
+      // 받은 파일은 개인 업무 자료다 — 중간 캐시에 남기지 않는다
+      'Cache-Control': 'private, no-store',
+    };
+    if (inline) headers['Content-Security-Policy'] = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'";
+    // 크기를 알면 브라우저가 진행률을 보여준다. 저장된 값은 디코딩 후 크기라 그대로 쓸 수 있다.
+    if (att.size) headers['X-Attachment-Size'] = String(att.size);
+
+    return new Response(stream, { status: 200, headers });
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    // 메일 서버에서 원본이 지워진 경우 — 사람이 알아들을 말로
+    if (/Mailbox doesn't exist|NONEXISTENT|not found|찾지 못했/i.test(msg)) {
+      return fail(410, '메일 서버에 원본이 없어 받을 수 없습니다. 이카운트 웹메일에서 메일이 지워졌거나 폴더가 바뀌었을 수 있습니다.');
+    }
+    return fail(500, `첨부파일을 받지 못했습니다: ${msg}`);
+  }
+}
