@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   if (!leadIds.length) return NextResponse.json({ success: false, error: 'leadIds 필수' }, { status: 400 });
   if (!templateId) return NextResponse.json({ success: false, error: 'templateId 필수' }, { status: 400 });
 
-  const batchSize = Math.max(1, Math.min(200, Number(body.batchSize) || 30));
+  const batchSize = Math.max(1, Math.min(200, Number(body.batchSize) || 100));
   const intervalMinutes = Math.max(1, Math.min(1440, Number(body.intervalMinutes) || 10));
   const followUp = body.followUp === true;
   const followUpDays = Math.max(1, Math.min(60, Number(body.followUpDays) || 7));

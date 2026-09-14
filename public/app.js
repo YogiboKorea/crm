@@ -11260,7 +11260,7 @@ function renderUserGuidePage() {
         <div style="font-size:12.5px;color:#1e3a8a;line-height:1.75">
           <b>[발송 관리 → 보낼 메일]</b> 에 있는 곳으로만 나갑니다.
           [AI 검증 완료]에 있는 나머지는 [발송 관리로 이동]하기 전까지 나가지 않습니다.<br>
-          하루 최대 <b>${(lock && lock.dailyCap) || 20}통</b> ·
+          하루 최대 <b>${(lock && lock.dailyCap) || 300}통</b> ·
           한 통 사이 <b>${Math.round(((lock && lock.intervalMs) || 8000) / 1000)}초</b> ·
           같은 곳에는 48시간 안에 다시 나가지 않습니다.
         </div>
@@ -11306,7 +11306,7 @@ var _outboxCompose = {
   // ── 나눠 보내기 ──
   // 100곳을 한 번에 쏘면 수신 서버가 대량 발송으로 본다. 같은 도메인으로
   // 실거래 메일도 나가기 때문에 평판이 깎이면 그쪽까지 스팸함으로 간다.
-  batchSize: 30,
+  batchSize: 100,                 // 100곳씩 나눠 예약 (대표님 결정 2026-09-14)
   intervalMinutes: 10,
   startNow: true,
   startAt: '',         // startNow=false 일 때 쓰는 datetime-local 값
@@ -11792,7 +11792,7 @@ function openSendLogicModal(lock) {
             <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.8">
               · 같은 곳에 <b>최대 3회</b><br>
               · 마지막 발송 후 <b>48시간</b> 안에는 다시 나가지 않음<br>
-              · 하루 총 <b>${(lock && lock.dailyCap) || 20}통</b>을 넘지 않음<br>
+              · 하루 총 <b>${(lock && lock.dailyCap) || 300}통</b>을 넘지 않음<br>
               · 메일 주소가 없는 곳은 발송 리스트로 옮겨지지 않음<br>
               · 이미 예약이 걸린 곳은 중복으로 잡히지 않음
             </div>
@@ -12034,7 +12034,7 @@ function outboxBindComposeInputs(ready) {
       // 실제 발송 속도는 서버의 하루 상한이 정한다 (lib/outbound-lock.ts).
       // 여기 값은 "예약을 며칠에 걸쳐 깔지"를 정하는 것이라, 하루 상한을
       // 같이 보여주지 않으면 "10분 뒤면 다 나가겠네"로 잘못 읽힌다.
-      const cap = (_outboundStatusCache && _outboundStatusCache.dailyCap) || 20;
+      const cap = (_outboundStatusCache && _outboundStatusCache.dailyCap) || 300;
       const days = Math.ceil(n / cap);
       hint.textContent = on
         ? `${n.toLocaleString()}곳 → ${batches}번에 나눠 예약됩니다.`

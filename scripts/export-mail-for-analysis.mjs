@@ -18,10 +18,14 @@ const INCLUDE_TODAY = process.argv.includes('--include-today');
 const outIdx = process.argv.indexOf('--out');
 const OUT_DIR = outIdx > 0 ? process.argv[outIdx + 1] : 'scripts/mail-analysis';
 
+// --include-noise — 광고·자동발송 메일도 뽑는다 ("받은 메일 전부 AI 분석" 요청일 때).
+// 기본은 뺀다: 광고는 읽을 필요가 없고, 화면도 광고 폴더로 따로 치운다.
+const INCLUDE_NOISE = process.argv.includes('--include-noise');
+
 const until = new Date();
 if (!INCLUDE_TODAY) until.setHours(0, 0, 0, 0);
 const mails = await db.collection('inboundmails').find({
-  classification: { $nin: ['ad', 'system'] },
+  ...(INCLUDE_NOISE ? {} : { classification: { $nin: ['ad', 'system'] } }),
   direction: { $ne: 'out' },
   trashedAt: null,
   'analysis.method': { $ne: 'ai' },

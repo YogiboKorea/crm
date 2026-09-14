@@ -91,8 +91,10 @@ export function canSendTo(to?: string): boolean {
    1일차 10~20 → 2~3일차 30~50 → 이후 50~80 정도가 무난하다.
    ═══════════════════════════════════════════════════════════════════ */
 
-/** 하루에 내보낼 수 있는 최대 통수 (아웃바운드만 · 답장은 제외) */
-export const DAILY_SEND_CAP = Number(process.env.DAILY_SEND_CAP) || 20;
+/** 하루에 내보낼 수 있는 최대 통수 (아웃바운드만 · 답장은 제외).
+ *  기본 300 — 대표님 결정(2026-09-14): 100곳씩 나눠 예약하고 하루 300통까지.
+ *  Vercel 환경변수 DAILY_SEND_CAP 을 넣으면 그 값이 우선한다 (낮추고 싶을 때 재배포만 하면 된다). */
+export const DAILY_SEND_CAP = Number(process.env.DAILY_SEND_CAP) || 300;
 
 /** 한 통과 다음 통 사이 최소 간격(ms). 한꺼번에 쏟아붓지 않게 한다. */
 export const SEND_INTERVAL_MS = Number(process.env.SEND_INTERVAL_MS) || 8000;
