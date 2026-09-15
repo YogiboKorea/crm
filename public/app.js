@@ -9127,6 +9127,18 @@ function replyBoxHtml(lastInbound) {
             style="width:100%;min-height:210px;max-height:44vh;overflow-y:auto;padding:11px 13px;
                    font-size:15px;line-height:1.8;border:1px solid #cbd5e1;border-radius:0 0 8px 8px;
                    background:#ffffff;color:#0f172a;outline:none"></div>
+
+          <!-- [서명 붙이기] 를 켜면 **실제로 붙는 서명 그대로** 여기 보인다.
+               글로만 설명하면 무엇이 붙는지 알 수 없어 켜 놓고도 확인하러 계정 화면에 들어가야 했다. -->
+          <div id="convSigPreview" style="margin-top:8px;border:1px dashed #cbd5e1;border-radius:8px;
+               background:#f8fafc;padding:9px 12px">
+            <div style="font-size:10.5px;font-weight:800;color:#64748b;margin-bottom:2px">
+              답장 끝에 이렇게 붙습니다
+              <span style="font-weight:400">· ${escapeHtml(replySignatureAccount(lastInbound)?.fromAddress
+                || replySignatureAccount(lastInbound)?.smtpUser || '')}</span>
+            </div>
+            ${replySignatureBlockHtml(lastInbound)}
+          </div>
         </div>
 
         <div id="convDraftKo" style="padding:11px 13px;background:#f8fafc;border:1px solid #e2e8f0;
@@ -12443,18 +12455,21 @@ function outboxReadyHtml(ready, lock) {
           <div style="border:1px solid var(--border-default);border-radius:9px;overflow:hidden;
                       background:var(--surface-1)">
             <div style="padding:8px 12px;border-bottom:1px solid var(--border-subtle);
-                        font-size:11.5px;color:var(--text-tertiary)">
-              받는 사람 <b id="obPvTo" style="color:var(--text-secondary)">${outboxPreviewToHtml(preview)}</b>
+                        font-size:11.5px;color:var(--text-tertiary);line-height:1.8">
+              <div>보내는 사람 <b id="obPvFrom" style="color:var(--text-secondary)">${outboxPreviewFromHtml(acc)}</b></div>
+              <div>받는 사람 <b id="obPvTo" style="color:var(--text-secondary)">${outboxPreviewToHtml(preview)}</b></div>
             </div>
             <div id="obPvSubject" style="padding:9px 12px;border-bottom:1px solid var(--border-subtle);
                         font-size:13px;font-weight:700;color:var(--text-primary);word-break:break-word">
               ${outboxSubstitute(_outboxCompose.subject, vars, { html: true, escapeText: true }) || '(제목 없음)'}
             </div>
             <div id="obPvBody" style="padding:11px 13px;font-size:12.5px;line-height:1.7;color:var(--text-secondary);
-                        max-height:290px;overflow:auto;word-break:break-word">
-              ${(_outboxCompose.body || '').includes('<')
-                ? outboxSubstitute(_outboxCompose.body, vars, { html: true })
-                : outboxSubstitute(_outboxCompose.body, vars, { html: true, escapeText: true }).split('\n').join('<br>')}
+                        max-height:360px;overflow:auto;word-break:break-word">
+              ${outboxPreviewBodyHtml(vars, acc, tpl)}
+            </div>
+            <div style="padding:7px 12px;border-top:1px solid var(--border-subtle);background:var(--bg-surface);
+                        font-size:11px;color:var(--text-quaternary)">
+              여기 보이는 그대로 나갑니다 — 서명까지 포함한 실제 발송 내용입니다.
             </div>
           </div>
         </div>
@@ -14885,6 +14900,27 @@ function accountSignatureHtml(acc) {
 function signaturePreviewHtml(acc) {
   return accountSignatureHtml(acc)
     || '<span style="font-size:11.5px;color:#94a3b8">이름·직함·회사·주소·전화·웹사이트를 적으면 여기 서명이 보입니다</span>';
+}
+
+/**
+ * 답장을 보낼 때 실제로 쓰이는 계정 — 서버 api/mail/reply 와 같은 순서로 고른다.
+ * (1) 그 메일을 받은 계정 → (2) 등록된 첫 계정.
+ */
+function replySignatureAccount(inbound) {
+  const list = (_mailAccounts || []).filter((a) => a && a.isActive !== false);
+  const id = String((inbound && inbound.accountId) || '');
+  return list.find((a) => a._id === id) || list[0] || null;
+}
+
+/** 답장 끝에 붙을 서명 — 비어 있으면 어디서 채우는지 알려 준다 */
+function replySignatureBlockHtml(inbound) {
+  const acc = replySignatureAccount(inbound);
+  const sig = accountSignatureHtml(acc);
+  if (sig) return sig;
+  return `<div style="font-size:11.5px;color:#94a3b8;line-height:1.6">
+      이 계정에는 서명 정보가 없어 <b>서명 없이 나갑니다</b>.
+      [📮 메일 계정 관리]에서 이름·직함·회사·주소·전화·웹사이트를 채우면 여기에 붙습니다.
+    </div>`;
 }
 
 /**
