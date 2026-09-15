@@ -6,6 +6,7 @@ import { getMailSettings } from '@/lib/mail-settings';
 import { draftReply } from '@/lib/ai/draft-reply';
 import { actualCost } from '@/lib/ai/estimate';
 import { getMailScope, mailFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { loadMailBody } from '@/lib/mail/body';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -59,7 +60,20 @@ export async function POST(req: Request) {
       leadCompany = lead?.Company || '';
     }
 
-    const draft = await draftReply({ ...mail, leadCompany }, intent, settings);
+    // 본문은 DB 에 미리보기만 있다 (lib/mail/ingest.ts) — 초안을 쓰기 전에 메일 서버에서
+    // 원문을 받아온다 (lib/mail/body.ts). 상대가 물어본 것이 미리보기 뒤에 있으면
+    // 그 질문을 빠뜨린 초안이 나온다.
+    const loaded = await loadMailBody(mail);
+    const draft = await draftReply(
+      {
+        ...mail,
+        leadCompany,
+        raw: { ...(mail.raw || {}), text: loaded.text || mail.raw?.text || '' },
+        bodyStripped: loaded.stripped || mail.bodyStripped || '',
+      },
+      intent,
+      settings,
+    );
 
     // 초안을 메일에 남긴다 — 화면을 닫았다 열어도 유지되고, 무엇을 보냈는지 이력이 된다
     await InboundMail.updateOne(

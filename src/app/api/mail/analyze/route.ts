@@ -6,6 +6,7 @@ import { getMailSettings } from '@/lib/mail-settings';
 import { analyzeMail } from '@/lib/ai/analyze-mail';
 import { estimateMailCost, estimateBatchCost, actualCost } from '@/lib/ai/estimate';
 import { getMailScope, mailFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { loadMailBody } from '@/lib/mail/body';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -72,6 +73,8 @@ export async function POST(req: Request) {
     }
 
     // ── 예상 비용만 (과금 없음) ──
+    // 저장된 미리보기(4,000자)로 재는 값이다. 실제 분석은 메일 서버에서 원문을 받아 보내므로
+    // 긴 메일은 여기 표시보다 조금 더 든다 — 견적 한 번에 메일 서버를 수십 번 열 수는 없다.
     if (body?.estimateOnly) {
       const est = estimateBatchCost(targets, model);
       return NextResponse.json({
@@ -110,7 +113,16 @@ export async function POST(req: Request) {
     // 순차 처리 — 동시에 던지면 rate limit 에 걸리고, 실패 시 어디까지 됐는지도 흐려진다
     for (const mail of targets) {
       try {
-        const enriched = { ...mail, leadCompany: leadMap.get(mail.leadId) || '' };
+        // 본문은 DB 에 미리보기만 있다 (lib/mail/ingest.ts) — 분석 직전에 메일 서버에서
+        // 원문을 받아온다 (lib/mail/body.ts). 미리보기만 보내면 뒷부분의 요구사항·기한을
+        // 통째로 놓친 요약이 나가고, 그 결과가 메일에 저장되어 계속 남는다.
+        const loaded = await loadMailBody(mail);
+        const enriched = {
+          ...mail,
+          leadCompany: leadMap.get(mail.leadId) || '',
+          raw: { ...(mail.raw || {}), text: loaded.text || mail.raw?.text || '' },
+          bodyStripped: loaded.stripped || mail.bodyStripped || '',
+        };
         const r = await analyzeMail(enriched, settings);
 
         const set: any = {

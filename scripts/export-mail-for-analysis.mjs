@@ -38,8 +38,18 @@ const leadIds = [...new Set(mails.map((m) => m.leadId).filter(Boolean))];
 const leads = await db.collection('leads').find({ leadId: { $in: leadIds } }, { projection: { leadId: 1, Company: 1, Country: 1 } }).toArray();
 const leadMap = new Map(leads.map((l) => [l.leadId, l]));
 
+// 2026-09-15부터 받은 메일의 본문은 DB 에 저장하지 않는다 (lib/mail/ingest.ts trimRawForStorage).
+// 남는 것은 미리보기 4,000자뿐이고, 전문은 메일 서버에 있다.
+// 이 스크립트는 한 번에 수백 통을 뽑으므로 메일 서버에는 붙지 않는다 — 통마다 IMAP 접속이 생긴다.
+// 대신 있는 미리보기로 뽑고, **뒷부분이 잘렸다는 사실을 JSON 에 함께 적는다**.
+// 분석하는 쪽이 "이게 메일 전부가 아니다" 를 알아야 없는 내용을 단정하지 않는다.
+const PREVIEW_MAX = 4000;
+const isPreviewOnly = (m) =>
+  !m.raw?.html && String(m.raw?.text || '').length <= PREVIEW_MAX && Boolean(m.rawTruncated);
+
 const out = mails.map((m) => {
   const body = (m.bodyStripped || m.raw?.text || '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
+  const preview = isPreviewOnly(m);
   const lead = m.leadId ? leadMap.get(m.leadId) : null;
   return {
     id: String(m._id),
@@ -53,7 +63,10 @@ const out = mails.map((m) => {
     ruleClass: m.classification,
     lead: lead ? `${lead.Company} (${lead.Country})` : '',
     body: body.slice(0, 2400),
-    truncated: body.length > 2400,
+    // 잘린 이유는 둘이다: 여기서 2,400자로 자른 것 · 애초에 미리보기만 저장된 것
+    truncated: body.length > 2400 || preview,
+    // 본문이 미리보기뿐이라 전문은 메일 서버에 있다 (앱에서 메일을 열면 받아온다)
+    bodyIsPreview: preview,
   };
 });
 
@@ -66,6 +79,6 @@ for (let i = 0; i < out.length; i += CHUNK) {
   files++;
 }
 console.log(`총 ${out.length}통 → ${files}개 파일 (batch-01 ~ batch-${String(files).padStart(2,'0')})`);
-console.log(`본문 잘린 것: ${out.filter((o) => o.truncated).length}통`);
+console.log(`본문 잘린 것: ${out.filter((o) => o.truncated).length}통 (그중 미리보기만 저장된 것: ${out.filter((o) => o.bodyIsPreview).length}통 — 전문은 메일 서버에 있다)`);
 console.log('\n오늘 날짜 기준(기한 계산용):', new Date().toISOString().slice(0, 10));
 await mongoose.disconnect();

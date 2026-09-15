@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { runIngest } from '@/lib/mail/ingest';
 import { applyMailRetention } from '@/lib/mail/retention';
+import { syncAllOutboxCopies } from '@/lib/mail/sent-copy';
 import { createDueFollowUps } from '@/lib/mail/follow-up';
 import { buildBriefing, renderBriefingHtml } from '@/lib/mail/briefing';
 import { getMailSettings } from '@/lib/mail-settings';
@@ -86,6 +87,18 @@ export async function GET(req: Request) {
     };
   } catch (e: any) {
     report.steps.retention = { error: String(e?.message || e) };
+  }
+
+  // ── 4.2 보낸메일함 메우기 ──
+  // 아웃룩이 서버에 사본을 안 남기면 보낸메일함이 비어 "보냈는지 알 수 없다" 가 된다.
+  // 받은편지함에 사본이 있는 것만이라도 보낸메일함에 넣어 준다 (lib/mail/sent-copy.ts).
+  try {
+    const synced = await syncAllOutboxCopies(7);
+    report.steps.outboxSync = synced
+      .filter((s) => s.checked || s.appended || s.errors.length)
+      .map((s) => ({ account: s.account, appended: s.appended, checked: s.checked, ...(s.errors.length ? { errors: s.errors.slice(0, 3) } : {}) }));
+  } catch (e: any) {
+    report.steps.outboxSync = { error: String(e?.message || e) };
   }
 
   // ── 4.5 자동 재발송 예약 만들기 ──

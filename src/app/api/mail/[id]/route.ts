@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
 import { Lead } from '@/models/Lead';
 import { tidyMailText } from '@/lib/mail/text';
+import { loadMailBody } from '@/lib/mail/body';
 import { getMailScope, mailFilter, canUseAccount, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 
 export const runtime = 'nodejs';
@@ -46,6 +47,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         ).sort({ date: 1 }).limit(30).lean()
       : [];
 
+    // ── 본문 ──
+    // 본문은 DB 에 미리보기만 있다 (lib/mail/ingest.ts trimRawForStorage).
+    // 메일을 여는 이 순간에 메일 서버에서 원문을 받아온다 — 첨부파일과 같은 방식이다.
+    // 실패해도 예외를 던지지 않는다(lib/mail/body.ts). 미리보기라도 화면은 열려야 한다.
+    const loaded = await loadMailBody(mail);
+    const fullText = loaded.text || '';
+    // 인용부를 걷어낸 본문 — 서버에서 받아왔으면 그쪽이 전문이고, 아니면 저장된 값을 쓴다
+    const stripped = loaded.stripped || mail.bodyStripped || '';
+
     return NextResponse.json({
       success: true,
       mail: {
@@ -71,11 +81,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         leadMatchedBy: mail.leadMatchedBy || null,
         // 인용부를 걷어낸 본문을 먼저 보여주고, 원문은 토글로.
         // 표로 짠 HTML 메일의 텍스트판은 빈 줄투성이라 다듬어서 내보낸다 (lib/mail/text.ts).
-        // hasQuoted 는 아래에서 **원본 길이**로 판단하므로 다듬기 전 값을 쓴다.
-        body: tidyMailText(mail.bodyStripped || mail.raw?.text || ''),
-        bodyFull: tidyMailText(mail.raw?.text || ''),
-        hasQuoted: Boolean(mail.bodyStripped && mail.raw?.text && mail.bodyStripped.length < mail.raw.text.length),
-        html: mail.raw?.html || '',
+        // hasQuoted 는 **다듬기 전 길이**로 판단한다.
+        body: tidyMailText(stripped || fullText),
+        bodyFull: tidyMailText(fullText),
+        hasQuoted: Boolean(stripped && fullText && stripped.length < fullText.length),
+        html: loaded.html || '',
+        // 이 본문을 지금 메일 서버에서 받아왔는지 (false = 저장된 미리보기)
+        bodyFromServer: loaded.fromServer,
+        // 못 받아온 이유 — 화면은 미리보기라도 그대로 열린다
+        bodyError: loaded.error || '',
         attachments: (mail.attachments || []).filter((a: any) => !a.inline),
         analysis: mail.analysis || null,
         translation: mail.translation || null,

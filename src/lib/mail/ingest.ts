@@ -158,39 +158,45 @@ export interface IngestOptions {
  * 신규 삽입만 한다(이미 있으면 건드리지 않음).
  * 사람이 붙인 상태·메모를 재수집이 덮지 않도록 $setOnInsert 를 쓴다.
  */
-/** 광고·자동발송·뉴스레터 — 읽을 일이 없어 원문 HTML 을 저장하지 않는다 */
+/** 광고·자동발송·뉴스레터 — 읽을 일이 없어 전용 폴더(AD_FOLDER)로 치워둔다 */
 const AD_CLASSES = ['ad', 'system', 'newsletter'] as const;
 
 /**
- * 저장 전에 **원문을 줄인다** — DB 용량이 꽉 차면 메일도 못 보낸다 (2026-09-14 실제로 막혔다).
+ * 저장 전에 **본문을 버린다** — 미리보기만 남긴다.
  *
- * 화면이 쓰는 것은 bodyStripped(인용 걷어낸 본문)와 raw.text 다. raw.html 은 '보낸 원문 그대로 보기'와
- * 답장 인용에만 쓰는데, 주고받을수록 앞 대화가 통째로 붙어 한 통에 6MB 까지 갔다.
- *   - 광고·자동발송·뉴스레터 : 원문 HTML 은 버린다 (읽을 일이 없다). text 도 넉넉히 자른다.
- *   - 그 밖의 메일          : html 300KB · text 100KB 까지만. 잘랐으면 rawTruncated 로 표시한다.
- * 첨부파일은 원래 DB 에 넣지 않는다(필요할 때 메일 서버에서 바로 받는다) — 용량과 무관하다.
+ * DB 용량이 꽉 차면 메일도 못 보낸다 (2026-09-14 실제로 막혔다). 원인은 본문이었다.
+ * 답장은 앞 대화를 통째로 인용해서 한 통이 6MB 까지 갔고, 그런 메일이 쌓이는 속도를
+ * '잘라 담기'(html 300KB · text 100KB)로는 못 따라간다. 무료 512MB 짜리 저장소다.
+ *
+ * 그래서 **본문은 저장하지 않고, 열 때 메일 서버에서 받아온다** (lib/mail/body.ts).
+ * 첨부파일을 예전부터 그렇게 다뤘다 — 파트 번호만 저장해 두고 누를 때 IMAP 에서 받아온다.
+ * 메일 본문도 accountId + folder + uid 만 있으면 언제든 다시 받을 수 있고, 원본이
+ * 지워지지 않는 한 웹메일과 항상 같은 내용이 보인다.
+ *
+ * 여기 남기는 것은 **미리보기뿐이다**:
+ *   - bodyStripped 4,000자 — 목록 미리보기 · 로컬 분석(local-analyze) 입력
+ *   - raw.text     4,000자 — 옛 화면·스크립트가 아직 읽는 자리 (호환용)
+ *   - raw.html     항상 버린다 — 용량의 대부분이 여기였다. 원문 보기는 열 때 받아온다.
+ * 무엇이든 잘렸으면 rawTruncated 로 표시한다 — 화면·스크립트가 "이게 전부가 아니다" 를 알아야 한다.
  */
-const RAW_HTML_MAX = 300 * 1024;
-const RAW_TEXT_MAX = 100 * 1024;
-const NOISE_TEXT_MAX = 20 * 1024;
+const PREVIEW_MAX = 4000;
 export function trimRawForStorage(doc: Record<string, any>): void {
   const raw = doc.raw || {};
-  const noise = AD_CLASSES.includes(doc.classification as any);
-  const htmlMax = noise ? 0 : RAW_HTML_MAX;
-  const textMax = noise ? NOISE_TEXT_MAX : RAW_TEXT_MAX;
   let cut = false;
-  if (typeof raw.html === 'string' && raw.html.length > htmlMax) {
-    raw.html = htmlMax ? raw.html.slice(0, htmlMax) : '';
+
+  // HTML 원문은 분류에 상관없이 저장하지 않는다 (있었다면 '잘랐다'로 표시)
+  if (typeof raw.html === 'string' && raw.html.length > 0) cut = true;
+  raw.html = '';
+
+  if (typeof raw.text === 'string' && raw.text.length > PREVIEW_MAX) {
+    raw.text = raw.text.slice(0, PREVIEW_MAX);
     cut = true;
   }
-  if (typeof raw.text === 'string' && raw.text.length > textMax) {
-    raw.text = raw.text.slice(0, textMax);
+  if (typeof doc.bodyStripped === 'string' && doc.bodyStripped.length > PREVIEW_MAX) {
+    doc.bodyStripped = doc.bodyStripped.slice(0, PREVIEW_MAX);
     cut = true;
   }
-  if (typeof doc.bodyStripped === 'string' && doc.bodyStripped.length > RAW_TEXT_MAX) {
-    doc.bodyStripped = doc.bodyStripped.slice(0, RAW_TEXT_MAX);
-    cut = true;
-  }
+
   doc.raw = raw;
   if (cut) doc.rawTruncated = true;
 }

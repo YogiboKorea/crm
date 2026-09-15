@@ -4662,6 +4662,23 @@ async function renderSentMailPage() {
         <button type="submit" style="padding:7px 12px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer;font-size:12.5px">찾기</button>
       </form>
     </div>
+    <!-- 아웃룩에서 보낸 메일이 여기 없는 경우가 있다 — 그 프로그램이 서버에 사본을 안 남기면
+         메일 서버에는 아무 기록이 없어 이 화면도 보여줄 수가 없다. 무엇을 바꿔야 하는지 알려 준다. -->
+    <details style="margin:-4px 0 12px;border:1px solid var(--border-subtle);border-radius:9px;background:var(--bg-surface-alt)">
+      <summary style="cursor:pointer;padding:8px 12px;font-size:12px;color:var(--text-secondary)">
+        보낸 메일이 여기 안 보이나요? <span style="color:var(--text-quaternary)">· 메일 프로그램 설정 확인</span>
+      </summary>
+      <div style="padding:2px 14px 12px;font-size:12px;color:var(--text-secondary);line-height:1.75">
+        이 화면은 <b>이카운트 서버의 보낸메일함</b>을 그대로 보여줍니다. 아래 경우에는 서버에 사본이 없어 보이지 않습니다.
+        <ul style="margin:6px 0 0;padding-left:18px">
+          <li><b>아웃룩을 POP 으로 쓰는 경우</b> — 보낸 메일이 그 컴퓨터에만 남습니다.
+            계정을 <b>IMAP</b> 으로 등록하고 <b>[보낸 편지함을 서버에 저장]</b> 을 켜 주세요.</li>
+          <li><b>웹메일에서 "보낸 메일 저장 안 함"</b> 으로 보낸 경우</li>
+        </ul>
+        이 CRM 에서 보낸 메일(답장·업체 발송·예약 발송)은 자동으로 여기 남습니다.
+        받은편지함에 사본이 있는 메일도 매일 한 번 자동으로 채워 넣습니다.
+      </div>
+    </details>
     ${(d.items || []).length ? `
       <div class="table-wrap">
         <table>

@@ -342,6 +342,34 @@ export async function fetchAttachment(
 }
 
 /**
+ * 메일 한 통의 **원문(RFC822) 전체**를 UID 로 받아온다.
+ *
+ * 받은 메일의 본문을 DB 에 쌓지 않기로 하면서 생긴 함수다 (lib/mail/ingest.ts trimRawForStorage).
+ * 답장마다 앞 대화가 인용으로 딸려와 한 통이 6MB 까지 갔고, 저장이 꽉 차 **메일 발송까지
+ * 막혔다**(2026-09-14). 이제 저장은 미리보기까지만 하고, 본문이 필요한 순간에 여기서 받아온다.
+ * 첨부파일(fetchAttachment)을 예전부터 그렇게 다뤄 왔다 — 방식이 같다.
+ *
+ * 못 찾으면 **예외가 아니라 null** 이다. 웹메일에서 원본이 지워졌거나 폴더가 바뀌었다고
+ * 메일 상세 화면이 통째로 안 열리면 안 된다 (부르는 쪽: lib/mail/body.ts).
+ */
+export async function fetchMessageSource(
+  settings: ImapConfig,
+  { folder, uid }: { folder: string; uid: number },
+): Promise<Buffer | null> {
+  if (!folder || !uid) return null;
+
+  return withClient(settings, async (client) => {
+    const lock = await client.getMailboxLock(folder);
+    try {
+      const msg: any = await client.fetchOne(String(uid), { source: true }, { uid: true });
+      return (msg?.source as Buffer) || null;
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+/**
  * 첨부파일 1개를 **흘려보내는 방식**으로 받아온다 (다운로드 화면용).
  *
  * 위의 fetchAttachment 는 파일 전체를 메모리에 모았다가 한 번에 돌려준다.

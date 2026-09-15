@@ -42,7 +42,9 @@ export async function GET(req: Request) {
     // 같은 리드라도 다른 아이디의 계정으로 받은 메일은 넣지 않는다 — 여기서 빠지면 남의 메일 본문이 통째로 보인다
     const inbound: any[] = await InboundMail.find(
       { leadId, ...mailFilter(scope) },
-      { 'raw.html': 0 },   // HTML 원문은 무거워서 제외 (상세 조회에서 별도)
+      // 옛 메일에만 남아 있는 HTML 원문은 무거워서 제외한다 (지금은 아예 저장하지 않는다).
+      // 본문 원문이 필요하면 메일을 열 때 메일 서버에서 받아온다 (api/mail/[id] · lib/mail/body.ts).
+      { 'raw.html': 0 },
     ).sort({ date: 1 }).lean();
 
     // ── 보낸 메일 (emailHistory) ──
@@ -65,10 +67,17 @@ export async function GET(req: Request) {
       at: m.date ? new Date(m.date).toISOString() : m.receivedAt,
       _id: String(m._id),
       subject: m.subject || '',
-      // 인용부를 걷어낸 본문을 우선 보여준다 — 이전 대화가 통째로 딸려오면 읽을 수가 없다
+      // 인용부를 걷어낸 본문을 우선 보여준다 — 이전 대화가 통째로 딸려오면 읽을 수가 없다.
+      //
+      // ⚠️ 여기 본문은 **저장된 미리보기**(4,000자)다. 이 화면은 한 리드의 메일을 통째로 펼치므로
+      //    통마다 메일 서버에서 원문을 받으면 IMAP 연결이 수십 개 열린다. 전문은 메일을 열 때
+      //    한 통씩 받아온다 (api/mail/[id] · lib/mail/body.ts).
+      //    raw 가 비어 있는 메일도 있어 ?. 로 읽는다 — 비면 빈 문자열이 되어 화면은 그대로 뜬다.
       body: tidyMailText(m.bodyStripped || m.raw?.text || ''),
       bodyFull: tidyMailText(m.raw?.text || ''),
       hasQuoted: Boolean(m.bodyStripped && m.raw?.text && m.bodyStripped.length < m.raw.text.length),
+      // 미리보기라 뒷부분이 잘렸는지 — 화면이 "메일 열기" 로 안내할 수 있게
+      bodyTruncated: Boolean(m.rawTruncated),
       from: m.from || {},
       lang: m.lang || '',
       classification: m.classification || 'unknown',
