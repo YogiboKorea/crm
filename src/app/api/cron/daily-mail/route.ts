@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { runIngest } from '@/lib/mail/ingest';
+import { applyMailRetention } from '@/lib/mail/retention';
 import { createDueFollowUps } from '@/lib/mail/follow-up';
 import { buildBriefing, renderBriefingHtml } from '@/lib/mail/briefing';
 import { getMailSettings } from '@/lib/mail-settings';
@@ -69,6 +70,22 @@ export async function GET(req: Request) {
     };
   } catch (e: any) {
     report.steps.ingest = { error: String(e?.message || e) };
+  }
+
+  // ── 4.1 오래된 메일 본문 비우기 (저장 공간 자동 관리) ──
+  // 원문은 이카운트 서버에 그대로 있다. DB 에 또 쌓아 두면 무료 용량(512MB)이 차서
+  // 쓰기가 막히고 메일 발송까지 멈춘다 — 실제로 그렇게 됐다 (2026-09-15).
+  // 최근 것만 DB 에 두고 오래된 것은 열 때 서버에서 받아 온다 (lib/mail/retention.ts · lib/mail/body.ts).
+  try {
+    const t = await applyMailRetention();
+    report.steps.retention = {
+      keepBodyDays: t.keepBodyDays,
+      cleared: t.cleared,
+      freedMB: Math.round((t.freedBytes / 1048576) * 10) / 10,
+      ...(t.error ? { error: t.error } : {}),
+    };
+  } catch (e: any) {
+    report.steps.retention = { error: String(e?.message || e) };
   }
 
   // ── 4.5 자동 재발송 예약 만들기 ──

@@ -95,6 +95,7 @@ export async function GET(req: Request) {
               ] }, 1, 0] },
             },
             archived: { $sum: { $cond: [{ $eq: ['$stage', 'archived'] }, 1, 0] } },
+            last: { $max: '$createdAt' },     // 올린 시각 — 목록을 최신순으로 세우는 기준
             live: {
               $sum: {
                 $cond: [
@@ -106,7 +107,9 @@ export async function GET(req: Request) {
           },
         },
         { $match: { total: { $gte: 3 } } },   // 테스트로 한두 건 들어간 배치는 잡음이다
-        { $sort: { total: -1 } },
+        // **방금 올린 파일이 맨 위**에 와야 한다 — 건수 순으로 두면 새로 올린 파일이 큰 파일들 밑에 묻혀
+        // "왜 안 올라갔지" 가 된다 (대표님 2026-09-15). 올린 시각이 없는 옛 배치는 이름(날짜)으로 잇는다.
+        { $sort: { last: -1, _id: -1 } },
       ]);
       return NextResponse.json({ success: true, mode: 'batches', batches });
     }

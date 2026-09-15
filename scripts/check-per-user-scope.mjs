@@ -58,18 +58,30 @@ ok(r.status === 400 && /이카운트/.test(r.j.error || ''), `가짜 서버로 �
 r = await send('fe', '/api/mail/test', 'POST', { to: 'fe@yogico.kr' });
 ok(r.status === 403, `회사 기본 SMTP 테스트 발송(/api/mail/test) → 일반 아이디 막힘 (${r.status})`);
 
-console.log('── david (일반 아이디 · 아직 등록 없음)');
+console.log('── david (일반 아이디)');
 r = await get('david', '/api/mail-accounts');
-ok((r.j.accounts || []).length === 0, `메일 계정 관리: 비어 있음 (${(r.j.accounts || []).length})`);
-r = await get('david', '/api/mail/inbox?accountId=all&flat=1&limit=50');
-ok(r.status === 200 && (r.j.items || []).length === 0, `받은 메일함: 0통 (등록하면 보임)`);
-r = await get('david', `/api/mail/${davidMail._id}`);
-ok(r.status === 404, `대표 메일함 메일 직접 열기 → ${r.status} (주소 등록 전이라 못 봄)`);
+const davidAccounts = r.j.accounts || [];
+const davidHasDavidBox = davidAccounts.some((a) => /^david@/i.test(a.smtpUser || ''));
+ok(davidAccounts.every((a) => a.owner === undefined || a.owner === 'david'), `메일 계정 관리: 자기가 등록한 것만 (${davidAccounts.map((a) => a.smtpUser).join(', ') || '없음'})`);
+r = await get('david', '/api/mail/inbox?accountId=all&flat=1&limit=200');
+const davidIds = new Set((r.j.items || []).map((m) => m.accountId).filter(Boolean));
+if (davidHasDavidBox) {
+  // david@ 를 직접 등록했으므로 그 메일함은 보이고, fe@ 메일함은 보이면 안 된다
+  ok(r.status === 200 && (r.j.items || []).length > 0, `받은 메일함: 자기 메일함(david@) 메일 보임 (${(r.j.items || []).length}통)`);
+  ok(!davidIds.has(String(adminFe._id)) && !davidIds.has(String(feOwn._id)), 'fe@ 메일함 메일은 섞이지 않음');
+  r = await get('david', `/api/mail/${feMail._id}`);
+  ok(r.status === 404, `fe@ 메일함 메일 직접 열기 → ${r.status}`);
+} else {
+  ok(r.status === 200 && (r.j.items || []).length === 0, '받은 메일함: 0통 (등록하면 보임)');
+  r = await get('david', `/api/mail/${davidMail._id}`);
+  ok(r.status === 404, `대표 메일함 메일 직접 열기 → ${r.status} (주소 등록 전이라 못 봄)`);
+}
 
 console.log('── admin (마스터)');
 r = await get('admin', '/api/mail-accounts');
 const adminList = (r.j.accounts || []).map((a) => a.owner || '?');
-ok((r.j.accounts || []).length === 2 && !(r.j.accounts || []).some((a) => String(a._id) === String(feOwn._id)), `메일 계정 관리: 마스터 계정 2개만 (fe 아이디의 계정은 안 보임)`);
+const masterOwned = accs.filter((a) => ['admin', 'yogico'].includes(a.owner)).length;
+ok((r.j.accounts || []).length === masterOwned && !(r.j.accounts || []).some((a) => String(a._id) === String(feOwn._id)), `메일 계정 관리: 마스터가 등록한 ${masterOwned}개만 (다른 아이디 계정은 안 보임)`);
 r = await get('admin', `/api/mail/${davidMail._id}`);
 ok(r.status === 200, `대표 메일함 메일 열림 → ${r.status}`);
 r = await get('admin', '/api/mail/inbox?accountId=all&flat=1&limit=20');
