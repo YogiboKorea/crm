@@ -44,6 +44,7 @@ export interface IInboundMail extends Document {
   lang?: string;                  // 감지 언어 (ko/en/he/ja …)
   raw?: { text?: string; html?: string };
   bodyStripped?: string;          // 인용부 제거한 본문 (quoted.ts · 분석 입력)
+  rawTruncated?: boolean;         // 원문이 커서 잘라 저장했는지 (ingest.ts trimRawForStorage)
 
   // ── 첨부 (메타만 · 파일 내용은 저장 안 함) ──────────────
   attachments?: Array<{
@@ -146,6 +147,9 @@ const InboundMailSchema = new Schema<IInboundMail>({
     html: { type: String, default: '' },
   },
   bodyStripped: { type: String, default: '' },
+  // 원문이 너무 커서 잘라 저장했는지 (lib/mail/ingest.ts trimRawForStorage).
+  // 광고·자동발송은 원문 HTML 을 아예 저장하지 않는다 — 한 통 6MB 짜리가 쌓여 DB 가 꽉 찼었다.
+  rawTruncated: { type: Boolean, default: false },
 
   attachments: {
     type: [{

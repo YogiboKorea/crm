@@ -133,6 +133,7 @@ export async function POST(req: Request) {
         pass: smtpPass,
       },
       fromOverride: { name: account.fromName || '', address: account.fromAddress || account.smtpUser },
+      sentCopyAccount: account,   // 보낸메일함에 사본을 남긴다 (lib/mail/sent-copy.ts)
     });
 
     if (!result.ok) {

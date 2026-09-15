@@ -82,6 +82,7 @@ export async function POST(req: Request) {
       attachments: att.files,
       smtpConfig: { host: acc.smtpHost, port: acc.smtpPort, secure: acc.smtpSecure, user: acc.smtpUser, pass: decryptSecret(acc.smtpPassEnc) },
       fromOverride: { name: acc.fromName || acc.smtpUser, address: acc.fromAddress },
+      sentCopyAccount: acc,   // 테스트 메일도 보낸메일함에 남겨 "실제로 이렇게 나갔다" 를 볼 수 있게
     });
     if (!result.ok) return NextResponse.json({ success: false, error: `보내지 못했습니다: ${result.error}` }, { status: 502 });
 

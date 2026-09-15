@@ -5928,7 +5928,7 @@ document.addEventListener('click', async (ev) => {
 // 클라이언트가 원래 가지고 있던 CSV 업로드분(5천여 건). 대부분 중복 정리로
 // 보관함에 들어가 있지만 지운 것이 아니라, "이건 살려서 보내자" 싶은 걸
 // 골라 검증 완료로 되돌릴 수 있게 한다.
-var _legacy = { batch: '', page: 1, q: '', country: '', sel: new Set() };
+var _legacy = { batch: '', page: 1, q: '', country: '', sel: new Set(), moveTarget: 'verified' };
 
 // 올린 데이터 화면 위쪽 작업 줄 — 올리기 / AI 검증 / 직접 검토.
 // 숫자는 서버에서 받아 나중에 채운다(_legacyCounts). 브라우저가 들고 있는
@@ -6113,6 +6113,47 @@ function bindLegacyActionBar() {
   document.getElementById('lgDirectReviewBtn')?.addEventListener('click', () => startDirectReview('legacy', _legacy.batch));
 }
 
+/**
+ * 올린 업체 화면에서 바로 옮길 수 있는 단계 (서버 api/leads/legacy LEGACY_MOVE_STAGES 와 같아야 한다).
+ * 대표님 요청 2026-09-15 — 검증 완료뿐 아니라 2차 검토·발송·대화 진행 중으로도 바로 보낸다.
+ */
+const LEGACY_MOVE_TARGETS = [
+  { stage: 'verified', label: '✅ AI 검증 완료', hint: '2차 검토에서 볼 곳으로', needsEmail: true },
+  { stage: 'queued', label: '📨 발송 관리 (보낼 메일)', hint: '바로 보낼 곳으로', needsEmail: true },
+  { stage: 'replied', label: '💬 답장 받음', hint: '이미 답이 온 곳' },
+  { stage: 'negotiating', label: '🤝 대화 진행 중', hint: '이야기 중인 곳' },
+  { stage: 'partner', label: '⭐ 파트너십 확정', hint: '계약·합의된 곳' },
+  { stage: 'failed', label: '🚫 검증 실패', hint: '보낼 곳이 아님' },
+];
+const legacyTarget = (stage) => LEGACY_MOVE_TARGETS.find((t) => t.stage === stage) || LEGACY_MOVE_TARGETS[0];
+
+/** 올린 업체를 고른 단계로 옮긴다 (한 곳 또는 여러 곳) */
+async function moveLegacyLeads(leadIds, stage, opts = {}) {
+  const t = legacyTarget(stage);
+  if (!leadIds.length) return;
+  if (!opts.skipConfirm) {
+    const extra = t.needsEmail ? '\n\n메일 주소가 없는 곳은 제외됩니다.' : '';
+    if (!confirm(`${leadIds.length}곳을 [${t.label}] 로 옮깁니다.${extra}\n\n진행할까요?`)) return;
+  }
+  try {
+    const r = await safeJsonFetch('/api/leads/legacy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadIds, stage }),
+    });
+    if (!r?.success) throw new Error(r?.error || '이동 실패');
+    if (!opts.quiet) {
+      alert(`${r.moved}곳을 [${t.label}] 로 옮겼습니다.` + (r.skipped ? `\n(메일 주소가 없는 ${r.skipped}곳은 제외)` : ''));
+    }
+    _legacy.sel.clear();
+    invalidateServerPage();
+    loadStageCounts(true);
+    renderLegacyPage();
+  } catch (e) {
+    alert(`이동하지 못했습니다: ${(e && e.message) || e}`);
+  }
+}
+
 async function renderLegacyPage() {
   els.content.innerHTML = `<div class="inline-loader">불러오는 중…</div>`;
   const p = new URLSearchParams();
@@ -6226,6 +6267,14 @@ async function renderLegacyPage() {
       <td style="font-size:12px;color:var(--text-secondary)">${escapeHtml(String(l.Type || '').slice(0, 26))}</td>
       <td>${websiteLinkHtml(l.WebsiteContact, { short: true })}</td>
       <td style="white-space:nowrap;font-size:11px;color:var(--text-tertiary)">${escapeHtml((STAGE_STYLE[l.stage] || {}).label || l.stage || '')}</td>
+      <td style="white-space:nowrap;text-align:right">
+        <select class="lg-row-move" data-lead="${escapeAttr(l.leadId)}" title="이 업체를 바로 다른 단계로 옮깁니다"
+          style="padding:4px 7px;font-size:11.5px;border:1px solid var(--border-default);border-radius:7px;
+                 background:var(--bg-surface);color:var(--text-secondary);cursor:pointer;max-width:150px">
+          <option value="">→ 옮기기…</option>
+          ${LEGACY_MOVE_TARGETS.map((t) => `<option value="${t.stage}">${escapeHtml(t.label)}</option>`).join('')}
+        </select>
+      </td>
     </tr>`;
   }).join('');
 
@@ -6247,18 +6296,24 @@ async function renderLegacyPage() {
                background:var(--bg-surface);color:var(--text-secondary);cursor:pointer;white-space:nowrap">
         이 페이지 전체 선택
       </button>
+      <select id="lgMoveTarget" title="어디로 옮길지 고릅니다"
+        style="margin-left:auto;padding:9px 11px;font-size:13px;border:1px solid var(--border-default);
+               border-radius:9px;background:var(--bg-surface);color:var(--text-primary);font-weight:700">
+        ${LEGACY_MOVE_TARGETS.map((t) => `<option value="${t.stage}" ${_legacy.moveTarget === t.stage ? 'selected' : ''}>${escapeHtml(t.label)}</option>`).join('')}
+      </select>
       <button id="lgMove" type="button" disabled
-        style="margin-left:auto;font-size:13.5px;font-weight:700;padding:10px 18px;border:none;
+        style="font-size:13.5px;font-weight:700;padding:10px 18px;border:none;
                border-radius:9px;white-space:nowrap;background:#94a3b8;color:#fff;cursor:default">
-        선택한 <span id="lgCount">0</span>건 → ✅ 검증 완료로
+        선택한 <span id="lgCount">0</span>곳 옮기기
       </button>
     </div>
     <div style="font-size:12px;color:var(--text-tertiary);margin:-4px 2px 10px;line-height:1.6">
-      보낼 만한 곳을 체크한 뒤 오른쪽 버튼을 누르면 <b>[✅ 검증 완료]</b> 로 올라갑니다.
-      거기서 다시 <b>발송 리스트</b>로 옮겨야 실제 발송 대상이 됩니다.
+      체크한 뒤 오른쪽에서 <b>어디로 보낼지</b> 고르고 [옮기기]를 누릅니다. 한 곳만 옮길 때는 그 줄 오른쪽의
+      <b>[→ 옮기기…]</b> 를 쓰면 됩니다. <b>[✅ AI 검증 완료]</b> 로 보내면 2차 검토에서 보이고,
+      <b>[📨 발송 관리]</b> 로 보내면 바로 보낼 곳이 됩니다 (메일 주소가 있는 곳만).
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th></th><th>회사</th><th>국가</th><th>업종</th><th>웹사이트</th><th>상태</th></tr></thead>
+      <thead><tr><th></th><th>회사</th><th>국가</th><th>업종</th><th>웹사이트</th><th>상태</th><th style="text-align:right">이동</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
     <div id="lgPager"></div>`;
@@ -6329,26 +6384,23 @@ async function renderLegacyPage() {
     _legacy.country = e.target.value; _legacy.page = 1; renderLegacyPage();
   });
 
+  els.content.querySelector('#lgMoveTarget')?.addEventListener('change', (e) => {
+    _legacy.moveTarget = e.target.value;
+  });
   els.content.querySelector('#lgMove').addEventListener('click', async (e) => {
     const ids = [..._legacy.sel];
-    if (!confirm(`${ids.length}건을 검증 완료로 옮깁니다.\n\n옮긴 건은 바로 발송 대상이 됩니다.\n진행할까요?`)) return;
     e.currentTarget.disabled = true;
     e.currentTarget.textContent = '이동 중…';
-    try {
-      const r = await safeJsonFetch('/api/leads/legacy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadIds: ids }),
-      });
-      alert(`${r.moved}건을 검증 완료로 옮겼습니다.${r.skipped ? `\n(이메일 없는 ${r.skipped}건은 제외)` : ''}\n\n검증 완료 총 ${r.verified}건`);
-      _legacy.sel.clear();
-      invalidateServerPage();
-      loadStageCounts(true);
-      renderLegacyPage();
-    } catch (err) {
-      alert(`이동 실패: ${err.message || err}`);
-      renderLegacyPage();
-    }
+    await moveLegacyLeads(ids, _legacy.moveTarget || 'verified');
+  });
+  // 한 곳만 바로 옮기기 (행 오른쪽 선택칸)
+  els.content.querySelectorAll('.lg-row-move').forEach((sel) => {
+    sel.addEventListener('click', (ev) => ev.stopPropagation());
+    sel.addEventListener('change', async () => {
+      const stage = sel.value;
+      if (!stage) return;
+      await moveLegacyLeads([sel.dataset.lead], stage);
+    });
   });
 
   const pager = els.content.querySelector('#lgPager');

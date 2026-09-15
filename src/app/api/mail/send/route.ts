@@ -202,6 +202,7 @@ export async function POST(req: Request) {
         attachments,
         smtpConfig,
         fromOverride,
+        sentCopyAccount: accProfile,   // 보낸메일함에 사본을 남긴다
       });
     }
 

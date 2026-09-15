@@ -51,6 +51,12 @@ export interface SendMailInput {
   headers?: Record<string, string>;
   // 첨부파일 — 이미 받아 온 내용 (lib/mail/template-attachments.ts loadTemplateAttachments)
   attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  /**
+   * 보낸 메일 **사본을 이 계정의 보낸메일함에 남긴다** (MailAccount 문서를 그대로 넘긴다).
+   * SMTP 로 보내는 것만으로는 보낸메일함에 안 남아서, 웹메일에서도 [📤 보낸 메일함]에서도
+   * 우리가 보낸 메일을 볼 수 없었다 (2026-09-15).
+   */
+  sentCopyAccount?: any;
   // ── 특정 MailAccount 로 발송 시 아래 3개 전달 (없으면 env 기본) ──
   smtpConfig?: {
     host: string;
@@ -67,6 +73,9 @@ export interface SendMailResult {
   messageId?: string;
   error?: string;
   dryRun?: boolean;
+  /** 이카운트 보낸메일함에 사본을 남겼는지 (sentCopyAccount 를 넘겼을 때) */
+  savedToSent?: boolean;
+  sentCopyError?: string;
 }
 
 /**
@@ -150,7 +159,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
 
   try {
     const transporter = transporterToUse || getTransporter();
-    const info = await transporter.sendMail({
+    const mailOptions = {
       from: `"${fromName}" <${fromAddress}>`,
       to: input.to,
       subject: input.subject,
@@ -159,8 +168,26 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
       replyTo: input.replyTo,
       headers: input.headers,
       attachments: input.attachments?.length ? input.attachments : undefined,
-    });
-    return { ok: true, messageId: info.messageId };
+    };
+    const info = await transporter.sendMail(mailOptions);
+
+    // 보낸메일함에 사본 남기기 — 실패해도 발송은 성공이다 (다시 보낼 수는 없다).
+    // 순환 참조를 피하려고 여기서만 늦게 불러온다.
+    let savedToSent: boolean | undefined;
+    let sentCopyError: string | undefined;
+    if (input.sentCopyAccount) {
+      try {
+        const { saveToSentFolder } = await import('./mail/sent-copy');
+        const r = await saveToSentFolder(input.sentCopyAccount, { ...mailOptions, messageId: info.messageId });
+        savedToSent = r.ok;
+        if (!r.ok) sentCopyError = r.error;
+      } catch (e: any) {
+        savedToSent = false;
+        sentCopyError = String(e?.message || e);
+      }
+      if (!savedToSent) console.warn('[mailer] 보낸메일함 사본 실패:', sentCopyError);
+    }
+    return { ok: true, messageId: info.messageId, savedToSent, sentCopyError };
   } catch (e: any) {
     return { ok: false, error: e?.message || 'unknown SMTP error' };
   }

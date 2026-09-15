@@ -124,6 +124,7 @@ export async function processScheduleItem(doc: any) {
           attachments: att.files,
           smtpConfig,
           fromOverride,
+          sentCopyAccount: accProfile,   // 보낸메일함에 사본을 남긴다
         })
       : { ok: false, error: att.error };
   }

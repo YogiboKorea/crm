@@ -158,6 +158,43 @@ export interface IngestOptions {
  * 신규 삽입만 한다(이미 있으면 건드리지 않음).
  * 사람이 붙인 상태·메모를 재수집이 덮지 않도록 $setOnInsert 를 쓴다.
  */
+/** 광고·자동발송·뉴스레터 — 읽을 일이 없어 원문 HTML 을 저장하지 않는다 */
+const AD_CLASSES = ['ad', 'system', 'newsletter'] as const;
+
+/**
+ * 저장 전에 **원문을 줄인다** — DB 용량이 꽉 차면 메일도 못 보낸다 (2026-09-14 실제로 막혔다).
+ *
+ * 화면이 쓰는 것은 bodyStripped(인용 걷어낸 본문)와 raw.text 다. raw.html 은 '보낸 원문 그대로 보기'와
+ * 답장 인용에만 쓰는데, 주고받을수록 앞 대화가 통째로 붙어 한 통에 6MB 까지 갔다.
+ *   - 광고·자동발송·뉴스레터 : 원문 HTML 은 버린다 (읽을 일이 없다). text 도 넉넉히 자른다.
+ *   - 그 밖의 메일          : html 300KB · text 100KB 까지만. 잘랐으면 rawTruncated 로 표시한다.
+ * 첨부파일은 원래 DB 에 넣지 않는다(필요할 때 메일 서버에서 바로 받는다) — 용량과 무관하다.
+ */
+const RAW_HTML_MAX = 300 * 1024;
+const RAW_TEXT_MAX = 100 * 1024;
+const NOISE_TEXT_MAX = 20 * 1024;
+export function trimRawForStorage(doc: Record<string, any>): void {
+  const raw = doc.raw || {};
+  const noise = AD_CLASSES.includes(doc.classification as any);
+  const htmlMax = noise ? 0 : RAW_HTML_MAX;
+  const textMax = noise ? NOISE_TEXT_MAX : RAW_TEXT_MAX;
+  let cut = false;
+  if (typeof raw.html === 'string' && raw.html.length > htmlMax) {
+    raw.html = htmlMax ? raw.html.slice(0, htmlMax) : '';
+    cut = true;
+  }
+  if (typeof raw.text === 'string' && raw.text.length > textMax) {
+    raw.text = raw.text.slice(0, textMax);
+    cut = true;
+  }
+  if (typeof doc.bodyStripped === 'string' && doc.bodyStripped.length > RAW_TEXT_MAX) {
+    doc.bodyStripped = doc.bodyStripped.slice(0, RAW_TEXT_MAX);
+    cut = true;
+  }
+  doc.raw = raw;
+  if (cut) doc.rawTruncated = true;
+}
+
 async function insertMail(doc: Record<string, any>): Promise<'inserted' | 'duplicate'> {
   try {
     const r = await InboundMail.updateOne(
@@ -437,6 +474,7 @@ async function ingestFolder(
         analyzedAt: la.analyzedAt,
       };
 
+      trimRawForStorage(doc);
       const r = await insertMail(doc);
       if (r === 'inserted') {
         stat.inserted++;
@@ -647,7 +685,6 @@ export async function runBackfill(opts: {
  * 사람이 판단해야 할 메일만 남는다.
  */
 export const AD_FOLDER = '광고·자동발송';
-const AD_CLASSES = ['ad', 'system', 'newsletter'] as const;
 
 export async function runIngest(opts: IngestOptions = {}): Promise<IngestResult> {
   const startedAt = new Date();

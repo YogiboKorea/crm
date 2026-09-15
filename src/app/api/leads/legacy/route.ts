@@ -137,12 +137,19 @@ export async function GET(req: Request) {
 }
 
 /**
- * POST /api/leads/legacy — 고른 리드를 발송대기로 되살린다.
- * Body: { leadIds: string[] }
+ * POST /api/leads/legacy — 올린 업체를 고른 단계로 옮긴다.
+ * Body: { leadIds: string[], stage?: 'verified' | 'queued' | 'replied' | 'negotiating' | 'partner' | 'failed' | 'archived' }
  *
- * 사람이 직접 고른 것이므로 승인(readyForOutreach)까지 같이 준다.
+ * stage 를 안 넘기면 예전처럼 'verified'(AI 검증 완료).
+ * 올린 화면에서 바로 [2차 검토]·[발송 관리]·[대화 진행 중] 등으로 보낼 수 있게 열어 둔다 (대표님 요청 2026-09-15).
+ *
+ * 사람이 직접 고른 것이므로 발송 단계(verified·queued)로 보낼 때는 승인(readyForOutreach)까지 같이 준다.
  * 되돌릴 수 있게 이전 stage 를 남긴다.
  */
+/** 올린 화면에서 옮길 수 있는 단계 — 화면에 없는 단계(imported·verifying)로 보내면 업체가 사라진 것처럼 된다 */
+const LEGACY_MOVE_STAGES = ['verified', 'queued', 'replied', 'negotiating', 'partner', 'failed', 'archived'] as const;
+/** 실제 메일 주소가 있어야만 보낼 수 있는 단계 (발송 대상) */
+const NEEDS_EMAIL = ['verified', 'queued'];
 export async function POST(req: Request) {
   let body: any = {};
   try {
@@ -155,6 +162,11 @@ export async function POST(req: Request) {
   if (!ids.length) {
     return NextResponse.json({ success: false, error: 'leadIds 필요' }, { status: 400 });
   }
+  const stage: string = String(body?.stage || 'verified');
+  if (!LEGACY_MOVE_STAGES.includes(stage as any)) {
+    return NextResponse.json({ success: false, error: `옮길 수 없는 단계입니다: ${stage}` }, { status: 400 });
+  }
+  const needsEmail = NEEDS_EMAIL.includes(stage);
 
   try {
     await dbConnect();
@@ -163,28 +175,33 @@ export async function POST(req: Request) {
     // 주소가 아닌 값("Contact form on site" 등)이 섞여 들어오면
     // 발송대기에 보낼 수 없는 채로 쌓였다가 전부 발송 실패한다.
     const targets = await Lead.find(
-      { leadId: { $in: ids }, ...REAL_EMAIL, ...NOT_HIDDEN },
-      { leadId: 1, stage: 1 },
+      { leadId: { $in: ids }, ...(needsEmail ? REAL_EMAIL : {}), ...NOT_HIDDEN },
+      { leadId: 1, stage: 1, becamePartnerAt: 1 },
     ).lean();
 
-    const ops = targets.map((t: any) => ({
-      updateOne: {
-        filter: { leadId: t.leadId },
-        update: {
-          $set: {
-            stage: 'verified',
-            stageChangedAt: now.toISOString(),
-            readyForOutreach: true,     // 사람이 직접 고른 것 = 승인
-            restoredFrom: t.stage,      // 되돌리기용
-            restoredAt: now,
-          },
-        },
-      },
-    }));
+    const ops = targets.map((t: any) => {
+      const set: any = {
+        stage,
+        stageChangedAt: now.toISOString(),
+        updatedInfoAt: now.toISOString(),
+        restoredFrom: t.stage,      // 되돌리기용
+        restoredAt: now,
+      };
+      // 발송 단계로 보낼 때만 승인, 파트너·보관·실패는 자동 발송 대상에서 빼둔다 (leads/[id]/stage 와 같은 규칙)
+      if (needsEmail) set.readyForOutreach = true;
+      if (['partner', 'archived', 'failed'].includes(stage)) set.readyForOutreach = false;
+      if (stage === 'partner' && !t.becamePartnerAt) set.becamePartnerAt = now.toISOString();
+      return { updateOne: { filter: { leadId: t.leadId }, update: { $set: set } } };
+    });
 
     if (!ops.length) {
       return NextResponse.json(
-        { success: false, error: '이동할 수 있는 리드가 없습니다 (실제 이메일 주소가 있는 건만 옮길 수 있습니다)' },
+        {
+          success: false,
+          error: needsEmail
+            ? '이동할 수 있는 업체가 없습니다 (발송 단계로는 실제 메일 주소가 있는 곳만 옮길 수 있습니다)'
+            : '이동할 수 있는 업체가 없습니다',
+        },
         { status: 400 },
       );
     }
@@ -194,6 +211,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      stage,
       moved: r.modifiedCount,
       skipped: ids.length - ops.length,
       verified,

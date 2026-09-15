@@ -224,6 +224,10 @@ const LeadSchema: Schema = new Schema({
   dedupOriginalStage: { type: String, default: '' },
   dedupKeeperLeadId: { type: String, default: '' },
   dedupReason: { type: String, default: '' },
+  // 올린 업체 화면에서 옮긴 흔적 (되돌리기용 — api/leads/legacy POST).
+  // 선언이 없어서 mongoose 가 조용히 버리고 있었다: 옮긴 뒤 "원래 어디에 있었는지" 가 남지 않았다.
+  restoredFrom: { type: String, default: '' },
+  restoredAt: { type: Date, default: null },
   // 일괄 stage 이동 흔적 (되돌리기용)
   bulkMoveTag: { type: String, default: '' },
   bulkMoveFrom: { type: String, default: '' },

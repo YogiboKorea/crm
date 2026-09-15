@@ -543,7 +543,23 @@ export interface SentListItem {
   hasAttachment: boolean;
 }
 
-async function findSentPath(client: ImapFlow): Promise<string | null> {
+/**
+ * 보낸 메일 사본을 폴더에 넣는다 (IMAP APPEND) — lib/mail/sent-copy.ts 에서 쓴다.
+ * SMTP 로 보내는 것만으로는 보낸메일함에 남지 않아, 웹메일에서도 이 앱에서도 보낸 기록이 안 보였다.
+ */
+export async function appendMessage(
+  settings: ImapConfig,
+  folder: string,
+  raw: Buffer | string,
+  flags: string[] = ['\\Seen'],
+  date: Date = new Date(),
+): Promise<void> {
+  await withClient(settings, async (client) => {
+    await client.append(folder, raw as any, flags, date);
+  });
+}
+
+export async function findSentPath(client: ImapFlow): Promise<string | null> {
   const boxes = await client.list();
   const spec = SPECIAL.sent;
   const hit = boxes.find((b: any) => b.specialUse === spec.use)
