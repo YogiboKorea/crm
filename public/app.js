@@ -9096,7 +9096,7 @@ function replyBoxHtml(lastInbound) {
         </label>
         <span style="font-size:11.5px;color:#15803d;line-height:1.6">
           켜 두면 답장 <b>맨 아래에 보내는 사람 정보</b>(이름·직함·회사·주소·연락처·웹사이트)가 자동으로 붙습니다.
-          본문에 직접 쓰지 않아도 됩니다. 아래 칸에서 실제로 붙는 모습을 볼 수 있습니다.
+          본문에 직접 쓰지 않아도 됩니다. 본문 칸 맨 아래에 실제로 붙는 서명이 보입니다.
         </span>
       </div>
 
@@ -9138,22 +9138,24 @@ function replyBoxHtml(lastInbound) {
             <button type="button" id="convInsertLink" style="${tb};color:#1d4ed8;font-weight:700" title="링크 걸기">🔗</button>
             <button type="button" data-rcmd="removeFormat" style="${tb}" title="서식 지우기">서식해제</button>
           </div>
-          <div id="convReplyBody" contenteditable="true"
-            data-placeholder="답장 내용을 입력하세요. 서명은 자동으로 붙습니다."
-            style="width:100%;min-height:210px;max-height:44vh;overflow-y:auto;padding:11px 13px;
-                   font-size:15px;line-height:1.8;border:1px solid #cbd5e1;border-radius:0 0 8px 8px;
-                   background:#ffffff;color:#0f172a;outline:none"></div>
+          <!-- 본문 칸과 서명을 **한 테두리 안에** 둔다 — 받는 사람이 보는 메일처럼 본문 바로 아래에 서명이 붙어 보이게.
+               (대표님 요청 2026-09-15: 서명이 칸 밖에 따로 있으니 "안 붙는다" 로 보였다) -->
+          <div id="convReplyFrame" style="border:1px solid #cbd5e1;border-radius:0 0 8px 8px;background:#ffffff">
+            <div id="convReplyBody" contenteditable="true"
+              data-placeholder="답장 내용을 입력하세요."
+              style="width:100%;min-height:170px;max-height:40vh;overflow-y:auto;padding:11px 13px;
+                     font-size:15px;line-height:1.8;background:#ffffff;color:#0f172a;outline:none"></div>
 
-          <!-- [서명 붙이기] 를 켜면 **실제로 붙는 서명 그대로** 여기 보인다.
-               글로만 설명하면 무엇이 붙는지 알 수 없어 켜 놓고도 확인하러 계정 화면에 들어가야 했다. -->
-          <div id="convSigPreview" style="margin-top:8px;border:1px dashed #cbd5e1;border-radius:8px;
-               background:#f8fafc;padding:9px 12px">
-            <div style="font-size:10.5px;font-weight:800;color:#64748b;margin-bottom:2px">
-              답장 끝에 이렇게 붙습니다
-              <span style="font-weight:400">· ${escapeHtml(replySignatureAccount(lastInbound)?.fromAddress
-                || replySignatureAccount(lastInbound)?.smtpUser || '')}</span>
+            <!-- 서명 — **편집 칸 밖**(contenteditable 이 아님)에 둔다.
+                 칸 안에 넣으면 실수로 지워지거나, 서버가 한 번 더 붙여 서명이 두 번 나간다.
+                 내용은 서버에 물어 받아온다(GET /api/mail/reply) — 보낼 때와 같은 계정 규칙이라 실제와 어긋나지 않는다. -->
+            <div id="convSigPreview" contenteditable="false"
+                 style="margin:0 13px;padding:0 0 8px;border-top:1px dashed #e2e8f0;user-select:none">
+              <div id="convSigLabel" style="font-size:10.5px;font-weight:700;color:#94a3b8;margin-top:7px">
+                서명 불러오는 중…
+              </div>
+              <div id="convSigBody"></div>
             </div>
-            ${replySignatureBlockHtml(lastInbound)}
           </div>
         </div>
 
@@ -9173,7 +9175,7 @@ function replyBoxHtml(lastInbound) {
                  background:#2563eb;color:#fff;cursor:pointer">보내기</button>
         <!-- [서명 붙이기] 는 본문 위로 올렸다 — 다 쓰고 나서가 아니라 쓰기 전에 정하는 것이라서. -->
         <span id="convReplySigNote" style="font-size:11.5px;color:#64748b">
-          서명이 함께 나갑니다 · 내용은 <b>설정 · 도구 → 📮 메일 계정 관리</b>에서 바꿉니다
+          서명이 함께 나갑니다 · 내용은 <b>설정 · 도구 → 📬 메일 계정 관리</b>에서 바꿉니다
         </span>
         <span id="convReplyMsg" style="font-size:12px;margin-left:auto"></span>
       </div>
@@ -9306,12 +9308,44 @@ function bindConversationReply(leadId, rootId) {
     if (sigBox) sigBox.hidden = !on;
     if (sigNote) {
       sigNote.innerHTML = on
-        ? '서명이 함께 나갑니다 · 내용은 <b>설정 · 도구 → 📮 메일 계정 관리</b>에서 바꿉니다'
+        ? '서명이 함께 나갑니다 · 내용은 <b>설정 · 도구 → 📬 메일 계정 관리</b>에서 바꿉니다'
         : '<span style="color:#b45309">서명 없이 나갑니다</span> — 본문에 직접 적으셔야 합니다';
     }
   };
   sigChk?.addEventListener('change', syncSig);
   syncSig();
+
+  // 실제로 붙을 서명을 서버에서 받아 채운다.
+  // 화면의 계정 목록(_mailAccounts)으로 그리면, 목록을 아직 안 불러온 채 대화를 열었을 때 서명이 비어 보였다.
+  const sigLabel = root.querySelector('#convSigLabel');
+  const sigBody = root.querySelector('#convSigBody');
+  const replyInboundId = root.querySelector('#convReplySend')?.dataset.inboundId;
+  if (sigBody && replyInboundId) {
+    safeJsonFetch(`/api/mail/reply?inboundMailId=${encodeURIComponent(replyInboundId)}`)
+      .then((r) => {
+        if (!r || !r.success) {
+          if (sigLabel) sigLabel.innerHTML = `<span style="color:#b91c1c">서명을 불러오지 못했습니다 — ${escapeHtml((r && r.error) || '')}</span>`;
+          return;
+        }
+        const addr = r.from?.address || '';
+        if (r.signatureHtml) {
+          if (sigLabel) sigLabel.textContent = `서명 · ${addr} 계정으로 보냅니다`;
+          sigBody.innerHTML = r.signatureHtml;
+          // 서버 서명은 위 여백이 24px 이다 — 칸 안에서는 구분선이 있으니 조금 줄인다
+          const first = sigBody.firstElementChild;
+          if (first) first.style.marginTop = '8px';
+        } else {
+          if (sigLabel) sigLabel.textContent = `${addr} 계정`;
+          sigBody.innerHTML = `<div style="font-size:11.5px;color:#94a3b8;line-height:1.6;margin-top:4px">
+              이 계정에는 서명 정보가 없어 <b>서명 없이 나갑니다</b>.
+              [📬 메일 계정 관리]에서 이름·직함·회사·주소·전화·웹사이트를 채우면 여기에 붙습니다.
+            </div>`;
+        }
+      })
+      .catch((e) => {
+        if (sigLabel) sigLabel.innerHTML = `<span style="color:#b91c1c">서명을 불러오지 못했습니다 — ${escapeHtml(String(e?.message || e))}</span>`;
+      });
+  }
 
   // ── AI 초안 생성 ──
   // 한국어로 적은 의도를 상대 언어 본문으로 바꿔 회신 상자에 채운다.
@@ -12325,7 +12359,7 @@ function outboxPreviewBodyHtml(vars, acc, tpl) {
     <div style="margin-top:20px;padding:8px 10px;border:1px dashed var(--border-default);border-radius:7px;
                 font-size:11.5px;color:var(--text-quaternary);line-height:1.6">
       이 계정에는 서명이 비어 있어 <b>서명 없이 나갑니다</b>.
-      [📮 메일 계정 관리]에서 이름·직함·회사·주소·전화·웹사이트를 채우면 여기에 붙습니다.
+      [📬 메일 계정 관리]에서 이름·직함·회사·주소·전화·웹사이트를 채우면 여기에 붙습니다.
     </div>`;
 }
 
@@ -14918,27 +14952,6 @@ function accountSignatureHtml(acc) {
 function signaturePreviewHtml(acc) {
   return accountSignatureHtml(acc)
     || '<span style="font-size:11.5px;color:#94a3b8">이름·직함·회사·주소·전화·웹사이트를 적으면 여기 서명이 보입니다</span>';
-}
-
-/**
- * 답장을 보낼 때 실제로 쓰이는 계정 — 서버 api/mail/reply 와 같은 순서로 고른다.
- * (1) 그 메일을 받은 계정 → (2) 등록된 첫 계정.
- */
-function replySignatureAccount(inbound) {
-  const list = (_mailAccounts || []).filter((a) => a && a.isActive !== false);
-  const id = String((inbound && inbound.accountId) || '');
-  return list.find((a) => a._id === id) || list[0] || null;
-}
-
-/** 답장 끝에 붙을 서명 — 비어 있으면 어디서 채우는지 알려 준다 */
-function replySignatureBlockHtml(inbound) {
-  const acc = replySignatureAccount(inbound);
-  const sig = accountSignatureHtml(acc);
-  if (sig) return sig;
-  return `<div style="font-size:11.5px;color:#94a3b8;line-height:1.6">
-      이 계정에는 서명 정보가 없어 <b>서명 없이 나갑니다</b>.
-      [📮 메일 계정 관리]에서 이름·직함·회사·주소·전화·웹사이트를 채우면 여기에 붙습니다.
-    </div>`;
 }
 
 /**

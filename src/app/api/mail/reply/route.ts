@@ -14,6 +14,61 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 /**
+ * 답장을 **어느 계정으로** 보낼지 고른다 — 보낼 때(POST)와 서명 미리보기(GET)가 반드시 같은 규칙을 써야 한다.
+ * 규칙이 둘로 갈리면 "미리보기 서명과 실제로 붙어 나간 서명이 다르다" 가 된다.
+ *
+ * 1) 화면이 고른 계정(내 것만)  2) 이 메일을 받은 계정 — 상대 메일함에서 같은 주소로 대화가 이어진다
+ * 3) 내 기본 계정.  남의 계정으로는 보내지 않는다.
+ */
+async function pickReplyAccount(scope: any, mail: any, mailAccountId?: string): Promise<{ account: any; error?: string }> {
+  if (mailAccountId) {
+    const account = (await resolveOutreachAccount(String(mailAccountId), scope.user)).account;
+    return account ? { account } : { account: null, error: '고른 보내는 계정을 쓸 수 없습니다' };
+  }
+  let account: any = null;
+  if (/^[0-9a-f]{24}$/i.test(String(mail.accountId || ''))) {
+    account = await MailAccount.findOne({ _id: mail.accountId, isActive: { $ne: false } }).lean();
+  }
+  if (!account) account = (await resolveOutreachAccount(undefined, scope.user)).account;
+  return account ? { account } : { account: null, error: '발송할 메일 계정이 없습니다. 설정에서 등록하세요.' };
+}
+
+/**
+ * GET /api/mail/reply?inboundMailId=… — 이 메일에 답장하면 **끝에 붙을 서명**을 미리 돌려준다.
+ *
+ * 화면이 들고 있는 계정 목록으로 서명을 그리면, 목록을 아직 안 불러온 화면(답장 받음에서 바로 대화를 연 경우)
+ * 에서는 서명이 비어 보였다. 보낼 때와 같은 계정 고르기를 서버에서 그대로 돌려 결과만 준다.
+ * 메일을 보내지 않는다.
+ */
+export async function GET(req: Request) {
+  try {
+    await dbConnect();
+    const scope = await getMailScope();
+    if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
+
+    const url = new URL(req.url);
+    const inboundMailId = String(url.searchParams.get('inboundMailId') || '').trim();
+    if (!/^[0-9a-f]{24}$/i.test(inboundMailId)) {
+      return NextResponse.json({ success: false, error: 'inboundMailId 필요' }, { status: 400 });
+    }
+    const mail: any = await InboundMail.findById(inboundMailId, { accountId: 1 }).lean();
+    // 남의 메일은 없는 메일과 똑같이 404 — 응답이 다르면 그런 메일이 있다는 게 드러난다
+    if (!mail || !canUseAccount(scope, mail.accountId)) return NextResponse.json(NOT_YOURS, { status: 404 });
+
+    const { account, error } = await pickReplyAccount(scope, mail, url.searchParams.get('mailAccountId') || undefined);
+    if (!account) return NextResponse.json({ success: false, error }, { status: 400 });
+
+    return NextResponse.json({
+      success: true,
+      from: { name: account.fromName || '', address: account.fromAddress || account.smtpUser || '' },
+      signatureHtml: buildSignatureBlock(account, { html: true }),
+    });
+  } catch (e: any) {
+    return NextResponse.json({ success: false, error: e?.message || '서명을 불러오지 못했습니다' }, { status: 500 });
+  }
+}
+
+/**
  * POST /api/mail/reply — 받은 메일에 스레드로 회신.
  *
  * 새 메일 발송(/api/mail/send)과 다른 점:
@@ -61,20 +116,10 @@ export async function POST(req: Request) {
       : mail.from?.address;
     if (!to) return NextResponse.json({ success: false, error: '받을 주소를 찾을 수 없습니다' }, { status: 400 });
 
-    // ── 발송 계정 ──
-    // 1) 화면이 고른 계정(내 것만)  2) 이 메일을 받은 계정 — 상대 메일함에서 같은 주소로 대화가 이어진다
-    // 3) 내 기본 계정.  남의 계정으로는 보내지 않는다.
-    let account: any = null;
-    if (body?.mailAccountId) {
-      account = (await resolveOutreachAccount(String(body.mailAccountId), scope.user)).account;
-      if (!account) return NextResponse.json({ success: false, error: '고른 보내는 계정을 쓸 수 없습니다' }, { status: 400 });
-    } else if (/^[0-9a-f]{24}$/i.test(String(mail.accountId || ''))) {
-      account = await MailAccount.findOne({ _id: mail.accountId, isActive: { $ne: false } }).lean();
-    }
-    if (!account) account = (await resolveOutreachAccount(undefined, scope.user)).account;
-    if (!account) {
-      return NextResponse.json({ success: false, error: '발송할 메일 계정이 없습니다. 설정에서 등록하세요.' }, { status: 400 });
-    }
+    // ── 발송 계정 ── (서명 미리보기 GET 과 같은 규칙 — pickReplyAccount)
+    const picked = await pickReplyAccount(scope, mail, body?.mailAccountId);
+    const account: any = picked.account;
+    if (!account) return NextResponse.json({ success: false, error: picked.error }, { status: 400 });
 
     let smtpPass = '';
     try {

@@ -107,51 +107,79 @@ try {
   ok(empty === '', '서명 정보가 하나도 없으면 아무것도 붙이지 않음 (서버와 동일)');
 
   // ── 2) 답장 화면 서명 체크 ──
-  console.log('\n── ↩ 답장 화면 [서명 붙이기]');
-  await p.evaluate(() => document.querySelector('.nav-item[data-view="pipeline-replied"]')?.click());
+  // **새 창에서 다른 화면을 거치지 않고** 바로 대화를 연다.
+  // 발송관리를 먼저 열면 계정 목록이 미리 불러와져, 목록이 없을 때 서명이 비는 문제를 못 잡는다(실제로 놓쳤다).
+  console.log('\n── ↩ 답장 화면 [서명 붙이기] — 새 창에서 바로 열기');
+  const p2 = await b.newPage();
+  p2.on('pageerror', (e) => errs.push(String(e)));
+  p2.on('dialog', async (d) => { await d.dismiss(); });
+  await p2.setRequestInterception(true);
+  p2.on('request', (r) => (/\/api\/mail\/(send|schedule|campaign|test-send|backfill|ingest)/.test(r.url()) && r.method() !== 'GET')
+    || (/\/api\/mail\/reply/.test(r.url()) && r.method() === 'POST')
+    ? r.abort() : r.continue());
+  await p2.setViewport({ width: 1500, height: 1000 });
+  await p2.setCookie({ name: 'admin_session', value: await sessionToken('david'), domain: 'localhost', path: '/' });
+  await p2.goto(B, { waitUntil: 'networkidle2' });
   await w(2500);
-  const opened = await p.evaluate(() => {
+  const accountsPreloaded = await p2.evaluate(() => Array.isArray(window._mailAccounts) && window._mailAccounts.length > 0);
+  console.log(`      (계정 목록 미리 불러와짐: ${accountsPreloaded} — false 여야 이번 문제를 재현하는 조건)`);
+  await p2.evaluate(() => document.querySelector('.nav-item[data-view="pipeline-replied"]')?.click());
+  await w(2500);
+  const opened = await p2.evaluate(() => {
     const btn = document.querySelector('button.conversation-btn');
     if (btn) { btn.click(); return true; }
     return false;
   });
   ok(opened, '대화 보기 버튼을 누름');
   if (opened) {
-    await w(1500);
-    ok(await waitFor(p, () => !!document.getElementById('convReplySig'), 20000), '[서명 붙이기] 체크가 있음');
-    const layout = await p.evaluate(() => {
+    ok(await waitFor(p2, () => !!document.getElementById('convReplySig'), 20000), '[서명 붙이기] 체크가 있음');
+    // 서버에서 서명을 받아올 때까지 기다린다
+    const loaded = await waitFor(p2, () => {
+      const lbl = document.getElementById('convSigLabel');
+      return lbl && !/불러오는 중/.test(lbl.textContent);
+    }, 20000);
+    ok(loaded, '서명을 서버에서 받아옴');
+    const layout = await p2.evaluate(() => {
       const chk = document.getElementById('convReplySig');
       const body = document.getElementById('convReplyBody');
+      const frame = document.getElementById('convReplyFrame');
       const sig = document.getElementById('convSigPreview');
       if (!chk || !body) return null;
       return {
         checked: chk.checked,
         above: chk.getBoundingClientRect().top < body.getBoundingClientRect().top,
         sigVisible: !!sig && !sig.hidden,
-        sigBelow: !!sig && sig.getBoundingClientRect().top > body.getBoundingClientRect().top,
-        sigText: sig ? sig.innerText.trim().slice(0, 120) : '',
-        note: document.getElementById('convReplySigNote')?.innerText.trim() || '',
+        insideFrame: !!frame && !!sig && frame.contains(sig) && frame.contains(body),
+        sigBelow: !!sig && sig.getBoundingClientRect().top >= body.getBoundingClientRect().bottom - 1,
+        notEditable: !!sig && !body.contains(sig),
+        label: document.getElementById('convSigLabel')?.textContent.trim() || '',
+        sigText: document.getElementById('convSigBody')?.innerText.trim() || '',
         explain: /맨 아래에 보내는 사람 정보/.test(document.body.innerText),
       };
     });
     ok(layout?.checked === true, '기본으로 켜져 있음');
     ok(layout?.above === true, '체크가 본문 **위**에 있음');
     ok(layout?.explain === true, '무엇이 붙는지 설명이 함께 있음');
-    ok(layout?.sigVisible === true, '켜져 있으면 서명 미리보기가 보임');
-    ok(layout?.sigBelow === true, '서명 미리보기가 본문 **아래**에 있음');
-    console.log(`      붙을 서명: ${String(layout?.sigText || '').split('\n').join(' / ')}`);
+    ok(layout?.sigVisible === true, '켜져 있으면 서명이 보임');
+    ok(layout?.insideFrame === true, '서명이 **본문 칸과 같은 테두리 안**에 있음');
+    ok(layout?.sigBelow === true, '서명이 본문 칸 **맨 아래**에 있음');
+    ok(layout?.notEditable === true, '서명은 입력 칸 밖이라 실수로 지워지지 않음 (서명이 두 번 붙지 않음)');
+    ok(/@/.test(layout?.label || ''), `보내는 계정 주소가 표시됨 — "${layout?.label}"`);
+    ok(sigName ? String(layout?.sigText || '').includes(sigName) : String(layout?.sigText || '').length > 0,
+      `서명 내용이 실제로 채워짐 — ${String(layout?.sigText || '').split('\n').filter(Boolean).slice(0, 3).join(' / ')}`);
 
     // 끄면 사라지는가
-    const off = await p.evaluate(() => {
+    const off = await p2.evaluate(() => {
       const chk = document.getElementById('convReplySig');
       chk.checked = false;
       chk.dispatchEvent(new Event('change'));
       const sig = document.getElementById('convSigPreview');
       return { hidden: !!sig && sig.hidden, note: document.getElementById('convReplySigNote')?.innerText.trim() || '' };
     });
-    ok(off.hidden === true, '끄면 서명 미리보기가 사라짐');
+    ok(off.hidden === true, '끄면 서명이 사라짐');
     ok(/서명 없이 나갑니다/.test(off.note), '끄면 "서명 없이 나갑니다" 로 바뀜');
   }
+  await p2.close();
 
   console.log(`\n자바스크립트 오류 ${errs.length}건${errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''}`);
   if (errs.length) fail += errs.length;
