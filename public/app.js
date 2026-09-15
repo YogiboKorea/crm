@@ -634,8 +634,9 @@ function updateNavBadges(counts) {
     const key = el.dataset.navBadge;
     // 메일함 배지는 stage 가 아니라 별도 API 에서 채운다 (loadMailCounts)
     if (key === 'inboxUnread' || key === 'inboxNeedsReply' || key === 'inboxDeadlines' || key === 'inboxTrash') return;
-    // 발송 관리 배지는 그 화면이 실제로 담고 있는 수 — 보낼 메일(queued) + 발송 완료(contacted).
-    // contacted 만 세면 옮겨둔 곳이 있는데도 0 으로 떠서 "안 옮겨졌나" 싶어진다.
+    // 발송 관리 배지는 **아직 보내지 않은 곳(queued)** 만 센다 — 해야 할 일의 수다.
+    // 발송 완료(contacted)까지 더하면 보낼 곳이 하나도 없어도 숫자가 남아 "뭘 더 보내야 하나" 가 된다
+    // (대표님 지적 2026-09-15: 보낼 메일 1곳인데 배지는 2로 떴다).
     // 집계에 없는 키는 비워 둔다.
     // (s[key] || 0) 으로 떨어뜨리면 모르는 키가 전부 "0" 으로 떠서,
     // 실제로는 수천 건이 있는 화면에 0 이 붙는 일이 생긴다.
@@ -647,7 +648,7 @@ function updateNavBadges(counts) {
     // AI 검증 완료 배지는 [2차 검토 필요] 수 — 검증 성공 전체(메일 없는 곳 포함)를 띄우면
     // 검토 카드의 숫자와 달라 "몇 곳을 봐야 하나" 가 헷갈린다 (대표님 요청 2026-09-14)
     const reviewNeeded = counts.verifiedSub && counts.verifiedSub.reviewNeeded;
-    const n = key === 'contacted' ? ((s.queued || 0) + (s.contacted || 0))
+    const n = key === 'contacted' ? (s.queued || 0)
       : (key === 'verified' && typeof reviewNeeded === 'number') ? reviewNeeded
       : (s[key] || 0);
     el.textContent = n.toLocaleString();
@@ -9084,6 +9085,21 @@ function replyBoxHtml(lastInbound) {
                  background:#eef2ff;color:#4338ca;cursor:pointer;white-space:nowrap">🧠 초안 생성</button>
       </div>
 
+      <!-- 서명을 붙일지 **쓰기 전에** 정한다.
+           예전에는 [보내기] 옆에 있어서, 다 쓰고 보내려는 순간에야 눈에 띄었다. -->
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:8px;
+                  padding:8px 11px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;
+                      color:#166534;cursor:pointer">
+          <input type="checkbox" id="convReplySig" checked style="width:15px;height:15px;cursor:pointer">
+          서명 붙이기
+        </label>
+        <span style="font-size:11.5px;color:#15803d;line-height:1.6">
+          켜 두면 답장 <b>맨 아래에 보내는 사람 정보</b>(이름·직함·회사·주소·연락처·웹사이트)가 자동으로 붙습니다.
+          본문에 직접 쓰지 않아도 됩니다. 아래 칸에서 실제로 붙는 모습을 볼 수 있습니다.
+        </span>
+      </div>
+
       <!-- 좌우 2단: 왼쪽에 쓰고 오른쪽에서 한글로 확인.
            위아래로 쌓으면 초안을 고칠 때마다 스크롤을 오르내려야 한다. -->
       <div class="reply-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
@@ -9155,25 +9171,9 @@ function replyBoxHtml(lastInbound) {
         <button type="button" id="convReplySend" data-inbound-id="${escapeAttr(lastInbound._id)}"
           style="padding:9px 20px;font-size:13.5px;font-weight:800;border:none;border-radius:8px;
                  background:#2563eb;color:#fff;cursor:pointer">보내기</button>
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#475569;cursor:pointer">
-          <input type="checkbox" id="convReplySig" checked style="width:14px;height:14px;cursor:pointer">
-          서명 붙이기
-        </label>
-        <!-- 체크박스 이름만 봐서는 무엇이 붙는지 알 수 없다.
-             마우스를 올리면 실제로 붙는 내용을 그대로 보여준다. -->
-        <span class="sig-help" style="position:relative;display:inline-flex;align-items:center;
-              width:16px;height:16px;justify-content:center;border-radius:50%;background:#e2e8f0;
-              color:#475569;font-size:10.5px;font-weight:800;cursor:help;margin-left:-3px">?
-          <span class="sig-pop" style="position:absolute;bottom:130%;left:-8px;width:270px;padding:10px 12px;
-                background:#0f172a;color:#e2e8f0;border-radius:8px;font-size:11.5px;line-height:1.6;
-                font-weight:400;text-align:left;z-index:20;box-shadow:0 6px 18px rgba(0,0,0,.25)">
-            <b style="color:#fff">서명 붙이기</b><br>
-            켜 두면 답장 맨 아래에 <b>보내는 사람 정보</b>(이름·직함·회사·주소·연락처)가
-            자동으로 붙습니다. 본문에 직접 쓸 필요가 없습니다.
-            <span style="display:block;margin-top:7px;padding-top:7px;border-top:1px solid #334155;color:#94a3b8">
-              내용은 <b style="color:#cbd5e1">설정 · 도구 → 📬 메일 계정</b>에서 계정별로 바꿉니다.
-            </span>
-          </span>
+        <!-- [서명 붙이기] 는 본문 위로 올렸다 — 다 쓰고 나서가 아니라 쓰기 전에 정하는 것이라서. -->
+        <span id="convReplySigNote" style="font-size:11.5px;color:#64748b">
+          서명이 함께 나갑니다 · 내용은 <b>설정 · 도구 → 📮 메일 계정 관리</b>에서 바꿉니다
         </span>
         <span id="convReplyMsg" style="font-size:12px;margin-left:auto"></span>
       </div>
@@ -9294,6 +9294,24 @@ function bindConversationReply(leadId, rootId) {
       a.setAttribute('rel', 'noopener noreferrer');
     });
   });
+
+  // ── 서명 붙이기 ──
+  // 켜면 실제로 붙는 서명을 본문 아래에 그대로 보여주고, 끄면 감춘다.
+  // "켜 두긴 했는데 무엇이 붙는지 모르겠다" 가 안 되게 눈으로 확인시킨다.
+  const sigChk = root.querySelector('#convReplySig');
+  const sigBox = root.querySelector('#convSigPreview');
+  const sigNote = root.querySelector('#convReplySigNote');
+  const syncSig = () => {
+    const on = sigChk ? sigChk.checked : true;
+    if (sigBox) sigBox.hidden = !on;
+    if (sigNote) {
+      sigNote.innerHTML = on
+        ? '서명이 함께 나갑니다 · 내용은 <b>설정 · 도구 → 📮 메일 계정 관리</b>에서 바꿉니다'
+        : '<span style="color:#b45309">서명 없이 나갑니다</span> — 본문에 직접 적으셔야 합니다';
+    }
+  };
+  sigChk?.addEventListener('change', syncSig);
+  syncSig();
 
   // ── AI 초안 생성 ──
   // 한국어로 적은 의도를 상대 언어 본문으로 바꿔 회신 상자에 채운다.
