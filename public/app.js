@@ -606,24 +606,36 @@ async function loadServerPage(stage, page, sub, force, tier) {
 // ── stage-counts 캐시 (5분 TTL · 액션 후 invalidateServerPage() 로 즉시 갱신) ──
 var _stageCountsCache = null;
 var _stageCountsInFlight = null;   // 동시 요청 dedup
+var _stageCountsGen = 0;           // 몇 번째로 출발한 요청인가 — 가장 나중에 출발한 것만 화면에 반영한다
 async function loadStageCounts(force) {
   const now = Date.now();
   if (!force && _stageCountsCache && (now - _stageCountsCache.ts) < 5 * 60 * 1000) {
     return _stageCountsCache;
   }
-  if (_stageCountsInFlight) return _stageCountsInFlight;  // 이미 진행 중이면 재사용
-  _stageCountsInFlight = (async () => {
+  // 그냥 숫자를 보려는 것(force 아님)이면 이미 오는 중인 요청을 같이 쓴다.
+  //
+  // ⚠ 무언가를 **바꾼 뒤(force)** 에는 오는 중인 요청을 재사용하면 안 된다 — 그 요청은 바꾸기 **전에** 출발해
+  //   옛 숫자를 가져온다. 실제로: 삭제 확인 창이 닫히며 창이 다시 포커스를 받아(startNavBadgePolling 의 focus)
+  //   숫자 요청이 삭제 요청과 **동시에** 출발했고, 삭제가 끝난 뒤의 새로고침은 그 옛 요청을 받아 써서
+  //   카드를 지워도 사이드바 숫자가 그대로였다 (2026-09-15, check-negotiating-delete.mts 로 잡음).
+  if (_stageCountsInFlight && !force) return _stageCountsInFlight;
+  const gen = ++_stageCountsGen;
+  const req = (async () => {
     try {
       const data = await safeJsonFetch('/api/leads/stage-counts');
       if (data.success) {
-        _stageCountsCache = { ...data, ts: now };
-        updateNavBadges(_stageCountsCache);
-        return _stageCountsCache;
+        const fresh = { ...data, ts: now };
+        // 늦게 도착한 옛 요청이 방금 받은 새 숫자를 덮어쓰지 않게 — 가장 나중에 출발한 요청만 반영한다
+        if (gen !== _stageCountsGen) return _stageCountsCache;
+        _stageCountsCache = fresh;
+        updateNavBadges(fresh);
+        return fresh;
       }
     } catch (e) { console.error('stage-counts', e); }
     return null;
-  })().finally(() => { _stageCountsInFlight = null; });
-  return _stageCountsInFlight;
+  })().finally(() => { if (_stageCountsInFlight === req) _stageCountsInFlight = null; });
+  _stageCountsInFlight = req;
+  return req;
 }
 
 // 사이드바 nav 배지 갱신 (파이프라인 각 stage 실시간 카운트)
@@ -6959,6 +6971,14 @@ function relCardHtml(it, tone) {
                color:var(--text-tertiary);border-radius:99px;padding:3px 9px;font-size:10.5px;
                font-weight:700;white-space:nowrap">직접 등록</span>`
           : ''}
+        <!-- 목록에서 바로 삭제 — 여러 곳을 정리할 때 하나하나 열지 않아도 되게.
+             카드를 누르면 상세가 열리므로, 이 버튼은 누른 뒤 카드 클릭으로 번지지 않게 막는다(bindRelationshipsPage). -->
+        <button type="button" class="rel-card-remove"
+          data-lead-id="${escapeAttr(it.leadId)}" data-company="${escapeAttr(it.Company || '(이름 없음)')}"
+          title="${_rel.stage === 'partner' ? '파트너십에서 삭제' : '더 이상 진행 안 함 · 목록에서 삭제'}"
+          aria-label="${_rel.stage === 'partner' ? '파트너십에서 삭제' : '더 이상 진행 안 함 · 삭제'}"
+          style="flex:none;padding:3px 9px;font-size:11px;font-weight:700;border-radius:99px;cursor:pointer;
+                 border:1px solid #fca5a5;background:var(--bg-surface);color:#b91c1c;white-space:nowrap">✕ 삭제</button>
       </div>
 
       <div style="font-size:11.5px;color:var(--text-tertiary);font-family:monospace;
@@ -7123,25 +7143,33 @@ function relDetailHeadHtml(company, lead, card, tone) {
         </div>
       </div>
 
-      <!-- 단계 옮기기 — 협의가 확정되거나, 반대로 물러날 때 -->
-      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:17px;padding-top:15px;
+      <!-- 아래 줄은 두 칸으로 나눈다 — **단계 옮기기**(앞으로 나아감) 와 **삭제**(여기서 끝냄) 는 성격이 다르다.
+           한 줄에 섞어 두니 삭제가 단계 이동의 하나처럼 보여 "대화 진행 중엔 삭제가 없다" 로 읽혔다 (대표님 지적 2026-09-15). -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;margin-top:17px;padding-top:15px;
                   border-top:1px solid ${tone}33">
-        <span style="font-size:11.5px;color:var(--text-tertiary);font-weight:700;align-self:center">단계 옮기기</span>
         <!-- 파트너십 확정 → [대화 진행 중으로] 되돌리기는 뺐다 (대표님 요청 2026-09-14).
-             확정된 파트너를 다시 협의 단계로 내리는 일은 실제로 없고, 잘못 넣었거나
-             관계가 끝난 곳은 목록에서 빼면 된다 → [🗑 파트너십에서 삭제]. -->
-        ${_rel.stage === 'partner' ? `<button type="button" class="rel-remove"
-          title="파트너 목록에서 뺍니다. DB 에서 지우지 않아 필요하면 되살릴 수 있고, 주고받은 메일은 받은 메일함에 그대로 남습니다"
-          style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
-                 border:1px solid #fca5a5;background:var(--bg-surface);color:#b91c1c">🗑 파트너십에서 삭제</button>` : ''}
-        ${_rel.stage !== 'partner' ? `<button type="button" class="rel-stage-move" data-to="partner"
-          style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;
-                 border:1px solid #7c3aed;background:#7c3aed;color:#fff">⭐ 파트너십 확정으로</button>` : ''}
-        <!-- [📦 보관함으로] 는 뺐다.
-             사이드바에 보관함 메뉴가 없어서, 옮기고 나면 그 회사를 다시 볼
-             방법이 없다. 어디로 가는지 볼 수 없는 곳으로 보내는 버튼은
-             되돌릴 수 없는 것과 같다.
-             (보관함 화면을 살리면 이 버튼도 같이 되살리면 된다) -->
+             확정된 파트너를 다시 협의 단계로 내리는 일은 실제로 없어, 파트너 화면에는 단계 옮기기 칸 자체가 없다.
+             [📦 보관함으로] 도 뺐다 — 사이드바에 보관함 메뉴가 없어 옮기고 나면 다시 볼 방법이 없다. -->
+        ${_rel.stage !== 'partner' ? `
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11.5px;color:var(--text-tertiary);font-weight:700">단계 옮기기</span>
+          <button type="button" class="rel-stage-move" data-to="partner"
+            style="padding:7px 14px;font-size:12.5px;font-weight:700;border-radius:8px;cursor:pointer;
+                   border:1px solid #7c3aed;background:#7c3aed;color:#fff">⭐ 파트너십 확정으로</button>
+        </div>` : ''}
+
+        <!-- 여기서 끝내기 — 얘기가 끝났거나 잘못 들어온 곳을 목록에서 뺀다.
+             답장을 한 번 보내면 자동으로 [대화 진행 중]에 들어오므로(lib/mail/stage-on-reply.ts) 정리 수단이 꼭 있어야 한다. -->
+        <div style="margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+                    padding:8px 12px;border-radius:10px;border:1px solid #fecaca;background:#fef2f2">
+          <span style="font-size:12px;color:#991b1b;line-height:1.5">
+            ${_rel.stage === 'partner' ? '관계가 끝났거나 잘못 넣은 곳인가요?' : '더 이상 대화를 이어가지 않나요?'}
+          </span>
+          <button type="button" class="rel-remove"
+            title="${_rel.stage === 'partner' ? '파트너' : '대화 진행 중'} 목록에서 뺍니다. DB 에서 지우지 않아 필요하면 되살릴 수 있고, 주고받은 메일은 받은 메일함에 그대로 남습니다"
+            style="padding:7px 14px;font-size:12.5px;font-weight:800;border-radius:8px;cursor:pointer;
+                   border:1px solid #dc2626;background:#dc2626;color:#fff">${_rel.stage === 'partner' ? '🗑 파트너십에서 삭제' : '✕ 더 이상 진행 안 함 · 삭제'}</button>
+        </div>
       </div>
     </div>`;
 }
@@ -7292,13 +7320,16 @@ function relTimelineItemHtml(t, i) {
 
 /** 단계 옮기기 — 확정되거나 물러날 때 */
 /**
- * 파트너십 확정 목록에서 업체를 삭제 처리한다 (/api/leads/[id]/remove — DB 에서 지우지 않는 삭제).
+ * [파트너십 확정]·[대화 진행 중] 목록에서 업체를 삭제 처리한다 (/api/leads/[id]/remove — DB 에서 지우지 않는 삭제).
  * 주고받은 메일은 받은 메일함에 그대로 남고, 걸려 있던 예약 발송은 함께 취소된다.
+ * 삭제한 업체는 새 답장이 와도 다시 매칭되지 않는다 (lib/mail/match-lead.ts 가 deleted 를 뺀다).
  */
 async function removeRelationshipLead(leadId, company) {
-  if (!confirm(`[${company}] 을(를) 파트너십 확정 목록에서 삭제합니다.\n\n` +
+  const listName = _rel.stage === 'partner' ? '파트너십 확정' : '대화 진행 중';
+  if (!confirm(`[${company}] 을(를) ${listName} 목록에서 삭제합니다.\n\n` +
     '· 주고받은 메일은 받은 메일함에 그대로 남습니다\n' +
     '· 걸려 있던 예약 발송이 있으면 함께 취소됩니다\n' +
+    '· 이 업체에서 새 답장이 와도 목록에 다시 올라오지 않습니다\n' +
     '· DB 에서 지우지는 않아, 잘못 지웠으면 되살릴 수 있습니다\n\n진행할까요?')) return;
 
   const lead = (_rel.items || []).find((x) => x.leadId === leadId);
@@ -7308,7 +7339,7 @@ async function removeRelationshipLead(leadId, company) {
     const r = await safeJsonFetch(`/api/leads/${encodeURIComponent(id)}/remove`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: '파트너십에서 삭제' }),
+      body: JSON.stringify({ reason: `${listName}에서 삭제` }),
     });
     if (!r?.success) throw new Error(r?.error || '삭제 실패');
     _rel.items = (_rel.items || []).filter((x) => x.leadId !== leadId);
@@ -7349,6 +7380,14 @@ async function moveRelationshipStage(leadId, to, company) {
 }
 
 function bindRelationshipsPage() {
+  // 카드 안의 [✕ 삭제] — 누르면 상세가 열리지 않고 삭제만 묻는다.
+  // 카드 클릭보다 먼저 받아 전파를 끊는다 (버튼이 카드 안에 있어 그대로 두면 상세 화면이 열린다).
+  els.content.querySelectorAll('.rel-card-remove').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeRelationshipLead(b.dataset.leadId, b.dataset.company);
+    });
+  });
   els.content.querySelectorAll('.rel-card').forEach((el) => {
     el.addEventListener('click', () => {
       _rel.open = el.dataset.leadId;
@@ -9170,6 +9209,10 @@ function replyBoxHtml(lastInbound) {
       </div>
 
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <!-- 보내기 전에 받는 사람이 볼 모습 그대로 — 보내는 사람·받는 사람·제목·본문·서명 전체 -->
+        <button type="button" id="convReplyPreview"
+          style="padding:9px 16px;font-size:13.5px;font-weight:800;border:1px solid #2563eb;border-radius:8px;
+                 background:#ffffff;color:#1d4ed8;cursor:pointer">👁 미리보기</button>
         <button type="button" id="convReplySend" data-inbound-id="${escapeAttr(lastInbound._id)}"
           style="padding:9px 20px;font-size:13.5px;font-weight:800;border:none;border-radius:8px;
                  background:#2563eb;color:#fff;cursor:pointer">보내기</button>
@@ -9394,9 +9437,12 @@ function bindConversationReply(leadId, rootId) {
     draftBtn.textContent = '🧠 초안 생성';
   });
 
-  btn.addEventListener('click', async () => {
+  /**
+   * 보낼 내용을 모은다 — [보내기] 와 [👁 미리보기] 가 **같은 값**을 서버에 넘겨야 미리보기를 믿을 수 있다.
+   * 본문이 비었으면 null.
+   */
+  const collectReplyPayload = () => {
     const ta = root.querySelector('#convReplyBody');
-    const msg = root.querySelector('#convReplyMsg');
     // 글자를 고르지 않고 글꼴·크기를 바꾸면 본문 **칸 자체**에 서식이 걸린다.
     // innerHTML 은 칸 안쪽만 담으므로 그대로 보내면 받는 쪽에는 기본 글꼴로 간다
     // (화면에서만 바뀌고 메일에는 안 가는 상태였다). 칸의 서식으로 한 번 감싸서 보낸다.
@@ -9408,7 +9454,51 @@ function bindConversationReply(leadId, rootId) {
     if (text && wrapCss) text = `<div style="${escapeAttr(wrapCss)}">${text}</div>`;
     // 서식 태그만 남고 글자가 없는 경우(빈 <br> 등)를 걸러낸다
     const plainLen = (ta?.innerText || '').trim().length;
-    if (!plainLen) {
+    if (!plainLen) return null;
+    return {
+      inboundMailId: btn.dataset.inboundId,
+      body: text,
+      bodyIsHtml: true,   // 서식 편집기라 본문이 HTML 이다
+      appendSignature: root.querySelector('#convReplySig')?.checked !== false,
+    };
+  };
+
+  // ── 👁 미리보기 ──
+  // 서버가 **실제 발송과 같은 함수**로 조립한 결과를 받아 보여준다 (api/mail/reply/preview — 메일을 보내지 않는다).
+  const previewBtn = root.querySelector('#convReplyPreview');
+  previewBtn?.addEventListener('click', async () => {
+    const msg = root.querySelector('#convReplyMsg');
+    const payload = collectReplyPayload();
+    if (!payload) {
+      msg.innerHTML = '<span style="color:#b91c1c">본문을 입력하면 미리 볼 수 있습니다</span>';
+      return;
+    }
+    previewBtn.disabled = true;
+    previewBtn.textContent = '만드는 중…';
+    msg.innerHTML = '';
+    try {
+      const r = await safeJsonFetch('/api/mail/reply/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!r || !r.success) {
+        msg.innerHTML = `<span style="color:#b91c1c">미리보기 실패 — ${escapeHtml((r && r.error) || '')}</span>`;
+        return;
+      }
+      openReplyPreviewModal(r.preview, () => btn.click());
+    } catch (e) {
+      msg.innerHTML = `<span style="color:#b91c1c">미리보기 실패 — ${escapeHtml(String(e.message || e))}</span>`;
+    } finally {
+      previewBtn.disabled = false;
+      previewBtn.textContent = '👁 미리보기';
+    }
+  });
+
+  btn.addEventListener('click', async () => {
+    const msg = root.querySelector('#convReplyMsg');
+    const payload = collectReplyPayload();
+    if (!payload) {
       msg.innerHTML = '<span style="color:#b91c1c">본문을 입력하세요</span>';
       return;
     }
@@ -9419,12 +9509,7 @@ function bindConversationReply(leadId, rootId) {
       const r = await safeJsonFetch('/api/mail/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          inboundMailId: btn.dataset.inboundId,
-          body: text,
-          bodyIsHtml: true,   // 서식 편집기라 본문이 HTML 이다
-          appendSignature: root.querySelector('#convReplySig')?.checked !== false,
-        }),
+        body: JSON.stringify(payload),
       });
       if (r.success) {
         msg.innerHTML = `<span style="color:#166534">✅ ${r.dryRun ? '발송 시뮬레이션 완료' : '보냈습니다'}</span>`;
@@ -9441,6 +9526,99 @@ function bindConversationReply(leadId, rootId) {
       btn.disabled = false;
       btn.textContent = '보내기';
     }
+  });
+}
+
+/**
+ * 👁 답장 미리보기 창 — **받는 사람 메일함에 보이는 모습 그대로**.
+ *
+ * 본문은 iframe 안에 그린다. 화면(CRM)의 글꼴·줄간격이 섞이면 실제 메일과 달라 보이고,
+ * 반대로 메일 본문의 서식이 CRM 화면으로 새어 나오지도 않는다.
+ * sandbox 에 스크립트 허용을 주지 않는다 — 본문에 무엇이 들어 있어도 실행되지 않는다.
+ *
+ * @param pv    서버(api/mail/reply/preview)가 조립한 결과
+ * @param onSend [이대로 보내기] 를 누르면 부를 함수 — 원래 [보내기] 와 같은 경로로 보낸다
+ */
+function openReplyPreviewModal(pv, onSend) {
+  document.getElementById('replyPreviewModal')?.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'replyPreviewModal';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:12000;background:rgba(15,23,42,.55);'
+    + 'display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:28px 16px';
+
+  const fromLine = pv.from?.name ? `${pv.from.name} <${pv.from.address}>` : (pv.from?.address || '');
+  const orig = pv.inReplyTo || {};
+  const origDate = orig.date ? new Date(orig.date).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  const row = (label, value) => `
+    <div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px;line-height:1.5">
+      <span style="flex:0 0 74px;color:#64748b;font-weight:700">${label}</span>
+      <span style="flex:1;min-width:0;color:#0f172a;word-break:break-all">${value}</span>
+    </div>`;
+
+  wrap.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-label="답장 미리보기"
+         style="width:min(760px,100%);background:#ffffff;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:#eff6ff;border-bottom:1px solid #bfdbfe">
+        <b style="font-size:15px;color:#1e3a8a">👁 미리보기 — 이렇게 나갑니다</b>
+        <span style="font-size:11.5px;color:#3b82f6">아직 보내지 않았습니다</span>
+        <button type="button" data-rp-close title="닫기"
+          style="margin-left:auto;border:none;background:none;font-size:20px;line-height:1;color:#64748b;cursor:pointer">×</button>
+      </div>
+
+      <div style="padding:10px 18px 4px">
+        ${row('보내는 사람', escapeHtml(fromLine))}
+        ${row('받는 사람', escapeHtml(pv.to || ''))}
+        ${row('제목', `<b>${escapeHtml(pv.subject || '')}</b>`)}
+        ${orig.subject ? row('답장 대상', `<span style="color:#475569">${escapeHtml(orig.subject)}</span>
+          <span style="color:#94a3b8;font-size:11.5px"> · ${escapeHtml(orig.from || '')}${origDate ? ` · ${escapeHtml(origDate)}` : ''}</span>`) : ''}
+        ${row('대화 연결', pv.threaded
+          ? '<span style="color:#166534">✓ 상대 메일함에서 원래 메일과 같은 대화로 묶입니다</span>'
+          : '<span style="color:#b45309">원래 메일 번호가 없어 새 메일처럼 보일 수 있습니다</span>')}
+        ${row('서명', pv.signatureAppended
+          ? '<span style="color:#166534">✓ 본문 아래에 붙습니다</span>'
+          : '<span style="color:#b45309">붙지 않습니다</span>')}
+      </div>
+
+      <div style="padding:8px 18px 4px;font-size:11px;font-weight:800;color:#64748b">본문</div>
+      <div style="margin:0 18px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#ffffff">
+        <iframe data-rp-frame sandbox="allow-same-origin" title="답장 본문 미리보기"
+          style="display:block;width:100%;height:320px;border:0;background:#ffffff"></iframe>
+      </div>
+      <div style="padding:6px 18px 0;font-size:11px;color:#94a3b8;line-height:1.6">
+        받는 사람의 메일 프로그램(아웃룩·지메일 등)에 따라 글꼴이 조금 다르게 보일 수 있습니다.
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding:14px 18px;margin-top:10px;border-top:1px solid #e2e8f0;background:#f8fafc">
+        <button type="button" data-rp-close
+          style="padding:9px 16px;font-size:13px;font-weight:700;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;color:#334155;cursor:pointer">고치러 돌아가기</button>
+        <button type="button" data-rp-send
+          style="padding:9px 18px;font-size:13px;font-weight:800;border:none;border-radius:8px;background:#2563eb;color:#ffffff;cursor:pointer">이대로 보내기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
+
+  // 본문 — 메일 클라이언트처럼 흰 바탕·기본 여백으로. 링크는 눌러도 이동하지 않는다(미리보기일 뿐이다).
+  const frame = wrap.querySelector('[data-rp-frame]');
+  const doc = `<!doctype html><html><head><meta charset="utf-8">
+    <style>html,body{margin:0;background:#fff;color:#111827}body{padding:16px 18px;font-family:sans-serif;font-size:14px;line-height:1.6;word-break:break-word}
+    img{max-width:100%}a{pointer-events:none}</style></head><body>${pv.html || ''}</body></html>`;
+  frame.addEventListener('load', () => {
+    try {
+      const h = frame.contentDocument?.documentElement?.scrollHeight || 0;
+      // 짧은 답장은 빈칸 없이, 긴 답장은 창 안에서 스크롤되게
+      frame.style.height = `${Math.min(Math.max(h + 4, 160), Math.round(window.innerHeight * 0.55))}px`;
+    } catch { /* 높이를 못 재도 기본 높이로 보인다 */ }
+  });
+  frame.srcdoc = doc;
+
+  const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  wrap.querySelectorAll('[data-rp-close]').forEach((b) => b.addEventListener('click', close));
+  wrap.querySelector('[data-rp-send]')?.addEventListener('click', () => {
+    close();
+    if (typeof onSend === 'function') onSend();
   });
 }
 
