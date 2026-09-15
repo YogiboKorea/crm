@@ -12274,21 +12274,59 @@ function outboxBindComposeInputs(ready) {
   syncPlan();
 }
 
-/** 미리보기 세 칸만 다시 칠한다 (입력 중 포커스를 잃지 않게) */
+/**
+ * 미리보기 본문 — **실제로 나가는 메일 그대로**.
+ *
+ * 본문 뒤에 서명이 붙는다. 서명은 발송할 때 서버가 붙이므로(api/mail/send · lib/template-vars.ts
+ * buildSignatureBlock) 여기서 빼먹으면 "미리보기엔 없었는데 실제로는 붙어 나갔다" 가 된다.
+ * 양식에서 서명 끄기(appendAccountSignature=false)를 했으면 여기서도 안 붙는다.
+ */
+function outboxPreviewBodyHtml(vars, acc, tpl) {
+  const raw = _outboxCompose.body || '';
+  const body = raw.includes('<')
+    ? outboxSubstitute(raw, vars, { html: true })
+    : outboxSubstitute(raw, vars, { html: true, escapeText: true }).split('\n').join('<br>');
+  const appendSig = tpl ? tpl.appendAccountSignature !== false : true;
+  if (!appendSig) return body;
+  const sig = accountSignatureHtml(acc);
+  if (sig) return body + sig;
+  // 서명 정보가 비어 있으면 실제로도 아무것도 안 붙는다 — 어디서 채우는지 알려 준다
+  return body + `
+    <div style="margin-top:20px;padding:8px 10px;border:1px dashed var(--border-default);border-radius:7px;
+                font-size:11.5px;color:var(--text-quaternary);line-height:1.6">
+      이 계정에는 서명이 비어 있어 <b>서명 없이 나갑니다</b>.
+      [📮 메일 계정 관리]에서 이름·직함·회사·주소·전화·웹사이트를 채우면 여기에 붙습니다.
+    </div>`;
+}
+
+/** 지금 고른 보내는 계정 */
+function outboxSelectedAccount() {
+  return (_mailAccounts || []).find((a) => a._id === _outboxCompose.mailAccountId)
+    || (_mailAccounts || [])[0] || null;
+}
+
+/** 미리보기 칸만 다시 칠한다 (입력 중 포커스를 잃지 않게) */
 function outboxRefreshPreview(ready) {
   const lead = ready.find((l) => l.leadId === _outboxCompose.previewLeadId) || ready[0];
   const vars = outboxPreviewVars(lead);
+  const acc = outboxSelectedAccount();
+  const tpl = (state.email.templates || []).find((t) => t._id === _outboxCompose.templateId) || null;
   const to = document.getElementById('obPvTo');
+  const fr = document.getElementById('obPvFrom');
   const sj = document.getElementById('obPvSubject');
   const bd = document.getElementById('obPvBody');
   if (to) to.innerHTML = outboxPreviewToHtml(lead);
+  if (fr) fr.innerHTML = outboxPreviewFromHtml(acc);
   if (sj) sj.innerHTML = outboxSubstitute(_outboxCompose.subject, vars, { html: true, escapeText: true }) || '(제목 없음)';
-  if (bd) {
-    const raw = _outboxCompose.body || '';
-    bd.innerHTML = raw.includes('<')
-      ? outboxSubstitute(raw, vars, { html: true })
-      : outboxSubstitute(raw, vars, { html: true, escapeText: true }).split('\n').join('<br>');
-  }
+  if (bd) bd.innerHTML = outboxPreviewBodyHtml(vars, acc, tpl);
+}
+
+/** 보내는 사람 — 받는 사람 눈에 보이는 그대로 (이름 <주소>) */
+function outboxPreviewFromHtml(acc) {
+  if (!acc) return '<span style="color:#b91c1c">보내는 계정을 고르세요</span>';
+  const name = String(acc.fromName || '').trim();
+  const addr = String(acc.fromAddress || acc.smtpUser || '').trim();
+  return escapeHtml(name ? `${name} <${addr}>` : addr);
 }
 
 /**
@@ -14817,21 +14855,36 @@ async function renderCrmAccountPage() {
 }
 
 /**
- * 서명 미리보기 — 서버 lib/template-vars.ts buildSignatureBlock 과 같은 모양.
+ * 실제로 **메일 끝에 붙어 나가는 서명** — 서버 lib/template-vars.ts buildSignatureBlock 과 같은 모양이어야 한다.
  *   이름, 직함 / (빈 줄) / 회사 / (빈 줄) / A: 주소 / (빈 줄) / M: 전화 / (빈 줄) / 웹사이트
+ *
+ * 미리보기와 실제로 나가는 메일이 다르면 미리보기를 믿을 수 없다 — 여백·글자 크기까지 서버와 맞춘다.
+ * 서명 정보가 하나도 없으면 빈 문자열(서버도 그때는 아무것도 붙이지 않는다).
  */
-function signaturePreviewHtml(acc) {
+function accountSignatureHtml(acc) {
   const t = (k) => String((acc && acc[k]) || '').trim();
-  const headline = [t('fromName'), t('senderTitle')].filter(Boolean).join(', ');
+  const name = t('fromName'); const title = t('senderTitle');
+  const company = t('senderCompany'); const email = t('fromAddress');
+  const phone = t('senderPhone'); const address = t('senderAddress'); const website = t('senderWebsite');
+  if (!name && !title && !company && !email && !phone && !address && !website) return '';
+  const normalizeUrl = (u) => (/^https?:\/\//i.test(u) ? u : `http://${u}`);
+  const headline = [name, title].filter(Boolean).join(', ');
   const rows = [];
   if (headline) rows.push(`<span style="font-weight:600">${escapeHtml(headline)}</span>`);
-  if (t('senderCompany')) rows.push(escapeHtml(t('senderCompany')));
-  if (t('senderAddress')) rows.push(`A: ${escapeHtml(t('senderAddress'))}`);
-  if (t('senderPhone')) rows.push(`M: ${escapeHtml(t('senderPhone'))}`);
-  if (t('fromAddress') && !t('senderAddress') && !t('senderPhone') && !t('senderWebsite')) rows.push(`E: ${escapeHtml(t('fromAddress'))}`);
-  if (t('senderWebsite')) rows.push(`<span style="color:#2563eb">${escapeHtml(t('senderWebsite'))}</span>`);
-  if (!rows.length) return '<span style="font-size:11.5px;color:#94a3b8">이름·직함·회사·주소·전화·웹사이트를 적으면 여기 서명이 보입니다</span>';
-  return `<div style="font-size:12.5px;line-height:1.5;color:#111827">${rows.map((r) => `<div style="margin:0 0 11px">${r}</div>`).join('')}</div>`;
+  if (company) rows.push(escapeHtml(company));
+  if (address) rows.push(`A: ${escapeHtml(address)}`);
+  if (phone) rows.push(`M: ${escapeHtml(phone)}`);
+  if (email && !address && !phone && !website) {
+    rows.push(`E: <a href="mailto:${escapeAttr(email)}" style="color:#2563eb;text-decoration:none">${escapeHtml(email)}</a>`);
+  }
+  if (website) rows.push(`<a href="${escapeAttr(normalizeUrl(website))}" style="color:#2563eb;text-decoration:none">${escapeHtml(website)}</a>`);
+  return `<div style="margin-top:24px;font-size:13px;line-height:1.5;color:#111827">${rows.map((r) => `<div style="margin:0 0 12px">${r}</div>`).join('')}</div>`;
+}
+
+/** 서명 미리보기 — 비어 있으면 무엇을 채워야 하는지 알려 준다 (메일 계정 관리 화면용) */
+function signaturePreviewHtml(acc) {
+  return accountSignatureHtml(acc)
+    || '<span style="font-size:11.5px;color:#94a3b8">이름·직함·회사·주소·전화·웹사이트를 적으면 여기 서명이 보입니다</span>';
 }
 
 /**

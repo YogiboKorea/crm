@@ -1,4 +1,5 @@
 import { InboundMail } from '@/models/InboundMail';
+import { MailAccount } from '@/models/MailAccount';
 
 /**
  * 메일 보관 정책 — 저장 공간을 저절로 관리한다 (2026-09-15, 대표님 결정).
@@ -14,6 +15,10 @@ import { InboundMail } from '@/models/InboundMail';
  *   - MAIL_KEEP_DAYS(기본 60일) 이 지난 메일: 새로 **가져오지 않는다** (수집 창이 2달) — 이미 있는 것은
  *     제목·발신자·요약·AI 분석만 남겨 둔다. 목록과 업체 대화 이력이 끊기지 않게 지우지는 않는다.
  *
+ * **다시 받아올 수 있는 것만 비운다.** 본문을 비우는 근거는 "원본이 메일 서버에 있다" 하나뿐이다.
+ * 등록이 풀린 계정의 메일이나 위치(folder·uid)가 없는 메일은 비우면 본문이 영영 사라진다 —
+ * 이런 것은 건드리지 않는다. 용량을 조금 더 쓰더라도 내용을 잃는 것보다 낫다.
+ *
  * 매일 도는 작업(api/cron/daily-mail)에서 수집이 끝난 뒤 자동으로 실행된다.
  */
 export const KEEP_BODY_DAYS = Number(process.env.MAIL_KEEP_BODY_DAYS) || 14;
@@ -26,7 +31,20 @@ export interface RetentionResult {
   keepBodyDays: number;
   cleared: number;       // 본문을 비운 메일 수
   freedBytes: number;    // 줄어든 본문 용량(대략)
+  skipped?: number;      // 다시 받아올 수 없어 손대지 않은 메일 수
   error?: string;
+}
+
+/**
+ * 본문을 비워도 되는 메일인가 — **메일 서버에서 다시 받아올 수 있어야 한다**.
+ * lib/mail/body.ts loadMailBody 가 쓰는 조건과 같아야 한다: 살아 있는 계정 + 폴더 + uid.
+ */
+export function refetchableFilter(liveAccountIds: string[]): Record<string, unknown> {
+  return {
+    accountId: { $in: liveAccountIds },
+    folder: { $nin: ['', null] },
+    uid: { $nin: [0, null] },
+  };
 }
 
 /** 오래된 메일·광고의 본문을 비운다 (메일 자체는 지우지 않는다) */
@@ -35,7 +53,7 @@ export async function applyMailRetention(opts: { keepBodyDays?: number } = {}): 
   const cut = new Date(Date.now() - keepBodyDays * 86400000);
   const out: RetentionResult = { keepBodyDays, cleared: 0, freedBytes: 0 };
 
-  const target: any = {
+  const hasBody: any = {
     $and: [
       { $or: [{ date: { $lt: cut } }, { classification: { $in: NOISE } }] },
       { $or: [{ 'raw.html': { $nin: ['', null] } }, { $expr: { $gt: [{ $strLenCP: { $ifNull: ['$raw.text', ''] } }, PREVIEW_CHARS] } }] },
@@ -43,6 +61,12 @@ export async function applyMailRetention(opts: { keepBodyDays?: number } = {}): 
   };
 
   try {
+    // 등록돼 있는 계정만 — 계정이 지워졌으면 그 메일함을 열 방법이 없다
+    const accounts = await MailAccount.find({}, { _id: 1 }).lean();
+    const liveIds = accounts.map((a: any) => String(a._id));
+    const target: any = { ...hasBody, ...refetchableFilter(liveIds) };
+    out.skipped = await InboundMail.countDocuments({ ...hasBody, $nor: [refetchableFilter(liveIds)] });
+
     const [before] = await InboundMail.aggregate([
       { $match: target },
       { $group: { _id: null, n: { $sum: 1 }, size: { $sum: { $add: [

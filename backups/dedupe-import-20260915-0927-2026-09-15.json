@@ -1,0 +1,857 @@
+{
+ "dropped": [
+  {
+   "leadId": "kbeauty-eu-2026-09-08T01-27-0028",
+   "company": "EOLYS Beaute",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "france-eolys-beaut-sas-2269",
+   "keeperCompany": "EOLYS Beauté SAS"
+  },
+  {
+   "leadId": "france-pibukare-my-laser-center-toulouse-2268",
+   "company": "Pibukare (MY LASER CENTER TOULOUSE)",
+   "email": "hello@pibukare.com (B2B); pibukare@gmail.com (mentions légales)",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0031",
+   "keeperCompany": "Pibukare"
+  },
+  {
+   "leadId": "lead-1784411989738-547-1823n",
+   "company": "Whites (whites.sa)",
+   "email": "online@whites.net",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "saudi-arabia-whites-2089",
+   "keeperCompany": "Whites"
+  },
+  {
+   "leadId": "lead-1781224047184-225-80x9k",
+   "company": "My Asia A&K Beauty",
+   "email": "wholesale@holika.pl",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "poland-my-asia-a-k-beauty-krzysztof-chwesiuk-miko-aj-tyc-people-lead-at-existing-crm-account-2154",
+   "keeperCompany": "My Asia A&K Beauty Krzysztof Chwesiuk — Mikołaj Tyc (people-lead at existing CRM account)"
+  },
+  {
+   "leadId": "boots-uk-118",
+   "company": "Boots",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "united-kingdom-boots-uk-chelsey-aldridge-beauty-director-fragrance-skincare-haircare-2176",
+   "keeperCompany": "Boots UK — Chelsey Aldridge (Beauty Director, Fragrance, Skincare & Haircare)"
+  },
+  {
+   "leadId": "spain-el-corte-ingl-s-beatriz-l-pez-pi-a-senior-buyer-luxury-beauty-make-up-category-manager-2002",
+   "company": "El Corte Inglés — Beatriz López Piña (Senior Buyer – Luxury Beauty / Make-up Category Manager)",
+   "email": "Not found publicly",
+   "stage": "failed",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "spain-el-corte-ingl-s-natalia-montes-hermo-beauty-perfumery-commercial-2134",
+   "keeperCompany": "El Corte Inglés — Natalia Montes Hermo (beauty/perfumery commercial)"
+  },
+  {
+   "leadId": "lead-1778502993859-f90nj",
+   "company": "Watsons Philippines (AS Watson)",
+   "email": "",
+   "stage": "failed",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "philippines-watsons-personal-care-stores-philippines-inc-2336",
+   "keeperCompany": "Watsons Personal Care Stores (Philippines), Inc."
+  },
+  {
+   "leadId": "united-kingdom-beauty-seoul-2296",
+   "company": "Beauty & Seoul",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0106",
+   "keeperCompany": "Beauty and Seoul LTD"
+  },
+  {
+   "leadId": "colombia-chok-chok-skin-2294",
+   "company": "Chok Chok Skin",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "colombia-chok-chok-skin-s-a-s-2332",
+   "keeperCompany": "Chok Chok Skin S.A.S"
+  },
+  {
+   "leadId": "lead-1780300116599-69-d69ce",
+   "company": "Cremile B2B (b2b.cremile.com)",
+   "email": "sales@cremile.com",
+   "stage": "archived",
+   "by": "메일 주소",
+   "replaced": true,
+   "keeper": "lithuania-cremile-mb-fantasy-factory-2331",
+   "keeperCompany": "Cremile (MB Fantasy Factory)"
+  },
+  {
+   "leadId": "ireland-haku-beauty-haku-ie-2437",
+   "company": "Haku Beauty (haku.ie)",
+   "email": "info@haku.ie",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0140",
+   "keeperCompany": "Haku"
+  },
+  {
+   "leadId": "kbeauty-eu-2026-09-08T01-27-0020",
+   "company": "ESTECO SAS",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "france-esteco-sas-2409",
+   "keeperCompany": "ESTECO SAS"
+  },
+  {
+   "leadId": "poland-gabona-gabona-sp-z-o-o-2080",
+   "company": "Gabona (Gabona sp. z o.o.)",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "poland-gabona-sp-z-o-o-2000",
+   "keeperCompany": "Gabona sp. z o.o."
+  },
+  {
+   "leadId": "netherlands-haru-haru-beauty-2434",
+   "company": "Haru Haru Beauty",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0075",
+   "keeperCompany": "Haru Haru Beauty"
+  },
+  {
+   "leadId": "norway-k-beauty-norge-as-skinsecret-bo-myr-s-people-lead-at-existing-crm-account-2153",
+   "company": "K-Beauty Norge AS / SkinSecret — Bo Myrås (people-lead at existing CRM account)",
+   "email": "kontakt@skinsecret.no",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0197",
+   "keeperCompany": "K-Beauty Norge AS (SkinSecret)"
+  },
+  {
+   "leadId": "hungary-k-beauty-for-you-kbeautyforyou-hu-2140",
+   "company": "K-Beauty For You (kbeautyforyou.hu)",
+   "email": "ugyfelszolgalat@kbeautyforyou.hu",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0280",
+   "keeperCompany": "K-Beauty For You"
+  },
+  {
+   "leadId": "portugal-just-k-justk-pt-2507",
+   "company": "Just K (justk.pt)",
+   "email": "geral@justk.pt",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0132",
+   "keeperCompany": "Just K"
+  },
+  {
+   "leadId": "czechia-keeo-keeostore-cz-navi-concept-s-r-o-2107",
+   "company": "KEEO (keeostore.cz) — NAVI concept s.r.o.",
+   "email": "viktorie.mucha@keeostore.cz (general: info@keeostore.cz)",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0266",
+   "keeperCompany": "KEEO Store (Keeostore.cz)"
+  },
+  {
+   "leadId": "switzerland-koiyu-koiyu-gmbh-2484",
+   "company": "koiyu (Koiyu GmbH)",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0170",
+   "keeperCompany": "koiyu GmbH"
+  },
+  {
+   "leadId": "switzerland-korea-beauty-made-in-korea-trade-gmbh-2330",
+   "company": "Korea Beauty (Made in Korea Trade GmbH)",
+   "email": "info@miracletox.ch",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0168",
+   "keeperCompany": "Made in Korea Trade GmbH (KoreaBeauty.ch)"
+  },
+  {
+   "leadId": "france-kocosmetic-2408",
+   "company": "Kocosmetic",
+   "email": "contact@kocosmetic.fr",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0029",
+   "keeperCompany": "Kocosmetic"
+  },
+  {
+   "leadId": "kbeauty-eu-2026-09-08T01-27-0022",
+   "company": "Korea Labs",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "france-korea-labs-isis-wellness-2267",
+   "keeperCompany": "Korea Labs (ISIS WELLNESS)"
+  },
+  {
+   "leadId": "romania-koreanbeauty-ro-2464",
+   "company": "KoreanBeauty.ro",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0316",
+   "keeperCompany": "Korean Beauty (KoreanBeauty.ro)"
+  },
+  {
+   "leadId": "czech-republic-koreanglamour-cz-bapet-sport-s-r-o-2482",
+   "company": "KoreanGlamour.cz (BAPET Sport s.r.o.)",
+   "email": "obchod@koreanglamour.cz",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0258",
+   "keeperCompany": "KoreanGlamour.cz"
+  },
+  {
+   "leadId": "lead-1780300116601-569-5o3do",
+   "company": "Korean Shop Monte (en.koreanshopmonte.com)",
+   "email": "Contact form on site",
+   "stage": "failed",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "montenegro-koreanshop-monte-legal-entity-korean-shop-monte-doo-2185",
+   "keeperCompany": "KoreanShop Monte (legal entity: KOREAN SHOP - MONTE DOO)"
+  },
+  {
+   "leadId": "switzerland-made-in-korea-trade-gmbh-trading-as-korea-beauty-koreabeauty-ch-2180",
+   "company": "Made in Korea Trade GmbH (trading as Korea Beauty / koreabeauty.ch)",
+   "email": "info@miracletox.ch (head office); sales@miracletox.ch (stock/orders)",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0168",
+   "keeperCompany": "Made in Korea Trade GmbH (KoreaBeauty.ch)"
+  },
+  {
+   "leadId": "estonia-orien-trade-group-glowstation-2018",
+   "company": "Orien Trade Group (GlowStation)",
+   "email": "info@glowstation.com (리테일 채널)",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "estonia-orien-trade-group-orien-trade-o-2079",
+   "keeperCompany": "Orien Trade Group (Orien Trade OÜ)"
+  },
+  {
+   "leadId": "switzerland-saranghae-gmbh-saranghae-ch-2516",
+   "company": "Saranghae GmbH (saranghae.ch)",
+   "email": "partnerships@saranghae.ch (also wholesale@saranghae.ch, hello@saranghae.ch)",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0167",
+   "keeperCompany": "Saranghae GmbH"
+  },
+  {
+   "leadId": "switzerland-sooyou-nutriogenomics-ag-2056",
+   "company": "Sooyou (nutriogenomics AG)",
+   "email": "mail@sooyou.ch",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0172",
+   "keeperCompany": "Sooyou (nutriogenomics AG)"
+  },
+  {
+   "leadId": "taiwan-sl-beauty-ltd-2342",
+   "company": "SL Beauty Ltd.",
+   "email": "wholesale@slbeautytw.com",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "taiwan-sl-beauty-ltd-1984",
+   "keeperCompany": "SL Beauty Ltd."
+  },
+  {
+   "leadId": "ireland-skkin-kbeauty-skkin-ie-2511",
+   "company": "skkin kbeauty (skkin.ie)",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0141",
+   "keeperCompany": "SKKIN"
+  },
+  {
+   "leadId": "netherlands-suunsu-k-beauty-flagship-store-2203",
+   "company": "SUUNSU (K-Beauty Flagship Store)",
+   "email": "info@suunsu.com",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0077",
+   "keeperCompany": "SUUNSU Amsterdam"
+  },
+  {
+   "leadId": "norway-tran-group-as-2059",
+   "company": "Tran Group AS",
+   "email": "b2b@trangroup.no",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "eu-cosmetics-2026-09-08T07-01-0068",
+   "keeperCompany": "Tran Group AS"
+  },
+  {
+   "leadId": "norway-utseende-no-as-2106",
+   "company": "Utseende.no AS",
+   "email": "kundeservice@utseende.no",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0200",
+   "keeperCompany": "Utseende.no AS"
+  },
+  {
+   "leadId": "uae-chalhoub-group-2197",
+   "company": "Chalhoub Group",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "chalh-uae-157",
+   "keeperCompany": "CHALHOUB"
+  },
+  {
+   "leadId": "fast-ind-138",
+   "company": "FAST BEAUTY",
+   "email": "cs@fastkbeauty.com",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "indonesia-fast-beauty-southeast-ltd-pt-fast-beauty-indonesia-dongkwan-han-new-contact-for-existing-account-fast-beauty-indonesia-2491",
+   "keeperCompany": "Fast Beauty Southeast Ltd & PT Fast Beauty Indonesia — Dongkwan Han (new contact for existing account 'Fast Beauty Indonesia')"
+  },
+  {
+   "leadId": "lead-1780300116600-290-cahz1",
+   "company": "Korean Skincare Zambia (@kbeauty_zambia)",
+   "email": "Not found publicly",
+   "stage": "failed",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "zambia-korean-skincare-zambia-kbeauty-zambia-2338",
+   "keeperCompany": "Korean skincare Zambia (kbeauty_zambia)"
+  },
+  {
+   "leadId": "nykaa-ind-133",
+   "company": "NYKAA E RETAIL",
+   "email": "support@nykaa.com",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "india-nykaa-fsn-e-commerce-ventures-2211",
+   "keeperCompany": "Nykaa (FSN E-Commerce Ventures)"
+  },
+  {
+   "leadId": "lead-1784411989740-790-50nwy",
+   "company": "AmintoBeauty (amintobeauty.com)",
+   "email": "Contact form on site",
+   "stage": "failed",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "brunei-amintobeauty-2344",
+   "keeperCompany": "AmintoBeauty"
+  },
+  {
+   "leadId": "belgium-cosmeticary-cosmeticary-com-2135",
+   "company": "Cosmeticary (cosmeticary.com)",
+   "email": "office@cosmeticary.com",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0093",
+   "keeperCompany": "Cosmeticary"
+  },
+  {
+   "leadId": "eu-cosmetics-2026-09-08T07-01-0030",
+   "company": "Etos B.V. (Koninklijke Ahold Delhaize N.V. 계열)",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "netherlands-etos-ahold-delhaize-2459",
+   "keeperCompany": "Etos (Ahold Delhaize)"
+  },
+  {
+   "leadId": "kbeauty-eu-2026-09-08T01-27-0324",
+   "company": "eMAG (Dante International S.A.)",
+   "email": "",
+   "stage": "archived",
+   "by": "회사명+국가",
+   "replaced": true,
+   "keeper": "romania-emag-dante-international-s-a-2463",
+   "keeperCompany": "eMAG (Dante International S.A.)"
+  },
+  {
+   "leadId": "lead-1784411989739-591-8a7rk",
+   "company": "Glowvana (glowvanajm.com)",
+   "email": "Not found publicly",
+   "stage": "failed",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "jamaica-glowavana-2347",
+   "keeperCompany": "Glowavana"
+  },
+  {
+   "leadId": "colombia-grupo-xito-almacenes-xito-s-a-2333",
+   "company": "Grupo Éxito (Almacenes Éxito S.A.)",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "colombia-grupo-xito-2292",
+   "keeperCompany": "Grupo Éxito"
+  },
+  {
+   "leadId": "portugal-haemiskin-haemiskin-pt-2136",
+   "company": "HaemiSkin (haemiskin.pt)",
+   "email": "geral@haemiskin.pt",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0130",
+   "keeperCompany": "HaemiSkin"
+  },
+  {
+   "leadId": "lead-1784411989741-1021-34t3r",
+   "company": "I AM KOREAN BEAUTY",
+   "email": "mkharmaa@gmail.com",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "jordan-i-am-korean-beauty-2339",
+   "keeperCompany": "I AM Korean Beauty"
+  },
+  {
+   "leadId": "hungary-helloskin-hello-skin-20-kft-2058",
+   "company": "HelloSkin (Hello Skin 20 Kft.)",
+   "email": "info@helloskin.hu",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0282",
+   "keeperCompany": "Hello Skin 20 Kft (HelloSkin.hu)"
+  },
+  {
+   "leadId": "ireland-incandeskin-incandeskin-ie-2104",
+   "company": "Incandeskin (incandeskin.ie)",
+   "email": "info@incandeskin.ie",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0146",
+   "keeperCompany": "Incandeskin"
+  },
+  {
+   "leadId": "uk-john-lewis-partnership-skin-cupid-1999",
+   "company": "John Lewis Partnership (Skin Cupid 샵인샵 파트너십)",
+   "email": "emma.moran@johnlewis.co.uk (Fashion & Beauty 커뮤니케이션/파트너십 문의 창구)",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "united-kingdom-john-lewis-john-lewis-partnership-2090",
+   "keeperCompany": "John Lewis (John Lewis Partnership)"
+  },
+  {
+   "leadId": "belgium-k-beauty-antwerp-2057",
+   "company": "K-Beauty Antwerp",
+   "email": "info@k-beautyantwerp.be",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0097",
+   "keeperCompany": "K-Beauty Antwerp"
+  },
+  {
+   "leadId": "lead-1780300116601-538-ecimp",
+   "company": "Kbeauty.ci (k-beautyci.com)",
+   "email": "support@k-beautyci.com",
+   "stage": "archived",
+   "by": "메일 주소",
+   "replaced": true,
+   "keeper": "cote-d-ivoire-k-beauty-ci-k-beautyci-com-2416",
+   "keeperCompany": "K-Beauty CI (k-beautyci.com)"
+  },
+  {
+   "leadId": "austria-k-nara-delic-gmbh-2055",
+   "company": "k-nara (Delic GmbH)",
+   "email": "office@k-nara.at",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0157",
+   "keeperCompany": "k-nara"
+  },
+  {
+   "leadId": "netherlands-k-beauty-store-kbeautystore-com-kbeautystore-nl-2435",
+   "company": "K-Beauty Store (kbeautystore.com / @kbeautystore.nl)",
+   "email": "Contact form on site",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0078",
+   "keeperCompany": "K-Beauty Store B.V."
+  },
+  {
+   "leadId": "belgium-korina-2350",
+   "company": "Korina",
+   "email": "hello@korina.be",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0089",
+   "keeperCompany": "Korina"
+  },
+  {
+   "leadId": "belgium-nabil-bardani-legal-entity-nabil-bardani-srl-2181",
+   "company": "NABIL BARDANI (legal entity: NABIL BARDANI SRL)",
+   "email": "contact@nabilbardani.com",
+   "stage": "imported",
+   "by": "메일 주소",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0095",
+   "keeperCompany": "NABIL BARDANI SRL"
+  },
+  {
+   "leadId": "lead-1780300116601-628-3oyg7",
+   "company": "Quadis (quadis.mu)",
+   "email": "info@stagheaddesigns.com",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "mauritius-quadis-mauritius-foodies-and-goodies-2078",
+   "keeperCompany": "Quadis Mauritius (Foodies and Goodies)"
+  },
+  {
+   "leadId": "gekka-jap-218",
+   "company": "Gekkasei Trading Co., Ltd.",
+   "email": "info@gekkasei.co.jp",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "japan-tsukikayo-trading-co-ltd-gekkasei-moonium-2335",
+   "keeperCompany": "Tsukikayo Trading Co., Ltd. (Gekkasei / mooNium)"
+  },
+  {
+   "leadId": "lead-1785327028515-967-w1des",
+   "company": "Chemist Warehouse",
+   "email": "suppliers@chemistwarehouse.com.au",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "australia-chemist-warehouse-2194",
+   "keeperCompany": "Chemist Warehouse"
+  },
+  {
+   "leadId": "lead-1785327028515-971-i1c3b",
+   "company": "Clicks Group (Clicks Retailers)",
+   "email": "Contact form on site",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "south-africa-clicks-group-new-clicks-south-africa-2195",
+   "keeperCompany": "Clicks Group (New Clicks South Africa)"
+  },
+  {
+   "leadId": "korea-kuw-244",
+   "company": "Korea Town (Boutiqaat Group)",
+   "email": "kt.distribution@boutiqaat.com",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "kuwait-boutiqaat-korea-town-maram-alkhaldi-new-contact-2411",
+   "keeperCompany": "Boutiqaat / Korea Town — Maram Alkhaldi (new contact)"
+  },
+  {
+   "leadId": "japan-ebay-japan-qoo10-japan-koo-ja-hyun-vice-president-2178",
+   "company": "eBay Japan / Qoo10 Japan — Koo Ja-hyun (Vice President)",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "japan-ebay-japan-qoo10-japan-kim-sua-head-of-korea-business-2177",
+   "keeperCompany": "eBay Japan (Qoo10 Japan) — Kim Sua (Head of Korea Business)"
+  },
+  {
+   "leadId": "lead-1778502993858-o9nyq",
+   "company": "Kibsons Beauty / Faces Beauty (Apparel Group)",
+   "email": "support@faces.com",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "united-arab-emirates-faces-beauty-middle-east-nicole-nitschke-managing-director-2179",
+   "keeperCompany": "FACES Beauty Middle East — Nicole Nitschke (Managing Director)"
+  },
+  {
+   "leadId": "germany-flaconi-gmbh-2458",
+   "company": "flaconi GmbH",
+   "email": "Not found publicly — brand enquiries via flaconi corporate contact form",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0054",
+   "keeperCompany": "Flaconi GmbH"
+  },
+  {
+   "leadId": "kbeauty-eu-2026-09-08T01-27-0088",
+   "company": "Hallyu Korean Concept Store",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "belgium-hallyu-korean-concept-store-2206",
+   "keeperCompany": "Hallyu (Korean Concept Store)"
+  },
+  {
+   "leadId": "united-kingdom-harding-annalise-stewart-new-named-buyer-at-an-existing-crm-company-2444",
+   "company": "Harding+ — Annalise Stewart (NEW named buyer at an existing CRM company)",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "united-kingdom-harding-harding-retail-ltd-2218",
+   "keeperCompany": "Harding+ (Harding Retail Ltd)"
+  },
+  {
+   "leadId": "italy-kippun-haru-s-r-l-k-ippun-haru-kippun-haru-com-2139",
+   "company": "Kippun Haru S.r.l. — \"K-ippun Haru\" (kippun-haru.com)",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kbeauty-eu-2026-09-08T01-27-0064",
+   "keeperCompany": "Kippun Haru S.r.l."
+  },
+  {
+   "leadId": "kuwait-korea-town-beauty-boutiqaat-amna-hamdan-2305",
+   "company": "Korea Town Beauty (Boutiqaat) — Amna Hamdan",
+   "email": "Not found publicly (ZoomInfo lists a masked corporate address, h***@boutiqaat.com)",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "kuwait-boutiqaat-korea-town-maram-alkhaldi-new-contact-2411",
+   "keeperCompany": "Boutiqaat / Korea Town — Maram Alkhaldi (new contact)"
+  },
+  {
+   "leadId": "france-nocib-douglas-group-france-2461",
+   "company": "Nocibé (Douglas Group France)",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "eu-cosmetics-2026-09-08T07-01-0009",
+   "keeperCompany": "Nocibé (Nocibé France Distribution SAS)"
+  },
+  {
+   "leadId": "hong-kong-mannings-dfi-retail-group-2209",
+   "company": "Mannings (DFI Retail Group)",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "lead-1778502993857-myrsv",
+   "keeperCompany": "Mannings (DFI Retail Group)"
+  },
+  {
+   "leadId": "france-marionnaud-group-a-s-watson-2462",
+   "company": "Marionnaud Group (A.S. Watson)",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "eu-cosmetics-2026-09-08T07-01-0010",
+   "keeperCompany": "Marionnaud Lafayette SAS (브랜드명: Marionnaud Parfumeries)"
+  },
+  {
+   "leadId": "kbeauty-eu-2026-09-08T01-27-0225",
+   "company": "Normal (Normal A/S)",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "denmark-normal-a-s-2393",
+   "keeperCompany": "NORMAL A/S"
+  },
+  {
+   "leadId": "pures-uni-212",
+   "company": "PURESEOUL",
+   "email": "Contact form",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "uk-pureseoul-chloe-evans-people-lead-at-existing-crm-account-2152",
+   "keeperCompany": "PURESEOUL — Chloe Evans (people-lead at existing CRM account)"
+  },
+  {
+   "leadId": "lead-1778502993859-qyfik",
+   "company": "Sephora Hong Kong (Olive Young curated zone — H2 2026)",
+   "email": "guest@luxola.com",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "hong-kong-sephora-hong-kong-karena-tsang-2312",
+   "keeperCompany": "Sephora Hong Kong — Karena Tsang"
+  },
+  {
+   "leadId": "hong-kong-sephora-hong-kong-vicki-lo-2311",
+   "company": "Sephora Hong Kong — Vicki Lo",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "hong-kong-sephora-hong-kong-karena-tsang-2312",
+   "keeperCompany": "Sephora Hong Kong — Karena Tsang"
+  },
+  {
+   "leadId": "super-uk-117",
+   "company": "Superdrug",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "united-kingdom-superdrug-2192",
+   "keeperCompany": "Superdrug"
+  },
+  {
+   "leadId": "lead-1778502993859-iktf9",
+   "company": "Watsons Malaysia (AS Watson)",
+   "email": "",
+   "stage": "failed",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "malaysia-watsons-personal-care-stores-sdn-bhd-malaysia-2337",
+   "keeperCompany": "Watsons Personal Care Stores Sdn. Bhd. (Malaysia)"
+  },
+  {
+   "leadId": "lead-1785327028501-456-ctv46",
+   "company": "noon.com (Noon E-commerce FZ-LLC)",
+   "email": "seller@noon.com",
+   "stage": "archived",
+   "by": "회사명+국가",
+   "replaced": true,
+   "keeper": "uae-noon-com-noon-e-commerce-fz-llc-2210",
+   "keeperCompany": "noon.com (Noon E-commerce FZ-LLC)"
+  },
+  {
+   "leadId": "kbeauty-eu-2026-09-08T01-27-0320",
+   "company": "Douglas Romania",
+   "email": "",
+   "stage": "archived",
+   "by": "홈페이지 도메인",
+   "replaced": true,
+   "keeper": "romania-douglas-romania-2291",
+   "keeperCompany": "Douglas Romania"
+  },
+  {
+   "leadId": "india-tata-cliq-2196",
+   "company": "Tata CLiQ",
+   "email": "Not found publicly (ZoomInfo shows a partial masked address only)",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "india-tata-cliq-2212",
+   "keeperCompany": "Tata CLiQ"
+  },
+  {
+   "leadId": "indonesia-tiktok-shop-indonesia-by-tokopedia-2282",
+   "company": "TikTok Shop Indonesia (by Tokopedia)",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "회사명+국가",
+   "replaced": false,
+   "keeper": "indonesia-tiktok-shop-indonesia-by-tokopedia-2281",
+   "keeperCompany": "TikTok Shop Indonesia (by Tokopedia)"
+  },
+  {
+   "leadId": "indonesia-tiktok-shop-indonesia-by-tokopedia-2283",
+   "company": "TikTok Shop Indonesia (by Tokopedia)",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "회사명+국가",
+   "replaced": false,
+   "keeper": "indonesia-tiktok-shop-indonesia-by-tokopedia-2281",
+   "keeperCompany": "TikTok Shop Indonesia (by Tokopedia)"
+  },
+  {
+   "leadId": "vietnam-tiktok-shop-vietnam-2285",
+   "company": "TikTok Shop Vietnam",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "회사명+국가",
+   "replaced": false,
+   "keeper": "vietnam-tiktok-shop-vietnam-2286",
+   "keeperCompany": "TikTok Shop Vietnam"
+  },
+  {
+   "leadId": "philippines-watsons-philippines-2288",
+   "company": "Watsons Philippines",
+   "email": "Not found publicly",
+   "stage": "imported",
+   "by": "홈페이지 도메인",
+   "replaced": false,
+   "keeper": "philippines-watsons-personal-care-stores-philippines-inc-2336",
+   "keeperCompany": "Watsons Personal Care Stores (Philippines), Inc."
+  }
+ ],
+ "review": [
+  {
+   "leadId": "bangladesh-korean-cosmetics-wholesale-dhaka-2324",
+   "company": "Korean Cosmetics Wholesale (Dhaka)",
+   "other": "Shine Skin Bangladesh",
+   "otherLeadId": "lead-1784411989738-479-h8p99",
+   "key": "facebook.com/kcosw.bd"
+  },
+  {
+   "leadId": "usa-channelkey-2450",
+   "company": "ChannelKey",
+   "other": "Avenue7Media",
+   "otherLeadId": "usa-avenue7media-2449",
+   "key": "get-ryze.ai"
+  },
+  {
+   "leadId": "usa-envision-horizons-2448",
+   "company": "Envision Horizons",
+   "other": "ChannelKey",
+   "otherLeadId": "usa-channelkey-2450",
+   "key": "get-ryze.ai"
+  }
+ ]
+}

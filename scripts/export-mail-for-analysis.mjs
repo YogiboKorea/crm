@@ -22,16 +22,36 @@ const OUT_DIR = outIdx > 0 ? process.argv[outIdx + 1] : 'scripts/mail-analysis';
 // 기본은 뺀다: 광고는 읽을 필요가 없고, 화면도 광고 폴더로 따로 치운다.
 const INCLUDE_NOISE = process.argv.includes('--include-noise');
 
+// --mailbox=david@yogico.kr — 그 메일 주소로 등록된 계정이 수집한 것만 (대표님 것만 돌릴 때).
+// 같은 주소가 여러 번 등록돼 있을 수 있으므로(관리자 등록 + 본인 등록) 전부 찾아 묶는다.
+const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').split('=').slice(1).join('=');
+const MAILBOX = arg('mailbox');
+// --days=30 — 최근 며칠치만 (오래된 것까지 다 돌릴 필요가 없을 때)
+const DAYS = Number(arg('days')) || 0;
+
+let accountFilter = {};
+if (MAILBOX) {
+  const escaped = MAILBOX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const accts = await db.collection('mailaccounts')
+    .find({ smtpUser: new RegExp(`^${escaped}$`, 'i') }, { projection: { _id: 1, owner: 1 } }).toArray();
+  if (!accts.length) { console.error(`${MAILBOX} 로 등록된 계정이 없습니다`); process.exit(1); }
+  accountFilter = { accountId: { $in: accts.map((a) => String(a._id)) } };
+  console.log(`메일함: ${MAILBOX} · 등록 ${accts.length}개 (${accts.map((a) => a.owner).join(', ')})`);
+}
+
 const until = new Date();
 if (!INCLUDE_TODAY) until.setHours(0, 0, 0, 0);
+const dateFilter = DAYS ? { $lt: until, $gte: new Date(Date.now() - DAYS * 86400000) } : { $lt: until };
 const mails = await db.collection('inboundmails').find({
   ...(INCLUDE_NOISE ? {} : { classification: { $nin: ['ad', 'system'] } }),
+  ...accountFilter,
   direction: { $ne: 'out' },
   trashedAt: null,
   'analysis.method': { $ne: 'ai' },
-  date: { $lt: until },
+  date: dateFilter,
 }).sort({ date: -1 }).toArray();
-console.log('기준: ' + until.toISOString() + (INCLUDE_TODAY ? ' (오늘 포함 · 지금까지)' : ' 이전 수신분'));
+console.log('기준: ' + until.toISOString() + (INCLUDE_TODAY ? ' (오늘 포함 · 지금까지)' : ' 이전 수신분')
+  + (DAYS ? ` · 최근 ${DAYS}일치만` : ''));
 
 // 리드 회사명을 붙여준다 — 우리가 먼저 콜드메일을 보낸 곳인지가 판단에 크게 작용한다
 const leadIds = [...new Set(mails.map((m) => m.leadId).filter(Boolean))];
