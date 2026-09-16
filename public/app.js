@@ -197,13 +197,13 @@ let isMaster = false;
 let edits = {};
 let customLeads = [];
 let state = {
-  // 첫 화면 = AI 검증 완료.
+  // 첫 화면 = 받은 메일함 (대표님 요청 2026-09-15 — 메일함을 맨 위로 올리면서 함께).
   //
-  // 예전에는 'pipeline-import' 였는데 그 메뉴는 사이드바에서 숨긴 상태라,
-  // 접속하면 **사이드바 어디에도 없는 빈 화면**이 먼저 떴다. 어느 메뉴도
-  // 선택돼 보이지 않아 "지금 뭘 보고 있는 거지" 로 시작하게 된다.
-  // 매일 여는 곳이 [AI 검증 완료] 이므로 거기서 시작한다.
-  view: "pipeline-verified",
+  // 아침에 들어와서 가장 먼저 보는 것이 "밤사이 뭐가 왔나" 다. 그래서 메뉴도 맨 위이고,
+  // 접속하면 바로 그 화면이 열린다.
+  // (예전 첫 화면은 [AI 검증 완료] 였고, 그 전에는 사이드바에 없는 [가져오기] 라
+  //  아무 메뉴도 선택돼 보이지 않는 빈 화면으로 시작했다.)
+  view: "tool-inbox",
   query: "",
   country: "All",
   status: "All",
@@ -848,11 +848,11 @@ function bindEvents() {
       return;
     }
 
-    // 2. Home Button → 기본 랜딩 (가져오기) 로 이동. 전체 리드 fetch 안 함.
+    // 2. Home Button → 첫 화면(받은 메일함)으로. 전체 리드 fetch 안 함.
     if (event.target.closest("#homeBtn")) {
-      // 로고를 누르면 첫 화면으로. 예전에는 숨겨진 [가져오기] 로 보내서
-      // 사이드바에 아무것도 선택되지 않은 빈 화면이 떴다.
-      state.view = "pipeline-verified";
+      // 로고를 누르면 첫 화면으로 — 접속했을 때와 같은 곳이어야 한다(state.view 기본값과 같이 둔다).
+      // 예전에는 숨겨진 [가져오기] 로 보내서 사이드바에 아무것도 선택되지 않은 빈 화면이 떴다.
+      state.view = "tool-inbox";
       resetAllFilters();
       state.selectedLeadIds = new Set();
       resetPagination();
@@ -2819,7 +2819,7 @@ function renderServerPagedTable(pageData, stageInfo) {
       <button class="button ghost danger-action" data-delete-selected type="button" ${state.selectedLeadIds.size ? "" : "disabled"}>
         🗑 목록에서 빼기 (${state.selectedLeadIds.size})
       </button>
-      <span style="margin-left:auto;font-size:12px;color:var(--text-tertiary);display:inline-flex;align-items:center;gap:10px">
+      <span class="list-toolbar-meta" style="margin-left:auto;font-size:12px;color:var(--text-tertiary);display:inline-flex;align-items:center;gap:10px">
         <label style="display:inline-flex;align-items:center;gap:5px">
           정렬
           <select id="leadSortSelect" style="padding:4px 8px;font-size:12px;border:1px solid var(--border-default);
@@ -5108,9 +5108,9 @@ async function renderInboxPage(opts) {
                       ? 'linear-gradient(135deg,#eff6ff 0%,#e0ecff 100%)'
                       : 'linear-gradient(135deg,var(--bg-surface) 0%,var(--bg-surface-alt) 100%)'};
                     box-shadow:${todayOn ? '0 4px 16px rgba(37,99,235,.14)' : 'var(--shadow-sm)'}">
-      <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+      <div class="today-row" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
 
-        <div style="display:flex;align-items:center;gap:14px;min-width:0">
+        <div class="today-head" style="display:flex;align-items:center;gap:14px;min-width:0">
           <div style="width:52px;height:52px;flex:none;border-radius:14px;display:flex;
                       align-items:center;justify-content:center;font-size:26px;
                       background:${todayOn ? '#2563eb' : '#eff6ff'}">📨</div>
@@ -5133,7 +5133,7 @@ async function renderInboxPage(opts) {
                  <div style="font-size:12px;color:var(--text-quaternary);margin-top:3px">
                    새 메일은 [📥 메일 가져오기] 를 누르면 들어옵니다</div>
                </div>`
-            : `<div style="flex:1;display:flex;align-items:center;gap:22px;flex-wrap:wrap;min-width:0">
+            : `<div class="today-stats" style="flex:1;display:flex;align-items:center;gap:22px;flex-wrap:wrap;min-width:0">
                  <div style="display:flex;align-items:baseline;gap:5px">
                    <span style="font-size:40px;font-weight:800;line-height:1;
                                 color:${todayOn ? '#1d4ed8' : 'var(--text-primary)'}">${todayN.toLocaleString()}</span>
@@ -5145,7 +5145,7 @@ async function renderInboxPage(opts) {
                  ${todayNoise ? stat(todayNoise, '광고·자동발송', 'var(--text-quaternary)') : ''}
                </div>`}
 
-        <div style="margin-left:auto;text-align:right">
+        <div class="today-cta" style="margin-left:auto;text-align:right">
           <button type="button" id="inboxTodayBtn"
             title="${todayOn ? '전체 메일함으로 돌아갑니다' : '오늘 들어온 메일만 폴더 구분 없이 모아서 봅니다'}"
             style="padding:13px 24px;border-radius:11px;cursor:pointer;font-size:14px;font-weight:800;
@@ -5187,7 +5187,7 @@ async function renderInboxPage(opts) {
   };
 
   const folderPanel = `
-    <aside style="width:210px;flex-shrink:0;background:var(--bg-surface);border:1px solid var(--border-subtle);
+    <aside class="inbox-folders" style="width:210px;flex-shrink:0;background:var(--bg-surface);border:1px solid var(--border-subtle);
                   border-radius:12px;padding:10px;align-self:flex-start;max-height:72vh;overflow:auto">
       <div style="font-size:10px;font-weight:800;color:var(--text-tertiary);padding:2px 10px 8px;
                   text-transform:uppercase;letter-spacing:.5px">거래처 폴더</div>
@@ -5249,9 +5249,9 @@ async function renderInboxPage(opts) {
     ${viewingBanner}
     ${todayStrip}
     ${accountTabs}
-    <div style="display:flex;gap:14px;align-items:flex-start">
+    <div class="inbox-layout" style="display:flex;gap:14px;align-items:flex-start">
     ${folderPanel}
-    <div style="flex:1;min-width:0">
+    <div class="inbox-main" style="flex:1;min-width:0">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
       <input id="inboxSearch" type="search" placeholder="제목·발신자 검색" value="${escapeAttr(_inboxState.q)}"
         style="padding:7px 12px;font-size:13px;border:1px solid var(--border-default);border-radius:8px;
@@ -11468,7 +11468,7 @@ function renderUserGuidePage() {
           해외 바이어를 찾아 메일을 보내고, 답장을 관리하는 곳입니다
         </h2>
         <div style="font-size:13.5px;color:#1e40af;line-height:1.85">
-          왼쪽 메뉴는 <b>네 묶음</b>입니다 — ① 리드 파이프라인 ② 메일함 ③ 직접 올린 업체 ④ 설정·도구.<br>
+          왼쪽 메뉴는 <b>네 묶음</b>입니다 — ① 메일함 ② 리드 파이프라인 ③ 직접 올린 업체 ④ 설정·도구.<br>
           <b>고른 곳에만 메일이 나갑니다.</b> 목록에 있다고 저절로 나가지 않습니다.
         </div>
         <div style="margin-top:13px;padding:11px 15px;background:#fff;border-radius:10px;
@@ -12626,7 +12626,7 @@ function outboxReadyHtml(ready, lock) {
         </div>
       </div>
 
-      <div style="padding:14px 17px;background:var(--bg-surface);display:grid;
+      <div class="outbox-compose" style="padding:14px 17px;background:var(--bg-surface);display:grid;
                   grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:16px">
         <!-- 왼쪽: 쓰는 곳 -->
         <div style="min-width:0">
