@@ -8328,6 +8328,14 @@ async function openMailDetailModal(mailId) {
       ${a.suggestedAction ? `<div style="margin-top:8px;padding:7px 10px;background:#fff;border-radius:6px;
         font-size:12px;color:#1e1b4b;border-left:3px solid #6366f1"><b>다음 할 일</b> · ${escapeHtml(a.suggestedAction)}</div>` : ''}
       ${a.deadlineText ? `<div style="margin-top:6px;font-size:11.5px;color:#b45309">⏰ "${escapeHtml(a.deadlineText)}"</div>` : ''}
+    </div>` : m.direction === 'out' ? `
+    <!-- 우리가 보낸 메일 — 분석 대상이 아니다.
+         분석은 "상대가 무엇을 요구했나 · 언제까지 답해야 하나" 를 가리는 일인데, 내가 쓴 메일에는 물어볼 것이 없다.
+         그런데도 [아직 분석하지 않은 메일입니다] 가 떠서 "왜 이건 안 해줬지" 로 읽혔다 (대표님 지적 2026-09-16). -->
+    <div style="margin:12px 0;padding:10px 14px;background:var(--bg-surface-alt);border:1px solid var(--border-subtle);
+                border-radius:10px;font-size:12px;color:var(--text-tertiary);line-height:1.7">
+      <b style="color:var(--text-secondary)">내가 보낸 메일입니다</b> — AI 분석은 <b>받은 메일에만</b> 합니다.
+      보낸 내용은 아래에 그대로 있습니다.
     </div>` : `
     <!-- 버튼을 설명 안에 둔다.
          예전에는 설명은 본문 위에 있고 버튼은 팝업 오른쪽 맨 위 구석에 있었다.
