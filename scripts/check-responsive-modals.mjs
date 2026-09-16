@@ -101,6 +101,24 @@ try {
     (page) => page.evaluate(() => { const r = document.querySelector('.table-wrap tbody tr'); if (r) { r.click(); return true; } return false; }),
     (page) => page.evaluate(() => document.querySelector('[data-close-mail], #mailDetailClose, .modal-close')?.click()));
 
+  // ── 업체 상세 (검증 완료에서 한 곳 열기) ──
+  // 판정 버튼 글자가 세로로 쪼개지던 자리다 — 버튼이 낱말 폭 아래로 줄어들지 않는지 함께 본다
+  await goto(p, 'pipeline-verified');
+  await step('🏢 업체 상세',
+    (page) => page.evaluate(() => { const r = document.querySelector('.table-wrap tbody tr'); if (r) { r.click(); return true; } return false; }),
+    // 닫기 전에 판정 버튼 크기를 잰다 — 닫고 나서 재면 늘 0px 이라 아무것도 못 잡는다
+    async (page) => {
+      const j = await page.evaluate(() => {
+        const q = document.getElementById('el-toQueue');
+        if (!q || !q.offsetParent) return null;
+        const r = q.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height), text: q.textContent.trim() };
+      });
+      if (j && j.w < 110) { fail++; console.log(`    ⚠ 판정 버튼이 ${j.w}px 로 찌그러졌습니다 — 글자가 세로로 쪼개집니다`); }
+      else if (j) console.log(`    판정 버튼 ${j.w}×${j.h}px — "${j.text}" 한 줄로 들어감`);
+      await page.evaluate(() => document.getElementById('editModalCloseBtn')?.click());
+    });
+
   // ── 대화 보기 (답장 받음) ──
   await goto(p, 'pipeline-replied');
   await step('💬 대화 보기',

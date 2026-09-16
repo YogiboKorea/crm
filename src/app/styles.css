@@ -1487,7 +1487,10 @@ body.modal-open {
   /* 검색칸은 한 줄을 다 쓴다 */
   #inboxSearch, #sentQ, #relSearch { min-width: 0 !important; flex: 1 1 100% !important; width: 100%; }
 
-  /* 목록 위 도구줄 — 오른쪽으로 밀지 말고 아랫줄로 내려온다 */
+  /* 목록 위 도구줄 — 오른쪽으로 밀지 말고 아랫줄로 내려온다.
+     줄바꿈은 **바깥 줄(.bulk-actions)** 에도 있어야 한다. 안쪽만 고쳐두면
+     바깥이 한 줄을 고집해 [정렬·건수] 가 통째로 화면 밖으로 밀려난다. */
+  .bulk-actions { flex-wrap: wrap; }
   .list-toolbar-meta {
     margin-left: 0 !important;
     flex-wrap: wrap;
@@ -1495,8 +1498,11 @@ body.modal-open {
     justify-content: space-between;
   }
 
-  /* 버튼 글자가 길면 두 줄로 — 안 그러면 줄바꿈을 안 해 화면 밖으로 나간다 */
-  .button, .el-judge { white-space: normal; }
+  /* 버튼 글자가 길면 두 줄로 — 안 그러면 줄바꿈을 안 해 화면 밖으로 나간다.
+     word-break: keep-all 이 꼭 같이 있어야 한다. 한글은 기본값이 아무 글자에서나 줄을 바꿔서,
+     칸이 좁아지면 [검증실패 업체로 선정] 이 한 글자씩 세로로 쪼개진다 (대표님 지적 2026-09-16).
+     keep-all 이면 띄어쓰기에서만 바뀌고, 칸도 낱말보다 좁아지지 않는다. */
+  .button, .el-judge, .el-nav-btn { white-space: normal; word-break: keep-all; }
 
   /* 표는 칸 안에서 옆으로 밀어 본다. 여백을 줄여 한 화면에 더 들어오게 한다. */
   .table-wrap table { font-size: 12px; }
@@ -1527,4 +1533,18 @@ body.modal-open {
   .today-stats > div:nth-child(2) { display: none; }   /* 세로 칸막이 — 줄이 바뀌면 의미가 없다 */
   .today-cta { margin-left: 0 !important; width: 100%; text-align: left !important; }
   .today-cta button { width: 100%; }
+}
+
+/* 팝업 머리말 — 좁은 화면에서는 제목과 판정 버튼을 위아래로.
+   가로로 두면 제목이 폭을 다 먹고 버튼 칸이 30px 만 남아, 버튼 글자가 세로로 쪼개진다
+   (대표님 지적 2026-09-16 · [↩ 발송 취소]·[🚫 검증실패 업체로 선정]). */
+@media (max-width: 620px) {
+  .modal-header { flex-direction: column; align-items: stretch; gap: 10px; position: relative; }
+  .modal-header #el-review { width: 100%; justify-content: flex-start; }
+  #el-judgeBox { width: 100%; flex-wrap: wrap; }
+  /* 버튼은 낱말보다 좁아지지 않게 — 두 개가 한 줄에 못 들어가면 각자 한 줄을 쓴다 */
+  .el-judge { flex: 1 1 150px; min-width: 150px; text-align: center; }
+  #el-navBox { width: 100%; justify-content: space-between; }
+  /* 닫기는 오른쪽 위 구석에 고정 — 버튼 줄에 끼면 눌러야 할 것이 셋이 되어 헷갈린다 */
+  .modal-header .modal-close { position: absolute; top: 10px; right: 12px; }
 }

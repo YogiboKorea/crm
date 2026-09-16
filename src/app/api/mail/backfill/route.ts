@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { runBackfill } from '@/lib/mail/ingest';
 import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
+import { KEEP_DAYS } from '@/lib/mail/retention';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 /**
  * POST /api/mail/backfill — [📥 전체 메일함 2달 가져오기]
- * Body: { accountId, days?: 60, cursor? }
+ * Body: { accountId, days?: 60, cursor? }  — days 는 2달(KEEP_DAYS)을 넘길 수 없다 (runBackfill 이 자른다)
  *
  * 한 번에 다 못 가져오므로(서버 실행 시간 제한) 50초쯤 가져오고 cursor 를 돌려준다.
  * 화면은 done 이 올 때까지 cursor 를 넘겨 다시 부른다.
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
     const r = await runBackfill({
       accountId,
       user,
-      days: Number(body?.days) || 60,
+      days: Number(body?.days) || KEEP_DAYS,
       cursor: body?.cursor || null,
       budgetMs: 50_000,
     });

@@ -22,6 +22,7 @@ import { ruleClassify, shouldAnalyze, type RuleResult } from './classify';
 import { localAnalyze } from './local-analyze';
 import { matchLead, shouldMoveToReplied } from './match-lead';
 import { listMailAccounts, resolveAccount, toImapConfig } from './accounts';
+import { KEEP_DAYS } from './retention';
 import { learnSenderGroups, suggestGroupBySender, suggestGroupByName, listGroups, type LearnedGroups } from './groups';
 import { syncSentReplies } from './reconcile';
 import { accountIdsForOwner } from './scope';
@@ -591,7 +592,10 @@ export async function runBackfill(opts: {
     }
   }
 
-  const days = Math.max(1, Math.min(365, Number(opts.days) || 60));
+  // 가져오는 창은 **2달**로 잠근다 (lib/mail/retention.ts KEEP_DAYS · 대표님 결정 2026-09-15).
+  // 더 넓게 달라고 해도 여기서 자른다 — "2달 지난 건 안 불러온다" 가 규칙이고,
+  // 규칙이 한 곳에만 적혀 있으면 부르는 쪽이 늘어날 때 조용히 깨진다.
+  const days = Math.max(1, Math.min(KEEP_DAYS, Number(opts.days) || KEEP_DAYS));
   const sinceDate = new Date(Date.now() - days * 86400000);
   const batchSize = Math.max(5, Math.min(100, Number(opts.batchSize) || 40));
   const budgetMs = Math.max(10_000, Math.min(240_000, Number(opts.budgetMs) || 50_000));
