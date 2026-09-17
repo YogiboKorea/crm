@@ -8963,11 +8963,16 @@ async function openConversationModal(leadId) {
         <button type="button" id="conversationModalClose"
           style="background:none;border:none;font-size:22px;color:#94a3b8;cursor:pointer;line-height:1;padding:0 4px">×</button>
       </div>
-      <div style="padding:16px 20px;overflow:auto;flex:1;background:#fcfcfd">
-        ${alertBar}
-        ${tl.length ? bubbles : '<div style="text-align:center;color:#94a3b8;padding:40px;font-size:13px">아직 주고받은 메일이 없습니다.</div>'}
+      <!-- 주고받은 대화 | 회신 — 넓은 화면에서는 좌우 반반으로 나눈다 (대표님 요청 2026-09-17).
+           위아래로 두면 회신 칸이 고정 높이라, 창이 조금만 낮아도 위쪽 대화가 0 으로 눌려
+           "무슨 얘기였는지" 를 못 보면서 답장을 써야 했다. -->
+      <div class="conv-split">
+        <div class="conv-timeline" style="padding:16px 20px;background:#fcfcfd">
+          ${alertBar}
+          ${tl.length ? bubbles : '<div style="text-align:center;color:#94a3b8;padding:40px;font-size:13px">아직 주고받은 메일이 없습니다.</div>'}
+        </div>
+        ${replyBoxHtml(lastInbound)}
       </div>
-      ${replyBoxHtml(lastInbound)}
     </div>`;
 
   bindConversationReply(leadId);
@@ -9113,7 +9118,7 @@ function replyBoxHtml(lastInbound) {
   const replySubject = /^re\s*:/i.test(subj) ? subj : `Re: ${subj}`;
   const tb = "padding:4px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:11.5px;color:#0f172a";
   return `
-    <div style="border-top:1px solid #e2e8f0;background:#ffffff;padding:14px 20px 16px">
+    <div class="conv-reply" style="border-top:1px solid #e2e8f0;background:#ffffff;padding:14px 20px 16px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
         <span style="font-size:11px;font-weight:800;color:#1e40af">↩ 회신</span>
         <span style="font-size:11px;color:#64748b">

@@ -1552,3 +1552,51 @@ body.modal-open {
 /* 새 메일 쓰기 본문 — 비어 있을 때 안내 문구 (contenteditable 에는 placeholder 가 없다) */
 #cmBody:empty::before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }
 #cmBody a { color: #1d4ed8; }
+
+/* ── 대화 보기 — 주고받은 대화 | 회신 ────────────────────────
+   (대표님 요청 2026-09-17)
+
+   예전에는 위아래였다. 회신 칸은 안에 든 것이 많아(서식 도구 · 본문 · 한글 대역본 · 서명 미리보기)
+   높이가 500px 넘게 고정되는데, 팝업은 화면 높이의 90% 까지만 쓴다. 그래서 창이 조금만 낮아도
+   위쪽 대화가 0 으로 눌려, **무슨 얘기가 오갔는지 못 보면서 답장을 쓰는** 상태가 됐다.
+
+   넓은 화면에서는 좌우 반반으로 나눈다. 좁은 화면에서는 위아래로 두되,
+   대화 영역에 최소 높이를 주고 회신 칸이 화면을 다 먹지 못하게 막는다. */
+.conv-split {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;          /* 없으면 안쪽이 안 줄어들어 스크롤이 안 생긴다 */
+  overflow: hidden;
+}
+.conv-split > .conv-timeline {
+  flex: 1 1 auto;
+  min-height: 132px;      /* 적어도 한 통은 보이게 — 0 으로 눌리지 않는다 */
+  overflow: auto;
+}
+.conv-split > .conv-reply {
+  flex: 0 0 auto;
+  max-height: 62%;        /* 좁은 화면에서 회신 칸이 창을 통째로 먹지 않게 */
+  overflow: auto;
+}
+
+@media (min-width: 1000px) {
+  .conv-split { flex-direction: row; }
+  .conv-split > .conv-timeline {
+    flex: 1 1 50%;
+    min-width: 0;
+    min-height: 0;
+    border-right: 1px solid #e2e8f0;
+  }
+  .conv-split > .conv-reply {
+    flex: 1 1 50%;
+    min-width: 0;
+    max-height: none;
+    border-top: none;
+  }
+  /* 좌우로 나누는 동안에는 회신 안쪽 2단(영문 | 한글 대역본)을 위아래로 편다 —
+     반으로 자른 칸을 또 반으로 자르면 영문 쓰는 칸이 1/4 폭이 되어 오히려 쓰기 어렵다.
+     (메일 상세 .mail-split 에서 같은 이유로 같은 처리를 한다) */
+  .conv-split .reply-2col { grid-template-columns: 1fr !important; }
+  .conv-split .reply-2col > div:last-child { min-height: 110px !important; }
+}
