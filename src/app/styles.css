@@ -1548,3 +1548,7 @@ body.modal-open {
   /* 닫기는 오른쪽 위 구석에 고정 — 버튼 줄에 끼면 눌러야 할 것이 셋이 되어 헷갈린다 */
   .modal-header .modal-close { position: absolute; top: 10px; right: 12px; }
 }
+
+/* 새 메일 쓰기 본문 — 비어 있을 때 안내 문구 (contenteditable 에는 placeholder 가 없다) */
+#cmBody:empty::before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }
+#cmBody a { color: #1d4ed8; }

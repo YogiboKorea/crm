@@ -5072,6 +5072,13 @@ async function renderInboxPage(opts) {
       ${accounts.length > 1
         ? `<span style="font-size:11px;color:var(--text-tertiary);white-space:nowrap">아래 탭에서 전환 ↓</span>`
         : ''}
+      <!-- 새 메일 쓰기 — 읽는 곳에서 바로 쓸 수 있어야 한다 (대표님 요청 2026-09-17).
+           여기서 보내면 이카운트 보낸메일함에 사본이 반드시 남는다. 아웃룩에서 보내면 안 남는다. -->
+      <button type="button" id="inboxComposeBtn"
+        title="주소를 직접 적어 새 메일을 씁니다 — 보낸메일함에 자동으로 남습니다"
+        style="flex:none;padding:9px 16px;font-size:13px;font-weight:800;border:none;border-radius:9px;
+               background:#2563eb;color:#fff;cursor:pointer;white-space:nowrap;
+               box-shadow:0 2px 8px rgba(37,99,235,.28)">✏ 새 메일 쓰기</button>
     </div>`;
 
   // ── 오늘 온 메일 ──
@@ -5686,6 +5693,7 @@ function bindInboxActions() {
       render();
     });
   }
+  els.content.querySelector('#inboxComposeBtn')?.addEventListener('click', () => openComposeMailModal());
   els.content.querySelector('#inboxIngestBtn')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
@@ -9547,6 +9555,234 @@ function bindConversationReply(leadId, rootId) {
  * @param pv    서버(api/mail/reply/preview)가 조립한 결과
  * @param onSend [이대로 보내기] 를 누르면 부를 함수 — 원래 [보내기] 와 같은 경로로 보낸다
  */
+/**
+ * ✏ 새 메일 쓰기 — 주소를 직접 적어 한 통 보낸다 (2026-09-17, 대표님 요청).
+ *
+ * 왜 여기서 쓰나: 아웃룩에서 보내면 이카운트 보낸메일함에 사본이 안 남는다.
+ * 이 창으로 보내면 서버가 사본을 반드시 남긴다 (lib/mail/sent-copy.ts).
+ *
+ * 발송 관리(양식으로 여러 곳에)와 다르다 — 사람이 한 통씩 쓰는 메일이라 자동 발송 한도가 걸리지 않는다.
+ * 대신 주소를 손으로 치므로 **보내기 전에 미리보기**로 받는 사람을 한 번 확인하게 한다.
+ */
+async function openComposeMailModal(preset = {}) {
+  document.getElementById('composeMailModal')?.remove();
+  // 계정 목록은 화면에 따라 아직 안 불러와져 있을 수 있다 — 없으면 먼저 받아온다
+  // (답장 화면에서 서명이 비어 보이던 것과 같은 함정)
+  if (!_mailAccounts) { try { await loadMailAccounts(); } catch { /* 없으면 아래에서 안내한다 */ } }
+  const accounts = (_mailAccounts || []).filter((a) => a && a.isActive !== false);
+  const tb = 'padding:4px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font-size:11.5px;color:#0f172a';
+
+  const wrap = document.createElement('div');
+  wrap.id = 'composeMailModal';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:12000;background:rgba(15,23,42,.55);'
+    + 'display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 14px';
+  wrap.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-label="새 메일 쓰기"
+         style="width:min(720px,100%);background:#fff;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:#eff6ff;border-bottom:1px solid #bfdbfe">
+        <b style="font-size:15px;color:#1e3a8a">✏ 새 메일 쓰기</b>
+        <span style="font-size:11.5px;color:#3b82f6">보내면 보낸메일함에 자동으로 남습니다</span>
+        <button type="button" data-cm-close title="닫기"
+          style="margin-left:auto;border:none;background:none;font-size:20px;line-height:1;color:#64748b;cursor:pointer">×</button>
+      </div>
+
+      <div style="padding:14px 18px">
+        ${accounts.length
+          ? `<label style="display:block;margin-bottom:10px">
+              <span style="font-size:11px;font-weight:700;color:#64748b">보내는 계정</span>
+              <select id="cmAccount" style="width:100%;margin-top:3px;padding:9px 11px;font-size:13px;
+                border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a">
+                ${accounts.map((a) => `<option value="${escapeAttr(a._id)}">${escapeHtml(
+                  `${a.fromAddress || a.smtpUser}${a.fromName ? ` · ${a.fromName}` : ''}`)}</option>`).join('')}
+              </select>
+            </label>`
+          : `<div style="margin-bottom:10px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;
+                 border-radius:8px;font-size:12.5px;color:#991b1b">
+               보낼 메일 계정이 없습니다. [📬 메일 계정 관리]에서 먼저 등록하세요.
+             </div>`}
+
+        <label style="display:block;margin-bottom:4px">
+          <span style="font-size:11px;font-weight:700;color:#64748b">받는 사람</span>
+          <input id="cmTo" type="email" autocomplete="off" value="${escapeAttr(preset.to || '')}"
+            placeholder="hello@example.com — 회사 이름으로 찾을 수도 있습니다"
+            style="width:100%;margin-top:3px;padding:9px 11px;font-size:13px;border:1px solid #cbd5e1;
+                   border-radius:8px;background:#fff;color:#0f172a">
+        </label>
+        <!-- 등록된 업체에서 찾기 — 주소를 외우지 않아도 되고, 오타로 엉뚱한 곳에 가는 것도 줄인다 -->
+        <div id="cmSuggest" style="margin:0 0 10px;font-size:12px;color:#64748b;min-height:16px"></div>
+
+        <label style="display:block;margin-bottom:10px">
+          <span style="font-size:11px;font-weight:700;color:#64748b">제목</span>
+          <input id="cmSubject" type="text" value="${escapeAttr(preset.subject || '')}"
+            style="width:100%;margin-top:3px;padding:9px 11px;font-size:13px;border:1px solid #cbd5e1;
+                   border-radius:8px;background:#fff;color:#0f172a">
+        </label>
+
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:8px;
+                    padding:8px 11px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#166534;cursor:pointer">
+            <input type="checkbox" id="cmSig" checked style="width:15px;height:15px;cursor:pointer">
+            서명 붙이기
+          </label>
+          <span style="font-size:11.5px;color:#15803d;line-height:1.6">
+            켜 두면 맨 아래에 보내는 사람 정보가 자동으로 붙습니다. 본문 칸 아래에서 실제 모습을 볼 수 있습니다.
+          </span>
+        </div>
+
+        <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center;background:#f1f5f9;
+                    border:1px solid #cbd5e1;border-bottom:none;border-radius:8px 8px 0 0;padding:5px 6px">
+          <button type="button" data-cmcmd="bold" style="${tb};font-weight:800" title="굵게"><b>B</b></button>
+          <button type="button" data-cmcmd="italic" style="${tb};font-style:italic" title="기울임"><i>I</i></button>
+          <button type="button" data-cmcmd="underline" style="${tb};text-decoration:underline" title="밑줄"><u>U</u></button>
+          <button type="button" data-cmcmd="insertUnorderedList" style="${tb}" title="글머리 목록">• 목록</button>
+          <button type="button" id="cmLink" style="${tb};color:#1d4ed8;font-weight:700" title="링크 걸기">🔗</button>
+          <button type="button" data-cmcmd="removeFormat" style="${tb}" title="서식 지우기">서식해제</button>
+        </div>
+        <div id="cmFrame" style="border:1px solid #cbd5e1;border-radius:0 0 8px 8px;background:#fff">
+          <div id="cmBody" contenteditable="true" data-placeholder="내용을 입력하세요."
+            style="width:100%;min-height:180px;max-height:38vh;overflow-y:auto;padding:11px 13px;
+                   font-size:15px;line-height:1.8;color:#0f172a;outline:none"></div>
+          <div id="cmSigPreview" contenteditable="false"
+               style="margin:0 13px;padding:0 0 8px;border-top:1px dashed #e2e8f0;user-select:none">
+            <div id="cmSigLabel" style="font-size:10.5px;font-weight:700;color:#94a3b8;margin-top:7px">서명 불러오는 중…</div>
+            <div id="cmSigBody"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;padding:13px 18px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-wrap:wrap">
+        <button type="button" id="cmPreview"
+          style="padding:9px 16px;font-size:13px;font-weight:800;border:1px solid #2563eb;border-radius:8px;
+                 background:#fff;color:#1d4ed8;cursor:pointer">👁 미리보기</button>
+        <button type="button" id="cmSend" ${accounts.length ? '' : 'disabled'}
+          style="padding:9px 20px;font-size:13px;font-weight:800;border:none;border-radius:8px;
+                 background:#2563eb;color:#fff;cursor:pointer${accounts.length ? '' : ';opacity:.45;cursor:default'}">보내기</button>
+        <span id="cmMsg" style="font-size:12px;margin-left:auto"></span>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
+
+  const $ = (id) => wrap.querySelector(`#${id}`);
+  const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape' && !document.getElementById('replyPreviewModal')) close(); };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  wrap.querySelectorAll('[data-cm-close]').forEach((b) => b.addEventListener('click', close));
+
+  // ── 서식 ──
+  const bodyEl = $('cmBody');
+  wrap.querySelectorAll('[data-cmcmd]').forEach((b) => {
+    b.addEventListener('mousedown', (e) => e.preventDefault());   // 선택이 풀리지 않게
+    b.addEventListener('click', () => { document.execCommand(b.dataset.cmcmd, false, null); bodyEl.focus(); });
+  });
+  $('cmLink')?.addEventListener('mousedown', (e) => e.preventDefault());
+  $('cmLink')?.addEventListener('click', () => {
+    const url = prompt('링크 주소를 입력하세요 (예: https://yogico.kr)');
+    if (!url) return;
+    document.execCommand('createLink', false, /^https?:\/\//i.test(url) ? url : `https://${url}`);
+    bodyEl.querySelectorAll('a[href]').forEach((a) => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+  });
+
+  // ── 서명 미리보기 — 고른 계정의 실제 서명 ──
+  const syncSig = () => {
+    const on = $('cmSig').checked;
+    const box = $('cmSigPreview');
+    box.hidden = !on;
+    if (!on) return;
+    const acc = accounts.find((a) => a._id === $('cmAccount')?.value) || accounts[0] || null;
+    const sig = accountSignatureHtml(acc);
+    $('cmSigLabel').textContent = acc
+      ? (sig ? `서명 · ${acc.fromAddress || acc.smtpUser} 계정으로 보냅니다` : `${acc.fromAddress || acc.smtpUser} 계정`)
+      : '';
+    $('cmSigBody').innerHTML = sig || `<div style="font-size:11.5px;color:#94a3b8;line-height:1.6;margin-top:4px">
+        이 계정에는 서명 정보가 없어 <b>서명 없이 나갑니다</b>. [📬 메일 계정 관리]에서 채우면 여기에 붙습니다.
+      </div>`;
+    const first = $('cmSigBody').firstElementChild;
+    if (first && first.style) first.style.marginTop = '8px';
+  };
+  $('cmSig').addEventListener('change', syncSig);
+  $('cmAccount')?.addEventListener('change', syncSig);
+  syncSig();
+
+  // ── 받는 사람 — 등록된 업체에서 찾기 ──
+  let sugTimer = null;
+  $('cmTo').addEventListener('input', () => {
+    clearTimeout(sugTimer);
+    const q = $('cmTo').value.trim();
+    const box = $('cmSuggest');
+    if (q.length < 2 || /@/.test(q)) { box.innerHTML = ''; return; }
+    sugTimer = setTimeout(async () => {
+      try {
+        const r = await safeJsonFetch(`/api/leads?q=${encodeURIComponent(q)}&limit=6`);
+        const hits = (r?.leads || r?.data || []).filter((l) => /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(String(l.Email || '')));
+        box.innerHTML = hits.length
+          ? `<span style="color:#94a3b8">업체에서 찾음 —</span> ${hits.map((l) => `
+              <button type="button" class="cm-pick" data-email="${escapeAttr(l.Email)}"
+                style="margin:2px 3px 0 0;padding:3px 9px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:99px;
+                       background:#fff;color:#334155;cursor:pointer">${escapeHtml(l.Company || l.Email)}</button>`).join('')}`
+          : '';
+        box.querySelectorAll('.cm-pick').forEach((b) => b.addEventListener('click', () => {
+          $('cmTo').value = b.dataset.email;
+          box.innerHTML = `<span style="color:#166534">${escapeHtml(b.textContent.trim())} · ${escapeHtml(b.dataset.email)}</span>`;
+        }));
+      } catch { box.innerHTML = ''; }
+    }, 350);
+  });
+
+  // ── 보낼 내용 모으기 — [미리보기]와 [보내기]가 같은 값을 쓴다 ──
+  const collect = () => {
+    const to = $('cmTo').value.trim();
+    const subject = $('cmSubject').value.trim();
+    const body = (bodyEl.innerHTML || '').trim();
+    if (!to) return { err: '받는 사람을 입력하세요' };
+    if (!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(to)) return { err: '받는 사람 주소를 확인하세요' };
+    if (!subject) return { err: '제목을 입력하세요' };
+    if (!(bodyEl.innerText || '').trim()) return { err: '내용을 입력하세요' };
+    return { payload: { to, subject, body, bodyIsHtml: true, mailAccountId: $('cmAccount')?.value || null, appendSignature: $('cmSig').checked } };
+  };
+  const say = (html) => { $('cmMsg').innerHTML = html; };
+
+  $('cmPreview').addEventListener('click', async () => {
+    const { err, payload } = collect();
+    if (err) { say(`<span style="color:#b91c1c">${escapeHtml(err)}</span>`); return; }
+    say('');
+    try {
+      const r = await safeJsonFetch('/api/mail/compose/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (!r?.success) { say(`<span style="color:#b91c1c">미리보기 실패 — ${escapeHtml(r?.error || '')}</span>`); return; }
+      openReplyPreviewModal(r.preview, () => $('cmSend').click());
+    } catch (e) {
+      say(`<span style="color:#b91c1c">미리보기 실패 — ${escapeHtml(String(e.message || e))}</span>`);
+    }
+  });
+
+  $('cmSend').addEventListener('click', async () => {
+    const { err, payload } = collect();
+    if (err) { say(`<span style="color:#b91c1c">${escapeHtml(err)}</span>`); return; }
+    // 주소를 손으로 치는 화면이라, 나가기 전에 받는 사람을 한 번 더 보여준다
+    if (!confirm(`${payload.to}\n\n이 주소로 지금 메일을 보냅니다.\n제목: ${payload.subject}\n\n보낼까요?`)) return;
+    const btn = $('cmSend');
+    btn.disabled = true;
+    btn.textContent = '보내는 중…';
+    say('');
+    try {
+      const r = await safeJsonFetch('/api/mail/compose', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (!r?.success) throw new Error(r?.error || '발송 실패');
+      say(`<span style="color:#166534">✅ 보냈습니다${r.lead?.company ? ` · ${escapeHtml(r.lead.company)} 대화에 기록됨` : ''}</span>`);
+      setTimeout(() => { close(); if (state.view === 'tool-inbox') render(); }, 1200);
+    } catch (e) {
+      say(`<span style="color:#b91c1c">${escapeHtml(String(e.message || e))}</span>`);
+      btn.disabled = false;
+      btn.textContent = '보내기';
+    }
+  });
+
+  setTimeout(() => $('cmTo')?.focus(), 60);
+}
+
 function openReplyPreviewModal(pv, onSend) {
   document.getElementById('replyPreviewModal')?.remove();
   const wrap = document.createElement('div');
@@ -9567,7 +9803,7 @@ function openReplyPreviewModal(pv, onSend) {
     <div role="dialog" aria-modal="true" aria-label="답장 미리보기"
          style="width:min(760px,100%);background:#ffffff;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
       <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:#eff6ff;border-bottom:1px solid #bfdbfe">
-        <b style="font-size:15px;color:#1e3a8a">👁 미리보기 — 이렇게 나갑니다</b>
+        <b style="font-size:15px;color:#1e3a8a">👁 ${pv.isNew ? '새 메일' : ''} 미리보기 — 이렇게 나갑니다</b>
         <span style="font-size:11.5px;color:#3b82f6">아직 보내지 않았습니다</span>
         <button type="button" data-rp-close title="닫기"
           style="margin-left:auto;border:none;background:none;font-size:20px;line-height:1;color:#64748b;cursor:pointer">×</button>
@@ -9579,9 +9815,13 @@ function openReplyPreviewModal(pv, onSend) {
         ${row('제목', `<b>${escapeHtml(pv.subject || '')}</b>`)}
         ${orig.subject ? row('답장 대상', `<span style="color:#475569">${escapeHtml(orig.subject)}</span>
           <span style="color:#94a3b8;font-size:11.5px"> · ${escapeHtml(orig.from || '')}${origDate ? ` · ${escapeHtml(origDate)}` : ''}</span>`) : ''}
-        ${row('대화 연결', pv.threaded
-          ? '<span style="color:#166534">✓ 상대 메일함에서 원래 메일과 같은 대화로 묶입니다</span>'
-          : '<span style="color:#b45309">원래 메일 번호가 없어 새 메일처럼 보일 수 있습니다</span>')}
+${pv.isNew
+          ? (pv.lead
+            ? row('업체', `<span style="color:#166534">✓ ${escapeHtml(pv.lead.company || '')} 와 같은 주소입니다 — 보내면 그 업체 대화에 기록됩니다</span>`)
+            : row('업체', '<span style="color:#64748b">등록된 업체 주소가 아닙니다 — 대화 기록에는 남지 않습니다</span>'))
+          : row('대화 연결', pv.threaded
+            ? '<span style="color:#166534">✓ 상대 메일함에서 원래 메일과 같은 대화로 묶입니다</span>'
+            : '<span style="color:#b45309">원래 메일 번호가 없어 새 메일처럼 보일 수 있습니다</span>')}
         ${row('서명', pv.signatureAppended
           ? '<span style="color:#166534">✓ 본문 아래에 붙습니다</span>'
           : '<span style="color:#b45309">붙지 않습니다</span>')}
