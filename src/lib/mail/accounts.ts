@@ -19,8 +19,10 @@ import { isMasterUser, masterIds } from '@/lib/masters';
  * 예약은 만들 때 이미 그 사람 계정으로 검사해 mailAccountId 가 박혀 있으므로, 실행 시점에는 id 로 찾기만 한다.
  */
 function ownerScope(user?: string | null): Record<string, any> {
-  if (!user) return { owner: { $in: masterIds() } };
-  return isMasterUser(user) ? { owner: { $in: masterIds() } } : { owner: user };
+  // 합쳐서 없어진 계정은 발송·수집 계정으로도 고르지 않는다 (lib/mail/scope.ts NOT_MERGED 와 같은 규칙)
+  const notMerged = { mergedInto: { $in: [null, ''] } };
+  if (!user) return { owner: { $in: masterIds() }, ...notMerged };
+  return isMasterUser(user) ? { owner: { $in: masterIds() }, ...notMerged } : { owner: user, ...notMerged };
 }
 
 export interface MailAccountSummary {

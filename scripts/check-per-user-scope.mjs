@@ -9,7 +9,7 @@ import { SignJWT } from 'jose';
 import { config } from 'dotenv';
 config({ path: '.env.local', quiet: true });
 
-const B = 'http://localhost:3000';
+const B = process.env.CRM_BASE || 'http://localhost:3000';   // 3000 번에 다른 프로젝트가 떠 있을 수 있다
 const tok = (user) => new SignJWT({ user, role: 'admin' }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET));
 const H = async (user) => ({ 'Content-Type': 'application/json', Cookie: `admin_session=${await tok(user)}` });
 const get = async (user, path) => { const r = await fetch(B + path, { headers: await H(user) }); return { status: r.status, j: await r.json().catch(() => ({})) }; };
@@ -21,8 +21,11 @@ await mongoose.connect(process.env.MONGODB_URI);
 const db = mongoose.connection.db;
 const A = db.collection('mailaccounts');
 const M = db.collection('inboundmails');
-const accs = await A.find().project({ owner: 1, smtpUser: 1 }).toArray();
-const davidAcc = accs.find((a) => a.owner === 'admin' && a.smtpUser === 'david@yogico.kr');
+// 합쳐서 없어진 계정은 누구의 것도 아니다 — 세지 않는다
+const accs = await A.find({ mergedInto: { $in: [null, ''] } }).project({ owner: 1, smtpUser: 1 }).toArray();
+// 대표님 메일함 — 2026-09-22 부터는 **대표님 본인이 등록한 계정** 하나다.
+// (관리자가 따로 등록했던 사본은 scripts/merge-duplicate-account.mts 로 합쳐 없앴다)
+const davidAcc = accs.find((a) => a.owner === 'david' && a.smtpUser === 'david@yogico.kr');
 const feOwn = accs.find((a) => a.owner === 'fe');
 const adminFe = accs.find((a) => a.owner === 'admin' && /fe@yogico/i.test(a.smtpUser));
 const davidMail = await M.findOne({ accountId: String(davidAcc._id), direction: 'in' }, { projection: { _id: 1, leadId: 1 } });
@@ -82,15 +85,25 @@ r = await get('admin', '/api/mail-accounts');
 const adminList = (r.j.accounts || []).map((a) => a.owner || '?');
 const masterOwned = accs.filter((a) => ['admin', 'yogico'].includes(a.owner)).length;
 ok((r.j.accounts || []).length === masterOwned && !(r.j.accounts || []).some((a) => String(a._id) === String(feOwn._id)), `메일 계정 관리: 마스터가 등록한 ${masterOwned}개만 (다른 아이디 계정은 안 보임)`);
+// 대표님 결정 (2026-09-22): 대표님 메일은 **본인 계정에서만** — 관리자도 못 연다
 r = await get('admin', `/api/mail/${davidMail._id}`);
-ok(r.status === 200, `대표 메일함 메일 열림 → ${r.status}`);
-r = await get('admin', '/api/mail/inbox?accountId=all&flat=1&limit=20');
+ok(r.status === 404, `대표 메일함 메일 직접 열기 → ${r.status} (본인만 볼 수 있음)`);
+r = await get('admin', '/api/mail/inbox?accountId=all&flat=1&limit=200');
 ok(r.status === 200 && (r.j.items || []).length > 0, `받은 메일함 ${r.j.total ?? (r.j.items || []).length}통`);
+ok(!(r.j.items || []).some((m) => String(m.accountId) === String(davidAcc._id)), '관리자 받은 메일함에 대표님 메일 없음');
 
 console.log('── 로그인 안 함');
 const nr = await fetch(B + '/api/mail/inbox', { redirect: 'manual' });
 ok([302, 307, 401].includes(nr.status), `메일함 → ${nr.status}`);
 
+// ⚠ 아래는 **실제 hoon 아이디를 바꿨다가 되돌린다**. 전무님이 비밀번호를 바꾸셨다면 되돌리기가 실패해
+//   로그인을 못 하게 될 수 있다 — 두 분이 쓰기 시작한 뒤로는 --with-account-change 를 줄 때만 돈다.
+if (!process.argv.includes('--with-account-change')) {
+  console.log('── 아이디·비밀번호 변경 시험은 건너뜀 (실제 사용자 아이디를 바꾸므로 --with-account-change 일 때만)');
+  await mongoose.disconnect();
+  console.log(fail ? `\n✗ ${fail}개 실패` : '\n✅ 전부 통과');
+  process.exit(fail ? 1 : 0);
+}
 console.log('── 아이디·비밀번호 변경 (hoon 으로 시험 후 원래대로)');
 const U = db.collection('adminusers');
 const hash = (p) => crypto.createHash('sha256').update(p).digest('hex');

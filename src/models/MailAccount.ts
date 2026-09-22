@@ -44,6 +44,10 @@ export interface IMailAccount extends Document {
   lastVerifyError?: string;   // 마지막 verify 실패 사유
   backfilledAt?: Date | null; // [📥 2달 가져오기]를 끝낸 시각 — 없으면 새 아이디 첫 로그인 때 자동으로 돈다
   backfillCursor?: any;       // 2달 가져오기 중간 위치 (창을 닫아도 이어 간다)
+  // 같은 메일함을 두 번 등록한 것을 하나로 합쳤을 때 — 없어진 쪽에 남는 표시 (scripts/merge-duplicate-account.mts).
+  // 이게 있으면 목록·볼 수 있는 범위·발송 계정 어디에도 안 잡힌다 (lib/mail/scope.ts ownerFilter).
+  mergedInto?: string;
+  mergedAt?: string;
 
   createdAt: Date;
   updatedAt: Date;
@@ -87,6 +91,8 @@ const MailAccountSchema = new Schema<IMailAccount>({
   // 끝나면 backfilledAt 을 찍고, 중간에 창을 닫으면 backfillCursor 에서 이어 간다 (lib/mail/ingest.ts runBackfill)
   backfilledAt: { type: Date, default: null },
   backfillCursor: { type: Schema.Types.Mixed, default: null },
+  mergedInto: { type: String, default: '' },
+  mergedAt: { type: String, default: '' },
 }, { timestamps: true });
 
 // 소유자별로 accountName + smtpUser 조합은 unique (같은 계정 중복 등록 방지)

@@ -39,8 +39,17 @@ export async function getSessionUser(): Promise<string | null> {
 }
 
 /** 이 아이디가 "자기 계정" 으로 보는 MailAccount 조건 */
+/**
+ * 합쳐서 없어진 계정은 **누구의 것으로도 치지 않는다** (scripts/merge-duplicate-account.mts).
+ * 이게 없으면 관리자가 등록했던 대표님 메일함 사본이 사용 중지돼도, 그 계정을 통해 관리자가
+ * 여전히 대표님 메일을 보게 된다 — "본인 계정에서만 보이게" 가 깨진다 (대표님 요청 2026-09-22).
+ */
+export const NOT_MERGED = { mergedInto: { $in: [null, ''] } };
+
 export function ownerFilter(user: string): Record<string, any> {
-  return isMasterUser(user) ? { owner: { $in: masterIds() } } : { owner: user };
+  return isMasterUser(user)
+    ? { owner: { $in: masterIds() }, ...NOT_MERGED }
+    : { owner: user, ...NOT_MERGED };
 }
 
 export interface MailScope {
@@ -75,7 +84,8 @@ async function scopeForOwner(user: string): Promise<{ accountIds: string[]; mail
   const ids = new Set<string>(mine.map((a) => String(a._id)));
   const byKey = new Map<string, Set<string>>();
   if (proven.size) {
-    const all: any[] = await MailAccount.find({}, { _id: 1, smtpUser: 1, smtpHost: 1 }).lean();
+    // 합쳐서 없어진 계정은 같은 메일함으로 넓히는 대상에서도 뺀다
+    const all: any[] = await MailAccount.find(NOT_MERGED, { _id: 1, smtpUser: 1, smtpHost: 1 }).lean();
     for (const a of all) {
       const k = mailboxKey(a);
       if (!proven.has(k)) continue;

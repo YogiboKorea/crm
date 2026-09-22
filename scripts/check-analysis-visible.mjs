@@ -12,7 +12,8 @@ import { SignJWT } from 'jose';
 import { config } from 'dotenv';
 config({ path: '.env.local', quiet: true });
 
-const B = 'http://localhost:3000';
+// 3000 번에는 다른 프로젝트가 떠 있을 수 있다 (실제로 '우리 가족 보이스 동화' 가 떠 있었다) — CRM_BASE 로 바꿀 수 있게
+const B = process.env.CRM_BASE || 'http://localhost:3000';
 let fail = 0;
 const ok = (c, m) => { if (!c) fail++; console.log(`  ${c ? 'OK  ' : 'X   '}${m}`); };
 const w = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -24,7 +24,7 @@ config({ path: '.env.local', quiet: true });
 
 const { matchLead } = await import('../src/lib/mail/match-lead.ts');
 
-const B = 'http://localhost:3000';
+const B = process.env.CRM_BASE || 'http://localhost:3000';   // 3000 번에 다른 프로젝트가 떠 있을 수 있다
 let fail = 0;
 const ok = (c: any, m: string) => { if (!c) fail++; console.log(`  ${c ? 'OK  ' : 'X   '}${m}`); };
 const w = (ms: number) => new Promise((r) => setTimeout(r, ms));
