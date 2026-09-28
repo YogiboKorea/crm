@@ -9,6 +9,8 @@ node_modules/
 scripts/mail-analysis/
 scripts/.threadkey-backup.json
 scripts/backups/
+# 정리·합치기 전 백업 (업체 연락처·메일 목록) — 2026-09-22 에 5개가 올라가 있던 것을 추적에서 뺐다
+backups/
 kbeauty-crm-export-*.csv
 scripts/.*.tmp.mjs
 

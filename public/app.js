@@ -330,8 +330,17 @@ async function init() {
  * 자주 돌지 않는다:
  * 서버가 마지막 수집으로부터 10분이 안 지났으면 아무것도 하지 않고 돌아온다.
  * 새로고침을 연달아 해도 메일 서버에 계속 붙지 않는다.
+ *
+ * 화면을 띄워 둔 동안에도 (2026-09-22):
+ * 처음엔 화면을 열 때 한 번만 돌았다. 대표님처럼 창을 아침에 열어 두고 하루 종일 쓰면
+ * 그 뒤로 온 메일이 새로고침 전까지 안 들어와 "업데이트가 안 된다" 가 됐다 (11:23 이후 11통이 서버에만 쌓여 있었다).
+ * 그래서 startNavBadgePolling 이 5분마다 · 창이 다시 보일 때 이 함수를 부른다.
+ * 실제 수집은 서버 쿨다운 때문에 10분에 한 번 꼴이다.
  */
+var _mailSyncBusy = false;
 async function syncMailOnLogin() {
+  if (_mailSyncBusy) return;   // 앞의 수집이 아직 도는 중 — 겹쳐 붙지 않는다
+  _mailSyncBusy = true;
   try {
     const r = await safeJsonFetch('/api/mail/sync-on-login', {
       method: 'POST',
@@ -361,6 +370,8 @@ async function syncMailOnLogin() {
   } catch (e) {
     // 수집이 실패해도 화면은 그대로 써야 한다
     console.warn('[mail] 로그인 수집 실패', e);
+  } finally {
+    _mailSyncBusy = false;
   }
 }
 
@@ -714,12 +725,16 @@ function startNavBadgePolling() {
   if (_navBadgeTimer) return;
   const refresh = () => { loadStageCounts(true); loadMailCounts(true); };
   refresh();
-  _navBadgeTimer = setInterval(refresh, 5 * 60 * 1000);
+  // 5분마다 숫자를 다시 읽고, 메일 서버에서 새 메일도 가져온다 (화면이 보일 때만 · 서버 쿨다운 10분)
+  _navBadgeTimer = setInterval(() => {
+    refresh();
+    if (document.visibilityState === 'visible') syncMailOnLogin();
+  }, 5 * 60 * 1000);
   // 브라우저 창이 다시 포커스되면 즉시 갱신 (다른 창에서 액션 반영)
   window.addEventListener('focus', refresh);
-  // 페이지가 다시 보이는 상태로 돌아오면 갱신
+  // 페이지가 다시 보이는 상태로 돌아오면 갱신 — 다른 탭에 있던 동안 온 메일도 가져온다
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refresh();
+    if (document.visibilityState === 'visible') { refresh(); syncMailOnLogin(); }
   });
 }
 
@@ -9534,8 +9549,17 @@ function bindConversationReply(leadId, rootId) {
       });
       if (r.success) {
         msg.innerHTML = `<span style="color:#166534">✅ ${r.dryRun ? '발송 시뮬레이션 완료' : '보냈습니다'}</span>`;
-        // 타임라인을 다시 그려 방금 보낸 회신이 보이게 한다
-        setTimeout(() => openConversationModal(leadId), 700);
+        if (leadId) {
+          // 업체 대화에서 보낸 것 — 타임라인을 다시 그려 방금 보낸 회신이 보이게 한다
+          setTimeout(() => openConversationModal(leadId), 700);
+        } else {
+          // 메일함에서 바로 답장한 것 — 엮을 업체가 없다.
+          // 예전에는 여기서도 대화창을 열어 leadId=null 로 조회했고, 메일은 이미 나갔는데
+          // 화면에는 "리드를 찾을 수 없음" 만 떴다 (2026-09-28 대표님 신고).
+          // 회신 표시는 서버가 이미 했으므로(status replied) 목록·숫자만 새로 읽는다.
+          loadMailCounts(true);
+          setTimeout(() => { closeMailDetailModal(); render(); }, 900);
+        }
         invalidateServerPage?.();
       } else {
         msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(r.error || '실패')}</span>`;
@@ -11843,7 +11867,7 @@ function renderUserGuidePage() {
           ['메일 문구를 바꾸고 싶어요.',
            '[📝 메일 양식] 에서 [✏ 수정] 으로 고쳐 저장하면 다음 발송부터 적용됩니다. 이번 한 번만 다르게 보내려면 발송 화면에서 직접 고치면 됩니다.'],
           ['받은 메일이 안 보입니다.',
-           '앱을 열면 자동으로 가져옵니다. 방금 온 메일을 당장 보려면 받은 메일함의 <b>[📥 메일 가져오기]</b> 를 누르세요.'],
+           '앱을 열 때, 그리고 열어 둔 동안 10분마다 자동으로 가져옵니다. 방금 온 메일을 당장 보려면 받은 메일함의 <b>[📥 메일 가져오기]</b> 를 누르세요.'],
           ['받은 메일함 숫자가 이상합니다.',
            '[📬 메일 계정 관리] 의 대표 계정 기준으로 셉니다. 대표 계정을 바꾸면 그 계정 메일함으로 바뀝니다. 광고·자동발송과 우리가 보낸 메일은 할 일 숫자에서 빠집니다.'],
           ['AI 검증·AI 분석은 돈이 드나요?',
