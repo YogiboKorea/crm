@@ -4523,7 +4523,11 @@ function stageCellHtml(lead) {
 
 // accountId: 어느 메일함을 볼지. 'all' 이면 등록된 계정 전부.
 // 등록된 발송 계정(MailAccount)이 곧 수신 계정이다 — 이카운트는 자격증명이 같다.
-var _inboxState = { page: 1, classification: '', q: '', linked: '', accountId: 'all', group: '', trashed: false, today: false };
+// [오늘 온 메일] 카드에서 숫자를 눌러 좁혔을 때 목록 위에 적는 말
+var TODAY_FILTER_LABEL = { real: '읽을 메일', reply: '회신 필요', noise: '광고·자동발송' };
+
+// todayFilter — [오늘 온 메일] 카드의 숫자를 눌러 좁힌 것: '' 전체 · 'real' 읽을 메일 · 'reply' 회신 필요 · 'noise' 광고·자동발송
+var _inboxState = { page: 1, classification: '', q: '', linked: '', accountId: 'all', group: '', trashed: false, today: false, todayFilter: '' };
 var _mailAccountsCache = null;
 var _mailGroupsCache = null;
 
@@ -4840,7 +4844,14 @@ async function renderInboxPage(opts) {
   if (_inboxState.trashed) { params.set('trashed', '1'); params.set('flat', '1'); }
   // 오늘 온 메일 — 대화로 접지 않고 낱개로 본다.
   // 위에 "오늘 12통" 이라고 써 놓고 목록이 8줄이면(대화로 접혀서) 숫자가 어긋난다.
-  if (_inboxState.today && !_inboxState.trashed) { params.set('today', '1'); params.set('flat', '1'); }
+  if (_inboxState.today && !_inboxState.trashed) {
+    params.set('today', '1'); params.set('flat', '1');
+    // 카드의 숫자를 눌러 좁힌 경우 — 숫자를 세는 기준(api/mail/counts)과 같은 조건을 서버에 그대로 넘긴다.
+    // 화면에서 걸러내면 "5통" 인데 목록이 5줄이 아닌 일이 생긴다.
+    if (_inboxState.todayFilter === 'reply') params.set('needsReply', '1');
+    else if (_inboxState.todayFilter === 'real') params.set('noise', '0');
+    else if (_inboxState.todayFilter === 'noise') params.set('noise', '1');
+  }
 
   const groupInfo = await loadMailGroups();
   // 상단 [오늘 온 메일]의 숫자는 사이드바 배지와 같은 API 에서 온다.
@@ -5117,11 +5128,23 @@ async function renderInboxPage(opts) {
   const todayLabel = new Date().toLocaleDateString('ko-KR',
     { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
 
-  const stat = (n, label, tone) => `
-    <div style="min-width:76px">
+  // 숫자는 눌러서 **그 메일만** 볼 수 있다 (대표님 요청 2026-09-29).
+  // 숫자만 보여주고 목록은 오늘 것 전체였던 동안에는, "회신 필요 4" 를 보고도
+  // 그 4통을 찾으려면 오늘 온 30통을 눈으로 훑어야 했다.
+  // 고른 것은 테두리로 표시하고, 한 번 더 누르면 풀린다.
+  const statBtn = (n, label, tone, key, hint) => {
+    const on = todayOn && _inboxState.todayFilter === key;
+    return `
+    <button type="button" class="today-stat${on ? ' on' : ''}" data-today-filter="${key}"
+      title="${escapeAttr(on ? '눌러서 오늘 온 메일 전체로 돌아갑니다' : hint)}"
+      style="min-width:84px;text-align:left;cursor:pointer;padding:6px 10px;border-radius:10px;
+             border:1px solid ${on ? tone : 'transparent'};
+             background:${on ? '#fff' : 'transparent'}">
       <div style="font-size:21px;font-weight:800;line-height:1.15;color:${tone}">${n.toLocaleString()}</div>
-      <div style="font-size:11px;font-weight:600;color:var(--text-tertiary);margin-top:1px">${label}</div>
-    </div>`;
+      <div style="font-size:11px;font-weight:600;color:${on ? tone : 'var(--text-tertiary)'};margin-top:1px">
+        ${label}${on ? ' ✓' : ''}</div>
+    </button>`;
+  };
 
   const todayStrip = needsReplyOnly ? '' : `
     <section style="margin-bottom:14px;padding:20px 24px;border-radius:16px;position:relative;overflow:hidden;
@@ -5155,16 +5178,24 @@ async function renderInboxPage(opts) {
                  <div style="font-size:12px;color:var(--text-quaternary);margin-top:3px">
                    새 메일은 [📥 메일 가져오기] 를 누르면 들어옵니다</div>
                </div>`
-            : `<div class="today-stats" style="flex:1;display:flex;align-items:center;gap:22px;flex-wrap:wrap;min-width:0">
-                 <div style="display:flex;align-items:baseline;gap:5px">
+            : `<div class="today-stats" style="flex:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0">
+                 <button type="button" class="today-stat${todayOn && !_inboxState.todayFilter ? ' on' : ''}"
+                   data-today-filter=""
+                   title="오늘 들어온 메일을 전부 봅니다"
+                   style="display:flex;align-items:baseline;gap:5px;cursor:pointer;padding:6px 10px;border-radius:10px;
+                          border:1px solid ${todayOn && !_inboxState.todayFilter ? '#2563eb' : 'transparent'};
+                          background:${todayOn && !_inboxState.todayFilter ? '#fff' : 'transparent'}">
                    <span style="font-size:40px;font-weight:800;line-height:1;
                                 color:${todayOn ? '#1d4ed8' : 'var(--text-primary)'}">${todayN.toLocaleString()}</span>
                    <span style="font-size:14px;font-weight:700;color:var(--text-tertiary)">통</span>
-                 </div>
+                 </button>
                  <div style="width:1px;height:40px;background:var(--border-default)"></div>
-                 ${stat(todayReal, '읽을 메일', 'var(--text-primary)')}
-                 ${todayReply ? stat(todayReply, '회신 필요', '#b45309') : ''}
-                 ${todayNoise ? stat(todayNoise, '광고·자동발송', 'var(--text-quaternary)') : ''}
+                 ${statBtn(todayReal, '읽을 메일', 'var(--text-primary)', 'real',
+                           '광고·자동발송을 뺀 오늘 메일만 봅니다')}
+                 ${todayReply ? statBtn(todayReply, '회신 필요', '#b45309', 'reply',
+                           '오늘 온 것 중 답장이 필요한 메일만 봅니다') : ''}
+                 ${todayNoise ? statBtn(todayNoise, '광고·자동발송', 'var(--text-quaternary)', 'noise',
+                           '오늘 온 광고·자동발송·뉴스레터만 봅니다') : ''}
                </div>`}
 
         <div class="today-cta" style="margin-left:auto;text-align:right">
@@ -5350,6 +5381,11 @@ async function renderInboxPage(opts) {
     <div style="margin-bottom:10px;font-size:12px;color:var(--text-tertiary);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span>총 <b style="color:var(--text-primary)">${total.toLocaleString()}</b>${_inboxState.trashed ? '통 (휴지통)' : (todayOn ? '통 · 오늘 들어온 것' : '개 대화')}
       ${needsReplyOnly ? ' · 회신 필요만' : ''}
+      ${todayOn && _inboxState.todayFilter
+        ? ` · <b style="color:var(--brand-text)">${TODAY_FILTER_LABEL[_inboxState.todayFilter] || ''}만</b>
+            <button type="button" id="inboxTodayFilterClear" style="background:none;border:none;padding:0 3px;
+                    color:var(--text-tertiary);font-size:12px;cursor:pointer;text-decoration:underline">해제</button>`
+        : ''}
       ${todayOn
         ? ' · <span style="color:var(--text-quaternary)">제목 앞 📁 태그가 이 메일이 들어간 거래처 폴더입니다</span>'
         : (_inboxState.group ? ` · 📁 ${escapeHtml(_inboxState.group === '__none__' ? '미분류' : _inboxState.group)}` : '')}</span>
@@ -5633,8 +5669,30 @@ function bindInboxActions() {
     const on = !_inboxState.today;
     _inboxState.today = on;
     if (on) { _inboxState.group = ''; _inboxState.trashed = false; }
+    _inboxState.todayFilter = '';   // 열 때마다 오늘 온 것 전체부터 본다
     _inboxState.page = 1;
     render();
+  });
+
+  els.content.querySelector('#inboxTodayFilterClear')?.addEventListener('click', () => {
+    _inboxState.todayFilter = '';
+    _inboxState.page = 1;
+    render();
+  });
+
+  // 카드의 숫자(읽을 메일·회신 필요·광고) → 그 메일만 모아 본다.
+  // 누르면 오늘 보기가 아직 꺼져 있어도 같이 켠다 — 숫자를 눌렀는데 아무 일도 안 나면 고장으로 보인다.
+  els.content.querySelectorAll('.today-stat').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.todayFilter || '';
+      const already = _inboxState.today && _inboxState.todayFilter === key;
+      _inboxState.today = true;
+      _inboxState.trashed = false;
+      _inboxState.group = '';
+      _inboxState.todayFilter = already ? '' : key;   // 같은 것을 또 누르면 풀린다
+      _inboxState.page = 1;
+      render();
+    });
   });
 
   // 거래처 폴더 선택 (휴지통 포함)
@@ -5642,6 +5700,7 @@ function bindInboxActions() {
     btn.addEventListener('click', () => {
       const g = btn.dataset.group;
       _inboxState.today = false;      // 폴더를 고르면 오늘 보기는 꺼진다
+      _inboxState.todayFilter = '';   // 좁혀 둔 것도 같이 푼다
       if (g === '__sent__') {
         // 보낸 메일함은 목록 필터가 아니라 다른 화면이다 (이카운트 보낸메일함을 바로 읽음)
         _inboxState.sent = true;

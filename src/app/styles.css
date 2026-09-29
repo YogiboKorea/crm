@@ -1516,6 +1516,16 @@ body.modal-open {
   .modal-card { margin: 6px !important; max-height: 96vh !important; }
 }
 
+/* [오늘 온 메일] 카드의 숫자 — 눌러서 그 메일만 보는 버튼이다 (2026-09-29).
+   버튼은 글꼴을 물려받지 않으므로 지정해 둔다. 누를 수 있다는 것이 보이게 손모양과 배경을 준다. */
+.today-stat {
+  font: inherit;
+  color: inherit;
+  transition: background .12s, border-color .12s;
+}
+.today-stat:hover { background: rgba(255, 255, 255, .75) !important; }
+.today-stat:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
 /* [오늘 온 메일] 카드 — 좁은 화면에서는 가로로 늘어놓지 않고 위에서 아래로 읽히게.
    가로 배치 그대로 두면 큰 숫자가 화면 가운데에 떠 있고 버튼이 오른쪽 구석으로 밀려
    "이게 무슨 숫자지" 가 된다 (390px 에서 실측). */
@@ -1530,7 +1540,8 @@ body.modal-open {
     border-top: 1px solid var(--border-subtle);
   }
   /* 큰 숫자와 칸막이는 줄 맨 앞에 붙인다 */
-  .today-stats > div:nth-child(2) { display: none; }   /* 세로 칸막이 — 줄이 바뀌면 의미가 없다 */
+  .today-stats > div { display: none; }   /* 세로 칸막이 — 줄이 바뀌면 의미가 없다 (숫자는 button 이라 남는다) */
+  .today-stat { padding: 6px 8px !important; min-width: 72px !important; }
   .today-cta { margin-left: 0 !important; width: 100%; text-align: left !important; }
   .today-cta button { width: 100%; }
 }

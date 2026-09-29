@@ -4,6 +4,7 @@ import { InboundMail } from '@/models/InboundMail';
 import { seoulDayStart, replyWindowFilter, REPLY_WINDOW_DAYS } from '@/lib/mail/period';
 import { learnSenderGroups, suggestGroupBySender } from '@/lib/mail/groups';
 import { getMailScope, accountParamFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { NOISE_CLASSES as NOISE } from '@/lib/mail/classify';
 
 export const runtime = 'nodejs';
 
@@ -113,6 +114,15 @@ export async function GET(req: Request) {
     }
 
     if (classification) query.classification = { $in: classification.split(',') };
+
+    // 광고·자동발송을 빼거나(0) 그것만 보거나(1).
+    // [오늘 온 메일] 카드의 숫자를 눌러 그 메일만 보기 위한 축이다 —
+    // 카드의 '읽을 메일'은 (오늘 전체 − 광고·자동발송)이므로, 숫자와 목록이 어긋나지 않으려면
+    // 화면이 아니라 **배지를 세는 곳과 같은 기준**(api/mail/counts 의 NOISE)으로 서버에서 걸러야 한다.
+    const noise = searchParams.get('noise');
+    if (!classification && (noise === '0' || noise === '1')) {
+      query.classification = noise === '1' ? { $in: NOISE } : { $nin: NOISE };
+    }
     if (status) query.status = { $in: status.split(',') };
     // 회신 필요 — 배지와 **같은 기간**을 써야 한다.
     // 한쪽만 기간을 걸면 "배지 12건인데 목록은 40건" 이 되어

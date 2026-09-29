@@ -15,6 +15,15 @@
 export type Classification =
   | 'b2b' | 'inquiry' | 'partner' | 'newsletter' | 'ad' | 'system' | 'unknown';
 
+/**
+ * 사람이 읽을 필요가 없는 분류 — 광고·자동발송·뉴스레터.
+ *
+ * 배지(api/mail/counts)와 목록(api/mail/inbox)이 **같은 기준**을 써야 한다.
+ * 한쪽만 바뀌면 "오늘 읽을 메일 5통"인데 눌러서 열면 7줄이 되어, 어느 숫자가 맞는지 알 수 없어진다.
+ * as const 로 리터럴을 고정한다 — string[] 로 추론되면 Classification 과 맞지 않는다.
+ */
+export const NOISE_CLASSES = ['ad', 'system', 'newsletter'] as const;
+
 export interface RuleResult {
   classification: Classification;
   classifiedBy: 'rule';

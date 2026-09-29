@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
 import { countSince, seoulDayStart, replyWindowFilter, REPLY_WINDOW_DAYS, COUNT_PERIOD_LABEL, COUNT_PERIOD_DAYS } from '@/lib/mail/period';
 import { getMailScope, accountParamFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { NOISE_CLASSES } from '@/lib/mail/classify';
 
 export const runtime = 'nodejs';
 
@@ -20,8 +21,8 @@ export async function GET(req: Request) {
     const scope = await getMailScope();
     if (!scope) return NextResponse.json(UNAUTHORIZED, { status: 401 });
 
-    // as const 로 리터럴 고정 — string[] 로 추론되면 classification union 타입과 맞지 않는다
-    const NOISE = ['ad', 'system', 'newsletter'] as const;
+    // 목록 API(api/mail/inbox)와 같은 기준을 쓴다 — 숫자와 목록이 어긋나지 않게 한 곳에 둔다
+    const NOISE = NOISE_CLASSES;
 
     // 메일함에서 계정을 고르면 배지도 그 계정 기준으로 센다.
     // 'all'·미지정은 "내 계정 전체" — 예전처럼 {} 로 두면 모든 사람의 메일을 센다.
