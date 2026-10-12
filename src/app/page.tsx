@@ -672,10 +672,14 @@ export default function Home() {
             <div className="field-block" style={{ borderTop: 'none', paddingTop: 0 }}>
               <h4>비밀번호 변경 (Change Password)</h4>
               <p style={{ marginBottom: '12px', color: 'var(--muted)' }}>현재 로그인된 계정의 비밀번호를 변경합니다.</p>
-              <div className="inline-save">
-                <input id="newPasswordInput" type="password" placeholder="새 비밀번호 입력" minLength={4} />
+              {/* 비밀번호 칸은 자기 form 안에 두고 new-password 로 못박는다 (2026-10-12 대표님 신고).
+                  이 창은 화면에 안 보여도 늘 페이지에 들어 있다. form 도 자동완성 지정도 없던 동안에는
+                  Chrome 이 저장된 CRM 비밀번호를 여기에 미리 채우고, 페이지 앞쪽의 메일 검색칸에 친 글자
+                  ("airport")를 아이디로 짝지어 메일에 답장할 때마다 "비밀번호를 저장하시겠습니까?" 를 띄웠다. */}
+              <form className="inline-save" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+                <input id="newPasswordInput" type="password" autoComplete="new-password" placeholder="새 비밀번호 입력" minLength={4} />
                 <button id="changePasswordBtn" className="button secondary" type="button">변경하기</button>
-              </div>
+              </form>
             </div>
 
             {/* Sub-ID Management Section (Master Only) */}
@@ -683,11 +687,12 @@ export default function Home() {
               <h4>서브 계정 관리 (Sub-ID Management)</h4>
               <p style={{ marginBottom: '12px', color: 'var(--muted)' }}>마스터 계정 전용 기능입니다. 서브 계정을 생성하거나 삭제할 수 있습니다.</p>
 
-              <div className="inline-save" style={{ marginBottom: '16px' }}>
-                <input id="subUsernameInput" type="text" placeholder="새 아이디" />
-                <input id="subPasswordInput" type="password" placeholder="비밀번호" />
+              {/* 남의 계정을 만드는 칸이다 — 내 비밀번호를 채우거나 저장 제안을 띄우면 안 된다 */}
+              <form className="inline-save" style={{ marginBottom: '16px' }} autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+                <input id="subUsernameInput" type="text" autoComplete="off" placeholder="새 아이디" />
+                <input id="subPasswordInput" type="password" autoComplete="new-password" placeholder="비밀번호" />
                 <button id="createSubIdBtn" className="button secondary" type="button">생성</button>
-              </div>
+              </form>
 
               <div className="table-wrap" style={{ minHeight: 'auto', maxHeight: '240px' }}>
                 <table>
@@ -747,7 +752,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=444a9ecd" strategy="afterInteractive" />
+      <Script src="/app.js?v=7eb830ca" strategy="afterInteractive" />
     </>
   );
 }

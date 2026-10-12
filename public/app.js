@@ -4689,7 +4689,7 @@ async function renderSentMailPage() {
         </div>
       </div>
       <form id="sentSearch" style="display:flex;gap:6px">
-        <input id="sentQ" type="search" value="${escapeAttr(_sentState.q)}" placeholder="제목·받는 사람 주소"
+        <input id="sentQ" type="search" autocomplete="off" value="${escapeAttr(_sentState.q)}" placeholder="제목·받는 사람 주소"
           style="padding:7px 10px;border:1px solid var(--border-default);border-radius:8px;font-size:12.5px;min-width:200px;background:var(--bg-surface);color:var(--text-primary)">
         <button type="submit" style="padding:7px 12px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer;font-size:12.5px">찾기</button>
       </form>
@@ -5306,7 +5306,7 @@ async function renderInboxPage(opts) {
     ${folderPanel}
     <div class="inbox-main" style="flex:1;min-width:0">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-      <input id="inboxSearch" type="search" placeholder="제목·발신자 검색" value="${escapeAttr(_inboxState.q)}"
+      <input id="inboxSearch" type="search" autocomplete="off" placeholder="제목·발신자 검색" value="${escapeAttr(_inboxState.q)}"
         style="padding:7px 12px;font-size:13px;border:1px solid var(--border-default);border-radius:8px;
                background:var(--bg-surface);color:var(--text-primary);min-width:220px">
       ${filterChip('전체', 'classification', '')}
@@ -6394,7 +6394,7 @@ async function renderLegacyPage() {
     ${legacyActionBarHtml(_legacy.batch)}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
       <button class="button secondary" id="lgBack" type="button">← 배치 목록</button>
-      <input id="lgSearch" type="search" placeholder="회사·이메일 검색" value="${escapeAttr(_legacy.q)}"
+      <input id="lgSearch" type="search" autocomplete="off" placeholder="회사·이메일 검색" value="${escapeAttr(_legacy.q)}"
         style="padding:7px 12px;font-size:13px;border:1px solid var(--border-default);border-radius:8px;
                background:var(--bg-surface);color:var(--text-primary);min-width:190px">
       <select id="lgCountry" style="padding:7px 10px;font-size:13px;border:1px solid var(--border-default);
@@ -7005,7 +7005,7 @@ function relHeaderHtml(isPartner, s, tone) {
         : `<div style="font-size:12.5px;color:var(--text-tertiary)">답을 기다리는 곳은 없습니다 👍</div>`}
 
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input id="relSearch" type="search" placeholder="회사·담당자 검색" value="${escapeAttr(_rel.q)}"
+        <input id="relSearch" type="search" autocomplete="off" placeholder="회사·담당자 검색" value="${escapeAttr(_rel.q)}"
           style="padding:8px 13px;font-size:13px;border:1px solid var(--border-default);border-radius:9px;
                  background:var(--bg-surface);color:var(--text-primary);min-width:180px">
         <!-- 이 앱을 쓰기 전부터 메일로 거래하던 곳은 파이프라인 어디에도 없다.
@@ -8787,9 +8787,10 @@ async function renderMailSettingsPage() {
           <span style="color:var(--text-secondary)">수신 서버</span>
           <input class="form-input" id="msHost" value="${escapeAttr(s.imapHost || 'wmbox4.ecount.com')}" style="padding:7px 10px">
           <span style="color:var(--text-secondary)">계정</span>
-          <input class="form-input" id="msUser" value="${escapeAttr(s.imapUser || '')}" placeholder="david@yogico.kr" style="padding:7px 10px">
+          <input class="form-input" id="msUser" autocomplete="off" value="${escapeAttr(s.imapUser || '')}" placeholder="david@yogico.kr" style="padding:7px 10px">
           <span style="color:var(--text-secondary)">비밀번호</span>
-          <input class="form-input" id="msPass" type="password" placeholder="${s.imapPassSet ? '저장됨 — 바꿀 때만 입력' : '입력하세요'}" style="padding:7px 10px">
+          <!-- new-password: Chrome 이 CRM 로그인 비밀번호를 여기에 채우지 않게 한다. 채워진 채 저장하면 메일 연결이 깨진다 -->
+          <input class="form-input" id="msPass" type="password" autocomplete="new-password" placeholder="${s.imapPassSet ? '저장됨 — 바꿀 때만 입력' : '입력하세요'}" style="padding:7px 10px">
         </div>
         <div style="margin-top:14px;display:flex;gap:8px">
           <button class="button" id="msSaveBtn" type="button">저장</button>
@@ -14073,7 +14074,7 @@ function openMailAccountModal(editId) {
 
           <div>
             <label style="font-size:11px;color:var(--text-secondary);font-weight:700">📧 이메일 (SMTP 계정)</label>
-            <input id="macUser" type="text" value="${escapeAttr(acc?.smtpUser || '')}" placeholder="me@yogico.kr"
+            <input id="macUser" type="text" autocomplete="off" value="${escapeAttr(acc?.smtpUser || '')}" placeholder="me@yogico.kr"
               style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:2px">
           </div>
 
@@ -14081,7 +14082,9 @@ function openMailAccountModal(editId) {
             <label style="font-size:11px;color:var(--text-secondary);font-weight:700">
               🔑 비밀번호 ${isEdit ? '<span style="color:var(--text-tertiary);font-weight:400">(변경 시에만 입력. 빈 값이면 기존 유지)</span>' : '<span style="color:#dc2626">*</span>'}
             </label>
-            <input id="macPass" type="password" placeholder="${isEdit ? '(변경 안 함)' : '이카운트 웹메일 비밀번호 또는 앱 비밀번호'}"
+            <!-- new-password: 메일 계정 비밀번호 칸이다. Chrome 이 CRM 로그인 비밀번호를 여기 채우면
+                 [변경 안 함] 인 줄 알고 저장했다가 메일 발송·수집이 통째로 끊긴다 -->
+            <input id="macPass" type="password" autocomplete="new-password" placeholder="${isEdit ? '(변경 안 함)' : '이카운트 웹메일 비밀번호 또는 앱 비밀번호'}"
               style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:2px">
           </div>
 
@@ -15368,10 +15371,13 @@ async function renderCrmAccountPage() {
   } catch { /* 아래에서 알 수 없음으로 표시 */ }
   if (state.view !== 'tool-crm-account') return;
 
+  // 비밀번호 칸은 용도를 Chrome 에 알려 준다 — autocomplete="off" 는 비밀번호 칸에서 무시된다.
+  // 현재 비밀번호(…Cur…)는 저장된 것을 채워도 되고, 새 비밀번호는 채우면 안 된다.
+  const acFor = (id, type) => type !== 'password' ? 'off' : (/Cur/.test(id) ? 'current-password' : 'new-password');
   const field = (id, label, type, placeholder, hint) => `
     <label style="display:block;margin-bottom:12px">
       <span style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:4px">${label}</span>
-      <input id="${id}" type="${type}" placeholder="${escapeAttr(placeholder || '')}" autocomplete="off"
+      <input id="${id}" type="${type}" placeholder="${escapeAttr(placeholder || '')}" autocomplete="${acFor(id, type)}"
         style="width:100%;max-width:360px;padding:9px 11px;font-size:14px;border:1px solid var(--border-default);border-radius:8px;
                background:var(--bg-surface);color:var(--text-primary)">
       ${hint ? `<span style="display:block;font-size:11px;color:var(--text-tertiary);margin-top:3px">${hint}</span>` : ''}

@@ -52,8 +52,12 @@ export default function LoginPage() {
           {error && <div className="error-message">{error}</div>}
           
           <div className="input-group">
+            {/* 비밀번호를 저장하는 곳은 여기 한 곳이어야 한다 — Chrome 에 로그인 칸임을 알려 준다.
+                다른 화면의 비밀번호 칸은 모두 new-password 로 막아 두었다 (page.tsx · app.js). */}
             <input
               type="text"
+              name="username"
+              autoComplete="username"
               required
               placeholder="마스터 아이디 (ID)"
               value={username}
@@ -65,6 +69,8 @@ export default function LoginPage() {
           <div className="input-group">
             <input
               type="password"
+              name="password"
+              autoComplete="current-password"
               required
               placeholder="비밀번호 (Password)"
               value={password}
