@@ -118,9 +118,13 @@ replyReason 에는 그 근거를 한 줄로 씁니다.
 
 ## suggestedAction
 담당자가 다음에 할 일 한 줄(예: "MOQ와 FOB 단가를 회신", "샘플 발송 가능일 확인 후 회신").
-답변이 불필요하면 "조치 불필요".
+답변이 불필요하면 "조치 불필요"(영어로 쓰는 메일이면 "No action needed").
 
-모든 출력 필드는 **한국어**로 작성합니다(translationSubject/translationBody 포함).
+## 출력 언어 (2026-10-20 변경)
+- topic·summary·keyPoints·intent·replyReason·suggestedAction 은 **메일 원문 언어로** 씁니다.
+  원문이 한국어면 한국어, 그 밖의 언어(영어·히브리어·덴마크어·일본어 등)면 **영어**로 씁니다.
+  인용된 이전 대화가 아니라 발신자가 새로 쓴 부분의 언어로 정합니다.
+- translationSubject / translationBody 는 위 번역 규칙대로 **한국어**로 씁니다 (검토용 한글 번역).
 사실만 쓰고, 원문에 없는 내용을 추론해 채워 넣지 마세요.`;
 
 function buildUserPrompt(mail: any): string {

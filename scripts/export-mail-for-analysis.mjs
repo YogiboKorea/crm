@@ -22,6 +22,10 @@ const OUT_DIR = outIdx > 0 ? process.argv[outIdx + 1] : 'scripts/mail-analysis';
 // 기본은 뺀다: 광고는 읽을 필요가 없고, 화면도 광고 폴더로 따로 치운다.
 const INCLUDE_NOISE = process.argv.includes('--include-noise');
 
+// --reanalyze — 이미 AI 분석된 메일도 다시 뽑는다 (분석 기준을 바꿔 전부 새로 할 때 · 2026-10-20 언어 규칙 변경).
+// 넣을 때 분석을 통째로 바꿔 끼우므로(import-mail-analysis.mjs) 예전 분석은 남지 않는다.
+const REANALYZE = process.argv.includes('--reanalyze');
+
 // --mailbox=david@yogico.kr — 그 메일 주소로 등록된 계정이 수집한 것만 (대표님 것만 돌릴 때).
 // 같은 주소가 여러 번 등록돼 있을 수 있으므로(관리자 등록 + 본인 등록) 전부 찾아 묶는다.
 const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').split('=').slice(1).join('=');
@@ -47,7 +51,7 @@ const mails = await db.collection('inboundmails').find({
   ...accountFilter,
   direction: { $ne: 'out' },
   trashedAt: null,
-  'analysis.method': { $ne: 'ai' },
+  ...(REANALYZE ? {} : { 'analysis.method': { $ne: 'ai' } }),
   date: dateFilter,
 }).sort({ date: -1 }).toArray();
 console.log('기준: ' + until.toISOString() + (INCLUDE_TODAY ? ' (오늘 포함 · 지금까지)' : ' 이전 수신분')
