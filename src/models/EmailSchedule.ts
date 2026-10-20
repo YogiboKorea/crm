@@ -10,7 +10,20 @@ export interface IEmailSchedule extends Document {
   mailAccountId?: string;      // 발송에 쓸 SMTP 계정 (없으면 env 기본)
   to: string;                  // 수신자 이메일
   scheduledFor: Date;          // 발송 예정 시각
-  status: 'pending' | 'sent' | 'failed' | 'canceled';
+  /**
+   * sending — 지금 한 실행이 이 예약을 집어 보내는 중 (2026-10-20).
+   * 집을 때 pending → sending 으로 **한 번에** 바꿔야, 오전 9시 자동 처리와 [지금 내보내기] 가 겹쳐도
+   * 같은 곳에 두 번 나가지 않는다 (lib/schedule-runner.ts claim).
+   */
+  status: 'pending' | 'sending' | 'sent' | 'failed' | 'canceled';
+  claimedAt?: Date;            // sending 으로 집은 시각 — 오래 머물면 끊긴 것 (확인 필요)
+  /**
+   * [발송 관리] 미리보기에서 **이번 발송만** 고친 제목·본문 (2026-10-20).
+   * 비어 있으면 양식(templateId) 그대로. 화면이 "여기 보이는 그대로 나갑니다" 라고 하므로
+   * 고친 것이 있으면 반드시 이것으로 보낸다.
+   */
+  subjectOverride?: string;
+  bodyOverride?: string;
   sentAt?: Date;
   attempts: number;
   lastError?: string;
@@ -39,10 +52,13 @@ const EmailScheduleSchema = new Schema<IEmailSchedule>({
   scheduledFor: { type: Date, required: true, index: true },
   status: {
     type: String,
-    enum: ['pending', 'sent', 'failed', 'canceled'],
+    enum: ['pending', 'sending', 'sent', 'failed', 'canceled'],
     default: 'pending',
     index: true,
   },
+  claimedAt: { type: Date, default: null },
+  subjectOverride: { type: String, default: '' },
+  bodyOverride: { type: String, default: '' },
   sentAt: { type: Date },
   attempts: { type: Number, default: 0 },
   lastError: { type: String, default: '' },
@@ -56,6 +72,13 @@ const EmailScheduleSchema = new Schema<IEmailSchedule>({
 
 // Cron 이 due 항목 pull 할 때 최적화
 EmailScheduleSchema.index({ status: 1, scheduledFor: 1 });
+
+// 개발 서버는 고친 파일을 다시 읽어도 mongoose 모델은 처음 만든 것을 계속 쓴다 — 칸을 새로 넣으면
+// 그 칸이 조용히 버려져 저장되지 않았다 (2026-10-20 고친 제목·본문). 예전 모양의 모델이 남아 있으면 버리고 새로 만든다.
+// 운영 서버는 배포마다 새로 뜨므로 해당 없다.
+if (mongoose.models.EmailSchedule && !mongoose.models.EmailSchedule.schema.path('bodyOverride')) {
+  mongoose.deleteModel('EmailSchedule');
+}
 
 export const EmailSchedule =
   (mongoose.models.EmailSchedule as mongoose.Model<IEmailSchedule>) ||

@@ -4,7 +4,12 @@ import { jwtVerify } from 'jose';
 import dbConnect from '@/lib/mongodb';
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { processScheduleItem } from '@/lib/schedule-runner';
-import { DAILY_SEND_CAP, SEND_INTERVAL_MS } from '@/lib/outbound-lock';
+import { DAILY_SEND_CAP, SEND_INTERVAL_MS, OUTBOUND_LOCKED, TEST_RECIPIENTS } from '@/lib/outbound-lock';
+import { acquireRunLock, releaseRunLock } from '@/lib/run-lock';
+import { seoulDayStart } from '@/lib/mail/period';
+
+/** 'sending' 으로 이만큼 머물면 처리 도중 끊긴 것 — 나갔는지 알 수 없으니 다시 보내지 않고 확인 필요로 남긴다 */
+const STUCK_SENDING_MS = 10 * 60_000;
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -69,14 +74,37 @@ export async function GET(req: Request) {
   }
 
   const startedAt = Date.now();
+  // 누가 깨웠는지 — 로그와 화면 표시용 (vercel 크론 · 외부 깨우미 · 화면을 열어 둔 브라우저 · 버튼)
+  const source = new URL(req.url).searchParams.get('source') || (req.headers.get('authorization') ? 'cron' : 'button');
 
+  // 개발 PC 의 로컬 서버는 화면 깨우기로 보내지 않는다 — 운영과 같은 DB 를 써서, 열어 둔 로컬 화면이
+  // 운영의 발송 잠금(OUTBOUND_LOCKED)과 상관없이 업체로 실제 메일을 내보낼 수 있다. 버튼·크론은 그대로 받는다.
+  if (source === 'browser' && process.env.VERCEL !== '1') {
+    return NextResponse.json({ success: true, processed: 0, results: [], skipped: 'dev-server', source });
+  }
+
+  let lock: string | null = null;
   try {
     await dbConnect();
+
+    // ── 한 번에 하나만 — 여러 곳에서 깨워도 겹쳐 돌지 않는다 (lib/run-lock.ts) ──
+    lock = await acquireRunLock('process-schedules', RUN_BUDGET_MS + 20_000, source);
+    if (!lock) {
+      return NextResponse.json({ success: true, processed: 0, results: [], skipped: 'busy', source });
+    }
+
     const now = new Date();
 
-    // 오늘 이미 나간 통수 — 하루 상한은 실행 단위가 아니라 하루 단위로 센다
-    const dayStart = new Date(now);
-    dayStart.setHours(0, 0, 0, 0);
+    // 처리 도중 끊겨 'sending' 에 남은 것 — 메일이 나갔는지 알 수 없다.
+    // 다시 보내면 두 통이 갈 수 있으니 보내지 않고 '실패(확인 필요)'로 돌린다 → 화면에 사유가 뜬다.
+    await EmailSchedule.updateMany(
+      { status: 'sending', claimedAt: { $lt: new Date(now.getTime() - STUCK_SENDING_MS) } },
+      { $set: { status: 'failed', claimedAt: null, lastError: '발송 처리 중 끊겼습니다 — 나갔는지 보낸메일함에서 확인한 뒤 필요하면 다시 보내 주세요' } },
+    );
+
+    // 오늘 이미 나간 통수 — 하루 상한은 실행 단위가 아니라 하루 단위로 센다.
+    // '하루' 는 서울 자정부터 — 서버(UTC) 기준이면 오전 9시에 하루가 바뀌었다.
+    const dayStart = seoulDayStart(now);
     const sentToday = await EmailSchedule.countDocuments({
       status: 'sent',
       sentAt: { $gte: dayStart },
@@ -86,41 +114,48 @@ export async function GET(req: Request) {
     if (remainingToday === 0) {
       return NextResponse.json({
         success: true, processed: 0, results: [],
-        skipped: 'daily-cap', sentToday, dailyCap: DAILY_SEND_CAP,
+        skipped: 'daily-cap', sentToday, dailyCap: DAILY_SEND_CAP, source,
       });
     }
 
-    const items = await EmailSchedule.find({
-      status: 'pending',
-      scheduledFor: { $lte: now },
-    }).sort({ scheduledFor: 1 }).limit(remainingToday);
+    const due: any = { status: 'pending', scheduledFor: { $lte: now } };
+    // 발송 잠금 중에는 테스트 주소로 가는 것만 집는다 — 나머지는 집어 봐야 도로 'pending' 으로 돌아가고,
+    // 그런 예약이 줄 앞을 막고 있으면 테스트 메일까지 못 나간다.
+    if (OUTBOUND_LOCKED) {
+      due.to = { $in: TEST_RECIPIENTS.map((t) => new RegExp(`^${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) };
+    }
+    const items = await EmailSchedule.find(due, { _id: 1 }).sort({ scheduledFor: 1 }).limit(remainingToday).lean();
 
-    const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+    const results: Array<{ id: string; ok: boolean; error?: string; canceled?: boolean }> = [];
     let stoppedFor: string | null = null;
+    let lastSendAt = 0;
 
-    for (let i = 0; i < items.length; i++) {
+    for (const item of items) {
       if (Date.now() - startedAt > RUN_BUDGET_MS) { stoppedFor = 'time-budget'; break; }
 
-      // 첫 통은 바로, 그다음부터 간격을 둔다
-      if (i > 0) {
-        const left = RUN_BUDGET_MS - (Date.now() - startedAt);
-        if (left < SEND_INTERVAL_MS) { stoppedFor = 'time-budget'; break; }
-        await sleep(SEND_INTERVAL_MS);
+      // 실제로 메일 서버에 보낸 뒤에만 간격을 둔다 — 취소·건너뛴 건까지 8초씩 쉬면 하루 몇 통 못 나간다
+      if (lastSendAt) {
+        const wait = SEND_INTERVAL_MS - (Date.now() - lastSendAt);
+        if (wait > 0) {
+          if (RUN_BUDGET_MS - (Date.now() - startedAt) < wait) { stoppedFor = 'time-budget'; break; }
+          await sleep(wait);
+        }
       }
 
-      const doc = items[i];
       try {
-        const r = await processScheduleItem(doc);
-        results.push({ id: String(doc._id), ok: !!r.ok, error: r.error });
+        const r = await processScheduleItem(item);
+        if (r.skipped) continue;   // 다른 실행이 먼저 집었다
+        if (r.attempted) lastSendAt = Date.now();
+        results.push({ id: String(item._id), ok: !!r.ok, error: r.error, canceled: r.canceled });
       } catch (e: any) {
-        results.push({ id: String(doc._id), ok: false, error: e?.message || 'unknown' });
+        results.push({ id: String(item._id), ok: false, error: e?.message || 'unknown' });
       }
     }
 
     const ok = results.filter((r) => r.ok).length;
     console.log(
-      `[cron:process-schedules] processed ${results.length}/${items.length} · ok=${ok}` +
-      ` · sentToday=${sentToday}/${DAILY_SEND_CAP}${stoppedFor ? ` · stopped:${stoppedFor}` : ''}`,
+      `[cron:process-schedules] ${source} · processed ${results.length}/${items.length} · ok=${ok}` +
+      ` · sentToday=${sentToday + ok}/${DAILY_SEND_CAP}${stoppedFor ? ` · stopped:${stoppedFor}` : ''}`,
     );
 
     return NextResponse.json({
@@ -128,13 +163,16 @@ export async function GET(req: Request) {
       processed: results.length,
       due: items.length,
       results,
-      sentToday,
+      sentToday: sentToday + ok,
       dailyCap: DAILY_SEND_CAP,
       intervalMs: SEND_INTERVAL_MS,
       stoppedFor,
+      source,
     });
   } catch (e: any) {
     console.error('[cron:process-schedules] error:', e);
     return NextResponse.json({ success: false, error: e?.message || 'unknown' }, { status: 500 });
+  } finally {
+    await releaseRunLock('process-schedules', lock);
   }
 }

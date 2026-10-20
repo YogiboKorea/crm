@@ -31,6 +31,18 @@ export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 export const MAX_COMPOSE_RECIPIENTS = 20;
 
 /**
+ * 업체 메일 칸(Lead.Email)에서 보낼 주소 **하나**만 꺼낸다 — 묶음 발송·예약·자동 재발송이 같이 쓴다 (2026-10-20).
+ * "Sales <a@b.com>" · "a@b.com; c@d.com" · "a@b.com (영업)" 처럼 적힌 값을 그대로 받는 사람에 넣으면
+ * 메일 서버가 거절하거나 여러 곳에 한꺼번에 나간다. 첫 주소만 쓰고, 없으면 '' 이다.
+ */
+export function leadMailAddress(raw: unknown): string {
+  const s = String(raw || '').trim();
+  if (!s || /^Not found/i.test(s)) return '';
+  const m = s.match(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  return m ? m[0] : '';
+}
+
+/**
  * "a@x.com, b@y.com; 홍길동 <c@z.com>" 같은 입력을 주소 목록으로 바꾼다.
  * 쉼표·세미콜론·줄바꿈으로 나눈다. 아웃룩에서 복사해 온 "이름 <주소>" 도 받는다.
  */

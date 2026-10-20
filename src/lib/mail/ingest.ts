@@ -49,6 +49,7 @@ async function learnForOwner(owner: string, cache: Map<string, { learned: Learne
 }
 import { Lead } from '@/models/Lead';
 import { MailAccount } from '@/models/MailAccount';
+import { cancelPendingSchedules } from '@/lib/schedule-cancel';
 
 /** 개인 메일 도메인 — 여기서 온 것은 도메인만으로 자사 발신이라 볼 수 없다 */
 const FREE_MAIL = new Set([
@@ -292,6 +293,17 @@ async function linkToLead(
       $addToSet: { threadKeys: doc.threadKey },
     },
   );
+
+  // 답장이 왔으니 이 업체에 아직 안 나간 예약은 거둔다 — 대화가 시작된 상대에게 광고 메일이 또 가면 안 된다.
+  //   · 자동 재발송은 전부 ("답이 없을 때만" 나가는 메일이다)
+  //   · 나머지는 이 메일보다 먼저 잡아 둔 것만 — 답장을 보고 사람이 새로 잡은 예약까지 지우지 않게
+  //     (옛 메일을 다시 가져올 때도 그 뒤에 잡은 예약은 그대로 둔다)
+  // 보내는 순간에도 같은 기준으로 다시 본다(schedule-runner.ts). 여기서 거둬야 [📅 예약] 목록에 "곧 나갈 것" 으로 남지 않는다.
+  const mailAt = new Date(doc.date || Date.now());
+  await Promise.all([
+    cancelPendingSchedules(hit.leadId, '답장이 와서 자동 재발송을 멈췄습니다', { followupOnly: true }),
+    cancelPendingSchedules(hit.leadId, '예약한 뒤 업체에서 답장이 와서 취소했습니다', { createdBefore: mailAt }),
+  ]).catch(() => { /* 보내는 순간 확인이 막는다 */ });
 
   return {
     messageId: doc.messageId,

@@ -303,6 +303,7 @@ async function init() {
   renderFilters();
   bindEvents();
   startNavBadgePolling();
+  refreshUpdatesBadge();   // 사이드바 [🆕 최근 업데이트] 의 NEW 표시
   // 새 아이디 첫 로그인 — 내 메일함 2달치를 자동으로 가져온다 (첫 화면이 뜬 뒤 조금 있다가)
   setTimeout(startAutoBackfill, 2500);
   syncMailOnLogin();   // 밤사이 온 답장을 화면 열 때 한 번 당겨온다 (기다리지 않는다)
@@ -658,8 +659,8 @@ function updateNavBadges(counts) {
   const s = counts.stages;
   document.querySelectorAll('[data-nav-badge]').forEach(el => {
     const key = el.dataset.navBadge;
-    // 메일함 배지는 stage 가 아니라 별도 API 에서 채운다 (loadMailCounts)
-    if (key === 'inboxUnread' || key === 'inboxNeedsReply' || key === 'inboxDeadlines' || key === 'inboxTrash') return;
+    // 메일함 배지는 stage 가 아니라 별도 API 에서 채운다 (loadMailCounts) · 최근 업데이트 NEW 는 refreshUpdatesBadge
+    if (key === 'inboxUnread' || key === 'inboxNeedsReply' || key === 'inboxDeadlines' || key === 'inboxTrash' || key === 'updatesNew') return;
     // 발송 관리 배지는 **아직 보내지 않은 곳(queued)** 만 센다 — 해야 할 일의 수다.
     // 발송 완료(contacted)까지 더하면 보낼 곳이 하나도 없어도 숫자가 남아 "뭘 더 보내야 하나" 가 된다
     // (대표님 지적 2026-09-15: 보낼 메일 1곳인데 배지는 2로 떴다).
@@ -731,14 +732,30 @@ function startNavBadgePolling() {
   // 5분마다 숫자를 다시 읽고, 메일 서버에서 새 메일도 가져온다 (화면이 보일 때만 · 서버 쿨다운 10분)
   _navBadgeTimer = setInterval(() => {
     refresh();
-    if (document.visibilityState === 'visible') syncMailOnLogin();
+    if (document.visibilityState === 'visible') { syncMailOnLogin(); kickDueSchedules(); }
   }, 5 * 60 * 1000);
+  setTimeout(kickDueSchedules, 15 * 1000);   // 로그인 직후 한 번 — 밀린 예약이 있으면 바로 나간다
   // 브라우저 창이 다시 포커스되면 즉시 갱신 (다른 창에서 액션 반영)
   window.addEventListener('focus', refresh);
   // 페이지가 다시 보이는 상태로 돌아오면 갱신 — 다른 탭에 있던 동안 온 메일도 가져온다
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { refresh(); syncMailOnLogin(); }
+    if (document.visibilityState === 'visible') { refresh(); syncMailOnLogin(); kickDueSchedules(); }
   });
+}
+
+/**
+ * 예약 메일 깨우기 — CRM 화면이 열려 있으면 5분마다 "시각이 된 예약" 을 내보내게 한다 (2026-10-20).
+ *
+ * Vercel 무료 크론은 하루 한 번(오전 9시)뿐이라, 오후 2시로 잡은 예약이 다음 날 아침에 나갔다.
+ * 주 깨우미는 외부 크론(cron-job.org 등 · 10분마다)이고, 이건 그게 멈췄을 때의 보조다.
+ * 서버가 한 번에 하나만 돌리므로(lib/run-lock.ts) 여러 창이 동시에 깨워도 두 번 나가지 않는다.
+ * 결과는 화면에 띄우지 않는다 — 나간 것은 [📅 예약 발송]·[✅ 발송 완료] 에 그대로 보인다.
+ */
+var _kickSchedulesAt = 0;
+function kickDueSchedules() {
+  if (Date.now() - _kickSchedulesAt < 4 * 60 * 1000) return;   // 창을 오가며 자꾸 부르지 않게
+  _kickSchedulesAt = Date.now();
+  fetch('/api/cron/process-schedules?source=browser', { credentials: 'same-origin' }).catch(() => {});
 }
 
 // 데이터 변경 후 캐시 무효화
@@ -1817,6 +1834,12 @@ async function _renderInner(seq) {
     els.viewTitle.textContent = "📖 사용 설명서";
     els.viewSubtitle.textContent = "처음 쓰시는 분을 위한 단계별 가이드 · 각 화면이 어떻게 이어지는지.";
     renderUserGuidePage();
+    return;
+  }
+  if (state.view === "tool-updates") {
+    els.viewTitle.textContent = "🆕 최근 업데이트";
+    els.viewSubtitle.textContent = "날짜별로 무엇이 바뀌었고, 어디서 어떻게 쓰는지 · 최근 것이 위에 있습니다.";
+    renderUpdatesPage();
     return;
   }
   // 메일 화면을 **옮겨 왔을 때만** 폴더·검색 조건을 비운다. 받은 메일함에서 고른 폴더가
@@ -3611,7 +3634,7 @@ async function handleComposeSend() {
     const ok = confirm(
       `📅 ${recipients.length}명 예약 발송\n\n` +
       `예약 시각: ${scheduledFor.toLocaleString('ko-KR')}\n` +
-      `제목: ${_composeState.subject.slice(0, 60)}\n\n등록하시겠습니까? (Vercel Cron 이 5분마다 실행)`
+      `제목: ${_composeState.subject.slice(0, 60)}\n\n예약 시각이 되면 몇 분 안에 나갑니다. 등록하시겠습니까?`
     );
     if (!ok) return;
     _composeState.sending = true;
@@ -4634,15 +4657,119 @@ var AD_FOLDER_NAME = '광고·자동발송';
 var _sentState = { page: 1, q: '', data: null, busy: false };
 /**
  * 보낸 메일함을 받은 메일함 **폴더 목록 안에도** 보여줄지.
- * 2026-10-20 사이드바 [📤 보낸 메일함] 으로 따로 뺐다 (대표님 요청 "받은 메일함과 보낸 메일함을 분리") — 두 군데 있으면 헷갈린다.
+ * 2026-10-20 사이드바 [📤 보낸 메일함] 을 따로 만들었고, 대표님 요청으로 폴더 목록 맨 아래(휴지통 위)에도 같이 둔다
+ * ("여기 하단에도 보낸메일함이 보이게") — 둘 다 같은 화면으로 간다.
  */
-var SHOW_SENT_MAILBOX = false;
+var SHOW_SENT_MAILBOX = true;
+
+/**
+ * 받은 메일함 왼쪽 [거래처 폴더] 목록 — 받은 메일함과 보낸 메일함이 **같은 목록**을 쓴다 (2026-10-20).
+ *
+ * 이카운트 웹메일처럼 왼쪽 목록은 그대로 두고 오른쪽만 바뀐다. 예전에는 [보낸 메일함] 을 누르면
+ * 폴더 목록이 사라진 다른 화면으로 넘어가 "다른 프로그램에 온 것" 처럼 보였다 (대표님 요청 — 메일 양식과 똑같이).
+ *
+ * @param groupInfo  loadMailGroups() 결과 — { groups, ungrouped }
+ * @param total      [전체] 옆 숫자 (보낸 메일함 화면에서는 마지막으로 본 받은 메일함 전체 통수)
+ * @param todayOn    [오늘 온 메일] 을 보는 중이면 폴더를 하나도 켜지 않는다
+ * @param sentOn     보낸 메일함을 보는 중이면 그 항목만 켠다
+ * @param showRegroup [미분류 메일 정리하기] 를 보여줄지 (보낸 메일함에서는 해당 없음)
+ */
+function inboxFolderPanelHtml(groupInfo, { total, todayOn = false, sentOn = false, showRegroup = true } = {}) {
+  // 대표가 메일함에서 나눠둔 폴더가 그대로 온다. 새 메일은 수집 시점에
+  // 발신자 이력·제목으로 같은 폴더에 자동 분류된다 (AI 없이 무료).
+  const groups = groupInfo?.groups || [];
+  const ungrouped = groupInfo?.ungrouped || 0;
+  const folderItem = (label, value, count, fresh, icon, activeOverride) => {
+    // 오늘 보기 중에는 폴더를 하나도 고르지 않은 상태다.
+    // 이 줄이 없으면 [전체]가 켜진 것처럼 보여, 오늘 보기인데 전체를 보는 줄 안다.
+    const active = activeOverride ?? (!sentOn && !todayOn && _inboxState.group === value);
+    return `<button type="button" class="inbox-group" data-group="${escapeAttr(value)}"
+      style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:7px 10px;
+             font-size:12.5px;border:none;border-radius:7px;cursor:pointer;margin-bottom:2px;
+             background:${active ? 'var(--brand-soft)' : 'transparent'};
+             color:${active ? 'var(--brand-text)' : 'var(--text-secondary)'};
+             font-weight:${active ? '700' : '500'}">
+      <span style="width:16px;flex-shrink:0">${icon}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(label)}</span>
+      ${fresh ? `<span style="background:#fee2e2;color:#991b1b;border-radius:99px;padding:0 6px;
+                   font-size:10px;font-weight:800">${fresh}</span>` : ''}
+      <span style="color:var(--text-quaternary);font-size:11px">${count ?? ''}</span>
+    </button>`;
+  };
+
+  return `
+    <aside class="inbox-folders" style="width:210px;flex-shrink:0;background:var(--bg-surface);border:1px solid var(--border-subtle);
+                  border-radius:12px;padding:10px;align-self:flex-start;max-height:72vh;overflow:auto">
+      <div style="font-size:10px;font-weight:800;color:var(--text-tertiary);padding:2px 10px 8px;
+                  text-transform:uppercase;letter-spacing:.5px">거래처 폴더</div>
+      ${folderItem('전체', '', total, 0, '📬')}
+      <!-- 순서: 거래처 폴더 → 미분류 → 광고·자동발송.
+           광고는 목록 맨 아래 [미분류] 바로 밑이다. 거래처 사이에 끼면
+           거래처인 줄 알고, 따로 상자를 쳐서 내려두면 목록 밖으로 보여
+           아예 못 찾는다 (실제로 못 찾으셨다). 같은 목록 안, 맨 끝이 맞다.
+           아이콘만 📢 로 달리 써서 거래처 폴더(📁)와 구분한다. -->
+      ${groups.filter((g) => g.group !== AD_FOLDER_NAME)
+        .map((g) => folderItem(g.group, g.group, g.total, g.fresh, '📁')).join('')}
+      ${ungrouped ? folderItem('미분류', '__none__', ungrouped, 0, '❔') : ''}
+      ${(() => {
+        const ad = groups.find((g) => g.group === AD_FOLDER_NAME);
+        return ad ? folderItem('광고·자동발송', AD_FOLDER_NAME, ad.total, 0, '📢') : '';
+      })()}
+      <!-- 보낸 메일함 · 휴지통 — 거래처 폴더 아래 한 칸에 둔다 (이카운트 웹메일과 같은 자리).
+           보낸 메일함은 사이드바 [📤 보낸 메일함] 과 같은 화면이다 — 어느 쪽을 눌러도 같다.
+           휴지통도 폴더의 하나로 둔다. 별도 화면으로 빼두면 "치웠는데 어디 갔지"가 되고,
+           치운 메일을 되돌리려면 다른 화면으로 나가야 해서 흐름이 끊긴다.
+           DB 에서 지우지 않으므로 여기서 언제든 되살릴 수 있다. -->
+      <div style="border-top:1px solid var(--border-subtle);margin-top:6px;padding-top:6px">
+        ${SHOW_SENT_MAILBOX ? folderItem('보낸 메일함', '__sent__', '', 0, '📤', sentOn) : ''}
+        ${folderItem('휴지통', '__trash__', _mailCountsCache?.counts?.trash ?? 0, 0, '🗑', !sentOn && Boolean(_inboxState.trashed))}
+      </div>
+      ${showRegroup ? `
+      <div style="border-top:1px solid var(--border-subtle);margin-top:8px;padding-top:8px">
+        <button type="button" id="inboxRegroupBtn"
+          style="width:100%;padding:6px;font-size:11px;border:1px solid var(--border-default);
+                 border-radius:7px;background:var(--bg-surface);color:var(--text-secondary);cursor:pointer"
+          title="이미 폴더에 넣어둔 메일을 보고 '이 주소는 이 거래처' 를 익혀서, 미분류에 남은 메일을 같은 폴더로 옮깁니다.">
+          🔄 미분류 메일 정리하기
+        </button>
+        <div style="font-size:10px;color:var(--text-quaternary);margin-top:6px;line-height:1.5">
+          새로 온 메일은 보낸 사람을 보고 자동으로 폴더에 들어갑니다.<br>
+          모르는 곳에서 온 메일만 <b>미분류</b>에 남습니다.
+        </div>
+      </div>` : ''}
+    </aside>`;
+}
 
 async function renderSentMailPage() {
   // 사이드바에서 바로 열면 받은 메일함을 안 거쳐 계정 목록이 아직 없다 — 받은 메일함이 보던 메일함과 같게 맞춘다
   await loadInboxAccounts();
   const accountId = currentMailboxAccountId();
-  els.content.innerHTML = `<div class="inline-loader">이카운트 보낸메일함을 읽는 중… (2~5초)</div>`;
+  const groupInfo = await loadMailGroups();
+
+  // 받은 메일함과 같은 틀 — 왼쪽 거래처 폴더 목록은 그대로, 오른쪽만 보낸 메일 (이카운트 웹메일처럼).
+  // 폴더를 누르면 받은 메일함의 그 폴더로 간다.
+  const shell = (main) => `
+    <div class="inbox-layout" style="display:flex;gap:14px;align-items:flex-start">
+      ${inboxFolderPanelHtml(groupInfo, { total: _inboxState.allTotal, sentOn: true, showRegroup: false })}
+      <div class="inbox-main" style="flex:1;min-width:0">${main}</div>
+    </div>`;
+  const bindFolders = () => els.content.querySelectorAll('.inbox-group').forEach((btn) => btn.addEventListener('click', () => {
+    const g = btn.dataset.group;
+    if (g === '__sent__') return;   // 지금 보고 있다
+    _inboxState.sent = false;
+    _inboxState.today = false;
+    _inboxState.todayFilter = '';
+    _inboxState.trashed = g === '__trash__';
+    _inboxState.group = g === '__trash__' ? '' : g;
+    _inboxState.page = 1;
+    // 받은 메일함에 처음 들어갈 때 하는 초기화가 방금 고른 폴더를 지우지 않게, 이미 들어온 것으로 표시한다
+    _inboxState.lastView = 'tool-inbox';
+    state.view = 'tool-inbox';
+    render();
+  }));
+
+  els.content.innerHTML = shell(`<div class="inline-loader">이카운트 보낸메일함을 읽는 중… (2~5초)</div>`);
+  bindFolders();
 
   const params = new URLSearchParams({ page: String(_sentState.page) });
   if (_sentState.q) params.set('q', _sentState.q);
@@ -4651,15 +4778,10 @@ async function renderSentMailPage() {
   const d = await safeJsonFetch('/api/mail/sent?' + params.toString());
   if (!_inboxState.sent || !['tool-sent', 'tool-inbox', 'tool-inbox-needsreply'].includes(state.view)) return;   // 기다리는 사이 다른 화면으로 갔다
 
-  const back = `<button type="button" id="sentBack"
-      style="padding:7px 14px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-surface);
-             color:var(--text-secondary);font-size:12.5px;font-weight:700;cursor:pointer">← 받은 메일함</button>`;
-
   if (!d || !d.success) {
-    els.content.innerHTML = `
-      <div style="margin-bottom:12px">${back}</div>
-      <div class="empty-detail"><h3>보낸메일함을 읽지 못했습니다</h3><p>${escapeHtml((d && d.error) || '잠시 뒤 다시 시도해 주세요.')}</p></div>`;
-    els.content.querySelector('#sentBack')?.addEventListener('click', leaveSentMailPage);
+    els.content.innerHTML = shell(`
+      <div class="empty-detail"><h3>보낸메일함을 읽지 못했습니다</h3><p>${escapeHtml((d && d.error) || '잠시 뒤 다시 시도해 주세요.')}</p></div>`);
+    bindFolders();
     return;
   }
   _sentState.data = d;
@@ -4698,9 +4820,8 @@ async function renderSentMailPage() {
         style="padding:6px 12px;border-radius:7px;border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer;${d.page >= d.totalPages ? 'opacity:.4;cursor:default' : ''}">다음 ›</button>
     </div>`;
 
-  els.content.innerHTML = `
+  els.content.innerHTML = shell(`
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-      ${back}
       <div style="flex:1;min-width:220px">
         <div style="font-size:16px;font-weight:800;color:var(--text-primary)">📤 보낸 메일함</div>
         <div style="font-size:12px;color:var(--text-tertiary)">
@@ -4737,9 +4858,9 @@ async function renderSentMailPage() {
           <tbody>${rows}</tbody>
         </table>
       </div>
-      ${pager}` : `<div class="empty-detail"><h3>${_sentState.q ? '찾는 메일이 없습니다' : '보낸 메일이 없습니다'}</h3></div>`}`;
+      ${pager}` : `<div class="empty-detail"><h3>${_sentState.q ? '찾는 메일이 없습니다' : '보낸 메일이 없습니다'}</h3></div>`}`);
 
-  els.content.querySelector('#sentBack')?.addEventListener('click', leaveSentMailPage);
+  bindFolders();
   els.content.querySelector('#sentSearch')?.addEventListener('submit', (e) => {
     e.preventDefault();
     _sentState.q = (els.content.querySelector('#sentQ')?.value || '').trim();
@@ -4761,18 +4882,6 @@ function sentName(name) {
   const s = String(name || '').trim();
   const m = s.match(/^'(.*)'$/) || s.match(/^"(.*)"$/);
   return (m ? m[1] : s).trim();
-}
-
-function leaveSentMailPage() {
-  _inboxState.sent = false;
-  _sentState.page = 1;
-  _sentState.q = '';
-  // 사이드바 [📤 보낸 메일함] 으로 들어왔으면 [📥 받은 메일함] 메뉴로 옮겨 간다 — 메뉴 표시도 같이 바뀌어야 한다
-  if (state.view === 'tool-sent') {
-    document.querySelector('.nav-item[data-view="tool-inbox"]')?.click();
-    return;
-  }
-  render();
 }
 
 function closeSentMailModal() {
@@ -5234,87 +5343,10 @@ async function renderInboxPage(opts) {
       </div>
     </section>`;
 
-  // ── 거래처 폴더 목록 (좌측) ──
-  // 대표가 메일함에서 나눠둔 폴더가 그대로 온다. 새 메일은 수집 시점에
-  // 발신자 이력·제목으로 같은 폴더에 자동 분류된다 (AI 없이 무료).
-  const groups = groupInfo?.groups || [];
-  const ungrouped = groupInfo?.ungrouped || 0;
-  const folderItem = (label, value, count, fresh, icon) => {
-    // 오늘 보기 중에는 폴더를 하나도 고르지 않은 상태다.
-    // 이 줄이 없으면 [전체]가 켜진 것처럼 보여, 오늘 보기인데 전체를 보는 줄 안다.
-    const active = !todayOn && _inboxState.group === value;
-    return `<button type="button" class="inbox-group" data-group="${escapeAttr(value)}"
-      style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:7px 10px;
-             font-size:12.5px;border:none;border-radius:7px;cursor:pointer;margin-bottom:2px;
-             background:${active ? 'var(--brand-soft)' : 'transparent'};
-             color:${active ? 'var(--brand-text)' : 'var(--text-secondary)'};
-             font-weight:${active ? '700' : '500'}">
-      <span style="width:16px;flex-shrink:0">${icon}</span>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(label)}</span>
-      ${fresh ? `<span style="background:#fee2e2;color:#991b1b;border-radius:99px;padding:0 6px;
-                   font-size:10px;font-weight:800">${fresh}</span>` : ''}
-      <span style="color:var(--text-quaternary);font-size:11px">${count}</span>
-    </button>`;
-  };
-
-  const folderPanel = `
-    <aside class="inbox-folders" style="width:210px;flex-shrink:0;background:var(--bg-surface);border:1px solid var(--border-subtle);
-                  border-radius:12px;padding:10px;align-self:flex-start;max-height:72vh;overflow:auto">
-      <div style="font-size:10px;font-weight:800;color:var(--text-tertiary);padding:2px 10px 8px;
-                  text-transform:uppercase;letter-spacing:.5px">거래처 폴더</div>
-      ${folderItem('전체', '', total, 0, '📬')}
-      <!-- 순서: 거래처 폴더 → 미분류 → 광고·자동발송.
-           광고는 목록 맨 아래 [미분류] 바로 밑이다. 거래처 사이에 끼면
-           거래처인 줄 알고, 따로 상자를 쳐서 내려두면 목록 밖으로 보여
-           아예 못 찾는다 (실제로 못 찾으셨다). 같은 목록 안, 맨 끝이 맞다.
-           아이콘만 📢 로 달리 써서 거래처 폴더(📁)와 구분한다. -->
-      ${groups.filter((g) => g.group !== AD_FOLDER_NAME)
-        .map((g) => folderItem(g.group, g.group, g.total, g.fresh, '📁')).join('')}
-      ${ungrouped ? folderItem('미분류', '__none__', ungrouped, 0, '❔') : ''}
-      ${(() => {
-        const ad = groups.find((g) => g.group === AD_FOLDER_NAME);
-        return ad ? folderItem('광고·자동발송', AD_FOLDER_NAME, ad.total, 0, '📢') : '';
-      })()}
-      <!-- 휴지통도 폴더의 하나로 둔다. 별도 화면으로 빼두면 "치웠는데 어디 갔지"가 되고,
-           치운 메일을 되돌리려면 다른 화면으로 나가야 해서 흐름이 끊긴다.
-           DB 에서 지우지 않으므로 여기서 언제든 되살릴 수 있다. -->
-      <div style="border-top:1px solid var(--border-subtle);margin-top:6px;padding-top:6px">
-        <!-- 보낸 메일함 — 이카운트 보낸메일함을 그 자리에서 읽는다 (renderSentMailPage).
-             사이드바 메뉴를 늘리지 않고 휴지통처럼 폴더의 하나로 둔다.
-             일단 숨김 (2026-09-14) — 기능(renderSentMailPage · /api/mail/sent)은 그대로 살아 있고,
-             다시 켜려면 SHOW_SENT_MAILBOX 를 true 로 바꾸면 된다. -->
-        ${SHOW_SENT_MAILBOX ? `<button type="button" class="inbox-group" data-group="__sent__"
-          title="이카운트 보낸메일함을 그대로 보여줍니다 — 보낸 메일의 내용·첨부를 확인합니다"
-          style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:7px 10px;
-                 font-size:12.5px;border:none;border-radius:7px;cursor:pointer;margin-bottom:2px;
-                 background:transparent;color:var(--text-secondary);font-weight:500">
-          <span style="width:16px;flex-shrink:0">📤</span>
-          <span style="flex:1">보낸 메일함</span>
-        </button>` : ''}
-        <button type="button" class="inbox-group" data-group="__trash__"
-          style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:7px 10px;
-                 font-size:12.5px;border:none;border-radius:7px;cursor:pointer;margin-bottom:2px;
-                 background:${_inboxState.trashed ? 'var(--brand-soft)' : 'transparent'};
-                 color:${_inboxState.trashed ? 'var(--brand-text)' : 'var(--text-secondary)'};
-                 font-weight:${_inboxState.trashed ? '700' : '500'}">
-          <span style="width:16px;flex-shrink:0">🗑</span>
-          <span style="flex:1">휴지통</span>
-          <span style="color:var(--text-quaternary);font-size:11px">${(_mailCountsCache?.counts?.trash ?? 0)}</span>
-        </button>
-      </div>
-      <div style="border-top:1px solid var(--border-subtle);margin-top:8px;padding-top:8px">
-        <button type="button" id="inboxRegroupBtn"
-          style="width:100%;padding:6px;font-size:11px;border:1px solid var(--border-default);
-                 border-radius:7px;background:var(--bg-surface);color:var(--text-secondary);cursor:pointer"
-          title="이미 폴더에 넣어둔 메일을 보고 '이 주소는 이 거래처' 를 익혀서, 미분류에 남은 메일을 같은 폴더로 옮깁니다.">
-          🔄 미분류 메일 정리하기
-        </button>
-        <div style="font-size:10px;color:var(--text-quaternary);margin-top:6px;line-height:1.5">
-          새로 온 메일은 보낸 사람을 보고 자동으로 폴더에 들어갑니다.<br>
-          모르는 곳에서 온 메일만 <b>미분류</b>에 남습니다.
-        </div>
-      </div>
-    </aside>`;
+  // ── 거래처 폴더 목록 (좌측) — 보낸 메일함 화면도 같은 목록을 쓴다 (inboxFolderPanelHtml) ──
+  // [전체] 숫자는 아무것도 거르지 않은 받은 메일함 통수 — 보낸 메일함 화면에서도 같은 숫자를 보이려고 남겨 둔다
+  if (!_inboxState.group && !_inboxState.today && !_inboxState.trashed && !_inboxState.q && !needsReplyOnly) _inboxState.allTotal = total;
+  const folderPanel = inboxFolderPanelHtml(groupInfo, { total, todayOn });
 
   els.content.innerHTML = `
     ${viewingBanner}
@@ -5720,12 +5752,15 @@ function bindInboxActions() {
       _inboxState.today = false;      // 폴더를 고르면 오늘 보기는 꺼진다
       _inboxState.todayFilter = '';   // 좁혀 둔 것도 같이 푼다
       if (g === '__sent__') {
-        // 보낸 메일함은 목록 필터가 아니라 다른 화면이다 (이카운트 보낸메일함을 바로 읽음)
-        _inboxState.sent = true;
+        // 보낸 메일함은 사이드바 [📤 보낸 메일함] 과 **같은 화면**으로 간다 (사이드바 표시도 같이 켜진다).
+        // 왼쪽 폴더 목록은 그대로 남는다 (renderSentMailPage — inboxFolderPanelHtml).
         _inboxState.trashed = false;
         _inboxState.group = '';
         _sentState.page = 1;
         _sentState.q = '';
+        state.view = 'tool-sent';
+        render();
+        return;
       } else if (g === '__trash__') {
         // 휴지통은 폴더 필터가 아니라 "치운 것만" 이라는 별도 축이다
         _inboxState.sent = false;
@@ -12299,6 +12334,291 @@ async function loadMailAccounts(force) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// 🆕 최근 업데이트 페이지
+// ══════════════════════════════════════════════════════════════
+/**
+ * 🆕 최근 업데이트 — 날짜별로 무엇이 바뀌었고, 어디서 어떻게 쓰는지 (2026-10-20, 대표님 미팅 전 요청).
+ *
+ * 왜 따로 두는가: 고친 것을 메신저로만 알리면 흩어져서, 정작 화면 앞에서 "이거 언제 바뀌었지" 를 찾을 수 없다.
+ * 앱 안에 날짜와 함께 남겨 두면 설명할 때 이 화면을 같이 보면서 [바로 가기]로 그 화면에 넘어갈 수 있다.
+ *
+ * 새 업데이트는 UPDATE_LOG **맨 위에** 한 덩어리를 추가한다. 날짜는 실제로 반영(배포)된 날이다 (git 기록 기준).
+ *   kind  new 새 기능 · better 개선 · fix 오류 수정 · data 정리·분석
+ *   how   "이렇게 쓰시면 됩니다" — 버튼 이름은 화면과 똑같이 [ ] 로 적는다
+ *   go    누르면 그 화면으로 (사이드바 data-view · 'compose' 는 메일 쓰기 창) · tab 은 발송 관리 탭
+ * UPDATE_NEXT 는 진행 중·확인 필요 — 끝나면 거기서 지우고 UPDATE_LOG 에 날짜와 함께 옮긴다.
+ */
+var UPDATE_LOG = [
+  {
+    date: '2026-10-20',
+    items: [
+      {
+        kind: 'new', icon: '✏️', title: '메일 쓰기 — 여러 명 · 참조 · 첨부 · 주소 자동 완성',
+        how: [
+          '사이드바 맨 위 <b>[✏️ 메일 쓰기]</b> 한 곳에서 씁니다. 받은 메일함 안에 있던 예전 버튼은 없앴습니다.',
+          '받는 사람 여러 명과 <b>참조 · 숨은참조</b>를 넣을 수 있습니다 (합쳐 20명까지).',
+          '주소 몇 글자나 <b>업체 이름</b>만 쳐도 주고받았던 주소가 뜹니다.',
+          '<b>파일 첨부</b> — 10MB가 넘는 파일은 드롭박스·구글드라이브 링크로 보내라고 바로 알려 드립니다.',
+          '<b>[🤖 AI 검토]</b> — 보내기 전에 빠진 내용·어색한 문장을 짚어 줍니다 (누를 때마다 소액 비용).',
+        ],
+        go: 'compose', goLabel: '메일 쓰기 열기',
+      },
+      {
+        kind: 'better', icon: '↩️', title: '답장 — 참조 · 전체 답장 · 첨부',
+        how: [
+          '메일을 열고 <b>[↩ 답장]</b> 또는 <b>[↩ 전체 답장]</b> — 전체 답장은 받는 사람·참조에 있던 분들이 그대로 들어갑니다 (내 주소는 빠집니다).',
+          '답장에도 <b>참조 · 숨은참조 · 파일 첨부</b>를 넣을 수 있습니다.',
+        ],
+        go: 'tool-inbox', goLabel: '받은 메일함',
+      },
+      {
+        kind: 'new', icon: '📤', title: '보낸 메일함 — 받은 메일과 나눠 봅니다',
+        how: [
+          '<b>받은 메일함</b>에는 받은 메일만 보입니다. 내가 보낸 메일이 섞여 헷갈리던 것을 나눴습니다.',
+          '내가 보낸 메일은 사이드바 <b>[📤 보낸 메일함]</b> 또는 받은 메일함 폴더 목록 <b>맨 아래</b>에서 봅니다. 화면 모양은 받은 메일함과 같습니다.',
+          '이카운트 보낸메일함을 그대로 보여 주므로 <b>웹메일·아웃룩에서 보낸 메일도</b> 여기 모입니다.',
+        ],
+        go: 'tool-sent', goLabel: '보낸 메일함',
+      },
+      {
+        kind: 'better', icon: '📅', title: '예약·묶음 발송 — 화면에 보이는 그대로 나갑니다',
+        how: [
+          '예약 시각이 되면 <b>몇 분 안에</b> 나갑니다. [📅 예약 발송] 위에 <b>마지막 자동 처리</b> 시각이 보이고, 급하면 <b>[⏱ 지금 예약분 내보내기]</b>.',
+          '[✉️ 보낼 메일]에서 <b>고친 제목·본문 그대로</b> 나갑니다 (저장된 양식은 그대로). 🧪 테스트 메일도 같은 문구로 갑니다.',
+          '업체를 <b>[검증 실패] · 보관함 · [↩ 발송 취소]</b>로 옮기면 그 업체 예약도 함께 취소됩니다. 이유는 [📅 예약 발송] 맨 아래 <b>🚫 취소된 예약</b>에서 봅니다.',
+          '<b>답장이 오면</b> 남은 재발송은 저절로 취소되고, 보내기 직전에도 한 번 더 확인합니다.',
+          '재발송은 같은 소개 메일을 또 보내지 않고, <b>\'팔로우업\' 양식</b>을 첫 메일의 답장(Re: 제목)으로 보내 상대 메일함에서 한 대화로 묶입니다.',
+          '여러 곳에서 동시에 눌러도 <b>한 통만</b> 나갑니다. 나가는 중에는 "⏳ 보내는 중" 이 뜹니다.',
+        ],
+        go: 'pipeline-contacted', tab: 'scheduled', goLabel: '예약 발송',
+      },
+      {
+        kind: 'data', icon: '🤖', title: '메일 AI 분석 — 10월 20일까지 받은 메일 반영',
+        how: [
+          '대표님 메일함 최근 한 달 메일에 <b>회신 필요 · 기한 · 요약</b>을 채웠습니다 (광고·자동발송 제외). 비용은 들지 않았습니다.',
+        ],
+        go: 'tool-inbox-needsreply', goLabel: '회신 필요',
+      },
+      {
+        kind: 'new', icon: '🆕', title: '최근 업데이트 — 이 화면',
+        how: [
+          '사이드바 <b>[📖 사용 설명서]</b> 아래에서 무엇이 언제 바뀌었는지 날짜별로 봅니다. 새 항목이 생기면 메뉴에 <b>NEW</b> 가 붙습니다.',
+          '맨 위 <b>🚧 진행 중 · 확인 필요</b> 에는 하고 있는 일과 정해 주셔야 할 것을 적어 둡니다.',
+        ],
+      },
+    ],
+  },
+  {
+    date: '2026-10-12',
+    items: [
+      {
+        kind: 'fix', icon: '🔑', title: "답장할 때 뜨던 '비밀번호를 저장하시겠습니까?' 창",
+        how: [
+          '메일 화면에 숨어 있던 설정 칸 때문에 크롬이 로그인 화면으로 착각하고 저장 창을 띄웠습니다. 이제 <b>로그인 화면에서만</b> 묻습니다.',
+        ],
+      },
+    ],
+  },
+  {
+    date: '2026-09-29',
+    items: [
+      {
+        kind: 'better', icon: '🔢', title: '오늘 온 메일 카드 — 숫자를 누르면 그 메일만',
+        how: [
+          '받은 메일함 위 카드의 <b>읽을 메일 · 회신 필요 · 광고·자동발송</b> 숫자를 누르면 그 메일만 모아 보여 줍니다.',
+          '같은 숫자를 한 번 더 누르거나 <b>[해제]</b>를 누르면 오늘 온 메일 전체로 돌아갑니다.',
+        ],
+        go: 'tool-inbox', goLabel: '받은 메일함',
+      },
+    ],
+  },
+  {
+    date: '2026-09-28',
+    items: [
+      {
+        kind: 'fix', icon: '🛠️', title: "받은 메일함에서 답장한 뒤 '리드를 찾을 수 없음' 빨간 글씨",
+        how: ['메일은 나갔는데 실패처럼 보이던 문제입니다. 이제 보냈다는 표시가 뜨고 창이 닫힙니다.'],
+      },
+      {
+        kind: 'better', icon: '🔄', title: '화면을 켜 둔 동안에도 새 메일을 가져옵니다',
+        how: ['5분마다, 그리고 다른 탭에 갔다가 돌아오면 바로 새 메일을 가져옵니다. 당장 보려면 받은 메일함의 <b>[📥 지금 메일 가져오기]</b>.'],
+      },
+      {
+        kind: 'data', icon: '🧹', title: '저장 공간 정리 — 메일은 한 통도 지우지 않고',
+        how: ['예전 메일 프로그램이 따로 쌓던 중복 데이터를 정리해 저장 공간을 약 40% 비웠습니다. 원본은 따로 백업해 두었습니다.'],
+      },
+    ],
+  },
+  {
+    date: '2026-09-22',
+    items: [
+      {
+        kind: 'better', icon: '👤', title: '대표님 메일함은 대표님 아이디에서만',
+        how: ['두 번 등록돼 있던 대표님 메일 계정을 하나로 합쳤습니다. 대표님 아이디(david)로 들어오면 전처럼 다 보이고, 관리자 아이디에서는 대표님 메일이 보이지 않습니다.'],
+        go: 'tool-mail-accounts', goLabel: '메일 계정 관리',
+      },
+    ],
+  },
+  {
+    date: '2026-09-21',
+    items: [
+      {
+        kind: 'better', icon: '📊', title: 'AI 분석 결과가 화면에 보입니다',
+        how: ['메일 목록 배지 · 메일 상세 · 회신 필요 · 기한 관리에 같은 분석 결과가 보입니다.'],
+        go: 'tool-deadlines', goLabel: '기한 관리',
+      },
+    ],
+  },
+  {
+    date: '2026-09-17',
+    items: [
+      {
+        kind: 'new', icon: '✉️', title: '새 메일 쓰기 · 보낸 메일은 이카운트 보낸메일함에도',
+        how: [
+          '주소를 직접 적거나 업체 이름으로 찾아 새 메일을 씁니다. 서명이 붙고, 보내기 전에 미리보기로 확인합니다.',
+          '이 앱에서 보낸 메일(새 메일 · 답장 · 발송 관리)은 <b>이카운트 보낸메일함에도 남습니다</b>.',
+        ],
+      },
+    ],
+  },
+];
+
+var UPDATE_NEXT = [
+  { state: 'soon', title: '예약 메일 10분마다 자동 처리',
+    desc: '설정만 남았습니다. 지금은 CRM 화면을 열어 두면 5분마다, 닫혀 있으면 매일 오전 9시에 나갑니다.' },
+  { state: 'next', title: '답장에 이전 대화(원문) 붙이기 · 전달 · 임시저장',
+    desc: '아웃룩에서 쓰시던 방식 그대로 쓰실 수 있게 — 다음 작업 후보입니다.' },
+  { state: 'review', title: '웹메일·아웃룩에서 쓴 답장도 업체 대화에 보이게',
+    desc: '지금은 [📤 보낸 메일함]에서만 보이고, 업체별 대화 화면에는 \'답함\' 표시만 남습니다. 거래처 폴더 안에서 받은·보낸 메일을 나눠 보는 것도 함께 검토 중입니다 (약 2일).' },
+  { state: 'ask', title: 'Yogibo Japan 폴더',
+    desc: '메일 서버에서 휴지통으로 옮겨져 있어 244통이 CRM에 보이지 않습니다. 되살릴지 정해 주세요.' },
+  { state: 'ask', title: '재발송(팔로우업) 문구',
+    desc: "답이 없을 때 '2차 팔로우업 — 답장 없을 때' 양식이 나갑니다. 문구를 확인해 주세요.",
+    go: 'tool-b2b-email', goLabel: '메일 양식' },
+];
+
+const UPDATE_KIND = {
+  new:    { label: '새 기능',   color: '#2563eb' },
+  better: { label: '개선',     color: '#059669' },
+  fix:    { label: '오류 수정', color: '#dc2626' },
+  data:   { label: '정리·분석', color: '#7c3aed' },
+};
+const UPDATE_NEXT_STATE = {
+  soon:   { label: '설정만 남음', color: '#b45309' },
+  next:   { label: '다음 작업',  color: '#2563eb' },
+  review: { label: '검토 중',   color: '#64748b' },
+  ask:    { label: '확인 필요', color: '#dc2626' },
+};
+
+/** 지금 목록의 표시 — 마지막 날짜와 항목 수. 같은 날 항목을 더 넣어도 NEW 가 다시 뜬다 */
+function updatesStamp() {
+  const top = UPDATE_LOG[0];
+  return top ? `${top.date}:${UPDATE_LOG.reduce((n, d) => n + d.items.length, 0)}` : '';
+}
+
+/** 사이드바 [🆕 최근 업데이트] 의 NEW — 이 브라우저에서 마지막으로 본 뒤 새 항목이 있으면 */
+function refreshUpdatesBadge() {
+  const el = document.querySelector('[data-nav-badge="updatesNew"]');
+  if (!el) return;
+  let seen = '';
+  try { seen = localStorage.getItem('crm.updatesSeen') || ''; } catch {}
+  el.textContent = updatesStamp() && seen !== updatesStamp() ? 'NEW' : '';
+}
+
+function renderUpdatesPage() {
+  try { localStorage.setItem('crm.updatesSeen', updatesStamp()); } catch {}
+  refreshUpdatesBadge();
+
+  const chip = (label, color) => `<span style="display:inline-block;padding:2px 9px;border-radius:99px;
+    font-size:11px;font-weight:800;white-space:nowrap;color:${color};background:${color}1a;border:1px solid ${color}40">${label}</span>`;
+  const goBtn = (o) => o.go ? `<button type="button" class="upd-go" data-go="${escapeAttr(o.go)}" data-tab="${escapeAttr(o.tab || '')}"
+    style="margin-left:auto;font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;
+           border:1px solid var(--border-default);background:var(--bg-surface);color:var(--text-secondary)">${escapeHtml(o.goLabel || '바로 가기')} →</button>` : '';
+
+  const today = localDayKey(new Date());
+  const dayLabel = (k) => {
+    const d = new Date(k + 'T00:00:00');
+    const base = d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+    const diff = Math.round((new Date(today + 'T00:00:00') - d) / 86400000);
+    return { base, rel: diff === 0 ? '오늘' : diff === 1 ? '어제' : `${diff}일 전` };
+  };
+  const total = UPDATE_LOG.reduce((n, d) => n + d.items.length, 0);
+  const first = UPDATE_LOG[UPDATE_LOG.length - 1];
+
+  const nextBox = !UPDATE_NEXT.length ? '' : `
+    <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-radius:14px;padding:16px 20px">
+      <h3 style="margin:0 0 4px;font-size:15px;font-weight:800;color:var(--text-primary)">🚧 진행 중 · 확인 필요</h3>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px">끝나면 아래 날짜 목록으로 옮겨 적습니다.</div>
+      ${UPDATE_NEXT.map((n) => {
+        const s = UPDATE_NEXT_STATE[n.state] || UPDATE_NEXT_STATE.review;
+        return `
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--border-subtle);flex-wrap:wrap">
+          ${chip(s.label, s.color)}
+          <div style="flex:1;min-width:220px">
+            <div style="font-size:13.5px;font-weight:800;color:var(--text-primary)">${escapeHtml(n.title)}</div>
+            <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;margin-top:2px">${escapeHtml(n.desc)}</div>
+          </div>
+          ${goBtn(n)}
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  const days = UPDATE_LOG.map((d) => {
+    const L = dayLabel(d.date);
+    return `
+    <section style="display:flex;flex-direction:column;gap:9px">
+      <div style="display:flex;align-items:baseline;gap:8px;margin:8px 2px 0;flex-wrap:wrap">
+        <h3 style="margin:0;font-size:16.5px;font-weight:800;color:var(--text-primary)">${escapeHtml(L.base)}</h3>
+        ${L.rel === '오늘' ? chip('오늘', '#ef4444') : `<span style="font-size:12px;color:var(--text-tertiary)">${escapeHtml(L.rel)}</span>`}
+        <span style="font-size:12px;color:var(--text-quaternary)">· ${d.items.length}건</span>
+      </div>
+      ${d.items.map((it) => {
+        const k = UPDATE_KIND[it.kind] || UPDATE_KIND.better;
+        return `
+        <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-left:4px solid ${k.color};
+                    border-radius:12px;padding:14px 18px;box-shadow:0 1px 3px rgba(16,24,40,.05)">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:17px">${it.icon || ''}</span>
+            ${chip(k.label, k.color)}
+            <b style="font-size:14.5px;color:var(--text-primary)">${escapeHtml(it.title)}</b>
+            ${goBtn(it)}
+          </div>
+          <ul style="margin:8px 0 0;padding-left:20px;font-size:13px;color:var(--text-secondary);line-height:1.8">
+            ${(it.how || []).map((h) => `<li>${h}</li>`).join('')}
+          </ul>
+        </div>`;
+      }).join('')}
+    </section>`;
+  }).join('');
+
+  els.content.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:13px">
+      <div style="padding:22px 24px;border-radius:16px;
+                  background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1px solid #93c5fd">
+        <h2 style="margin:0 0 6px;font-size:20px;font-weight:800;color:#0f2d6b">
+          무엇이 언제 바뀌었는지, 날짜별로 모았습니다
+        </h2>
+        <div style="font-size:13px;color:#1e40af;line-height:1.8">
+          ${first ? `${escapeHtml(dayLabel(first.date).base)}부터 ${total}건 · ` : ''}최근 것이 위에 있습니다.
+          각 항목의 <b>[바로 가기 →]</b> 를 누르면 그 화면으로 갑니다.
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+          ${Object.values(UPDATE_KIND).map((k) => chip(k.label, k.color)).join('')}
+        </div>
+      </div>
+      ${nextBox}
+      ${days}
+    </div>`;
+
+  els.content.querySelectorAll('.upd-go').forEach((b) => b.addEventListener('click', () => {
+    const go = b.dataset.go;
+    if (go === 'compose') { document.getElementById('navComposeBtn')?.click(); return; }
+    if (b.dataset.tab) _outboxTab = b.dataset.tab;   // 발송 관리의 어느 탭으로
+    document.querySelector(`.nav-item[data-view="${go}"]`)?.click();
+  }));
+}
+
+// ══════════════════════════════════════════════════════════════
 // 📖 사용 설명서 (User Guide) 페이지
 // ══════════════════════════════════════════════════════════════
 /**
@@ -12420,7 +12740,7 @@ function renderUserGuidePage() {
         `<b>[+ 새 양식 작성]</b> 으로 만들고, <b>[✏ 수정]</b> 으로 고칩니다. 글꼴·크기·색도 바꿀 수 있습니다.<br>
          <b>[회사명]</b> 처럼 대괄호로 적어두면 <b>회사마다 그 회사 이름으로 바뀌어</b> 나갑니다.<br>
          편집 화면 아래 <b>👁 실제 발송 미리보기</b>에서 회사를 바꿔 가며 받는 사람이 볼 모습을 확인합니다.`,
-        '양식을 고치면 <b>다음 발송부터</b> 적용됩니다. 이미 예약된 메일은 예약 당시 문구로 나갑니다.')}
+        '양식을 고쳐 저장하면 <b>아직 안 나간 예약에도</b> 고친 문구로 나갑니다. 발송 화면에서 이번만 고친 문구로 예약한 것은 그 문구 그대로 나갑니다.')}
 
       <!-- 지금 발송이 열려 있는가 -->
       <div id="guideLockBox" style="margin-top:14px"></div>
@@ -12440,7 +12760,9 @@ function renderUserGuidePage() {
           ['한 통씩 쉬어 가며', '한 통과 다음 통 사이에 간격을 둡니다. 한꺼번에 쏟으면 스팸으로 걸립니다.'],
           ['같은 곳에 3번까지', '한 업체에 최대 3번(첫 메일 + 재발송 2회)만 나갑니다.'],
           ['48시간 간격', '같은 곳에 이틀 안에 두 번 나가지 않습니다.'],
-          ['답장이 오면 멈춤', '답장이 온 곳에는 예약된 재발송이 나가지 않습니다.'],
+          ['답장이 오면 멈춤', '답장이 온 곳에는 예약된 메일·재발송이 나가지 않습니다. 보내기 직전에 한 번 더 확인합니다.'],
+          ['빼면 예약도 취소', '[검증 실패]·보관함으로 옮기거나 [↩ 발송 취소] 를 누르면 그 업체에 잡혀 있던 예약도 함께 취소됩니다.'],
+          ['재발송은 다른 문구로', '답이 없어 다시 보낼 때는 첫 메일을 그대로 또 보내지 않고, 용도가 \'팔로우업\' 인 양식을 앞서 보낸 메일의 답장(Re:)으로 보냅니다.'],
           ['지우지 않습니다', '검증 실패·보관함으로 보낸 것도 DB에서 지우지 않습니다. 언제든 되돌릴 수 있습니다.'],
         ].map(([t, d]) => `
           <div style="display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--border-subtle)">
@@ -12462,7 +12784,9 @@ function renderUserGuidePage() {
           ['보내기를 눌렀는데 왜 바로 안 나가나요?',
            '예약으로 깔리기 때문입니다. 정해진 통수씩 나눠서 나갑니다. [📅 예약 발송] 탭에서 언제 누구에게 나갈지 볼 수 있습니다.'],
           ['예약 시각이 지났는데 안 나갑니다.',
-           '예약을 실제로 내보내는 작업이 하루 한 번 돕니다. 지금 당장 보내려면 [📅 예약 발송] 탭의 <b>[⏱ 지금 예약분 내보내기]</b> 를 누르세요. 시각이 지난 것만 나가고 아직 안 된 것은 그대로 둡니다.'],
+           '예약은 자동 처리가 깨어날 때 나갑니다 — CRM 화면이 열려 있으면 5분마다, 외부 자동 처리를 걸어 두면 10분마다, 둘 다 없으면 매일 오전 9시. [📅 예약 발송] 탭 위에 <b>마지막 자동 처리</b> 시각이 보입니다. 지금 당장 보내려면 <b>[⏱ 지금 예약분 내보내기]</b> 를 누르세요. 시각이 지난 것만 나가고 아직 안 된 것은 그대로 둡니다.'],
+          ['예약해 둔 곳이 답장을 보냈어요.',
+           '그 업체의 남은 예약(재발송 포함)은 저절로 취소됩니다. 업체를 [검증 실패]·보관함으로 옮기거나 [↩ 발송 취소] 를 눌러도 같습니다. 취소된 예약과 이유는 [📅 예약 발송] 탭 아래 <b>🚫 취소된 예약</b> 에서 볼 수 있습니다.'],
           ['업체가 목록에서 사라졌어요.',
            '답장이 오면 [💬 답장 받음] 으로 자동으로 옮겨갑니다. 지워진 것이 아니라 다음 단계로 넘어간 것입니다. 단계를 직접 옮겨도 마찬가지입니다.'],
           ['같은 곳에 또 보내고 싶은데 안 됩니다.',
@@ -12580,7 +12904,7 @@ async function sendOutboxTestMail(ready) {
   if (!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(to)) { alert('받을 메일 주소를 확인해 주세요.'); return; }
   if (!_outboxCompose.templateId) { alert('메일 양식을 먼저 고르세요.'); return; }
   const acc = outreachAccounts().find((a) => a._id === _outboxCompose.mailAccountId) || outreachAccount();
-  const note = _outboxCompose.dirty ? '\n\n※ 이 화면에서 고친 문구가 아니라 저장된 양식으로 보냅니다 (업체 발송도 저장된 양식으로 나갑니다).' : '';
+  const note = _outboxCompose.dirty ? '\n\n※ 이 화면에서 고친 제목·본문으로 보냅니다 (업체 발송도 고친 문구로 나갑니다).' : '';
   if (!confirm(`테스트 메일을 보냅니다.\n\n받는 주소  ${to}\n보내는 주소  ${acc ? (acc.fromAddress || acc.smtpUser) : '(대표 계정)'}\n회사명 자리  Acme Beauty Co. (예제 업체)${note}`)) return;
   const btn = document.getElementById('obTestSendBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 보내는 중...'; }
@@ -12588,8 +12912,12 @@ async function sendOutboxTestMail(ready) {
     const r = await safeJsonFetch('/api/mail/test-send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // previewLeadId 를 안 보내면 서버가 예제 업체(Acme Beauty Co.) 값으로 채운다 (api/mail/test-send)
-      body: JSON.stringify({ to, templateId: _outboxCompose.templateId, mailAccountId: _outboxCompose.mailAccountId || undefined }),
+      // previewLeadId 를 안 보내면 서버가 예제 업체(Acme Beauty Co.) 값으로 채운다 (api/mail/test-send).
+      // 제목·본문은 지금 화면에 있는 그대로 — 업체 발송(api/mail/campaign)도 같은 문구로 나간다
+      body: JSON.stringify({
+        to, templateId: _outboxCompose.templateId, mailAccountId: _outboxCompose.mailAccountId || undefined,
+        subject: _outboxCompose.subject, body: _outboxCompose.body,
+      }),
     });
     if (!r?.success) throw new Error(r?.error || '보내지 못했습니다');
     alert(`✅ 테스트 메일을 보냈습니다${r.dryRun ? ' (DRY RUN — 실제로는 나가지 않음)' : ''}\n\n${r.to} 메일함을 확인하세요.\n제목: ${r.subject}${r.attachments ? `\n첨부 ${r.attachments}개` : ''}`);
@@ -12690,7 +13018,8 @@ async function renderOutboxPage() {
   ]);
 
   const all = (schedData && schedData.items) || [];
-  const pending  = all.filter((i) => i.status === 'pending');
+  // 'sending' = 지금 메일 서버로 나가는 중 — 대기 목록에 같이 두고 [취소] 대신 "보내는 중" 을 띄운다
+  const pending  = all.filter((i) => i.status === 'pending' || i.status === 'sending');
   const sentSched = all.filter((i) => i.status === 'sent');
   const failed   = all.filter((i) => i.status === 'failed');
   const canceled = all.filter((i) => i.status === 'canceled');
@@ -12753,7 +13082,7 @@ async function renderOutboxPage() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">
         ${tab('ready',     '✉️', '보낼 메일',  ready.length,      '#2563eb')}
         ${tab('scheduled', '📅', '예약 발송',  pending.length,    '#b45309')}
-        ${tab('sent',      '✅', '발송 완료',  sentSched.length + sentLeads.length, '#166534')}
+        ${tab('sent',      '✅', '발송 완료',  sentLeads.length, '#166534')}
       </div>
 
       <div id="outboxBody"></div>
@@ -12761,7 +13090,7 @@ async function renderOutboxPage() {
 
   const body = document.getElementById('outboxBody');
   if (_outboxTab === 'ready')     body.innerHTML = outboxReadyHtml(ready, lock);
-  if (_outboxTab === 'scheduled') body.innerHTML = outboxScheduledHtml(pending, failed, canceled);
+  if (_outboxTab === 'scheduled') body.innerHTML = outboxScheduledHtml(pending, failed, canceled, schedData && schedData.lastRun);
   if (_outboxTab === 'sent')      body.innerHTML = outboxSentHtml(sentSched, sentLeads);
 
   document.querySelectorAll('.outbox-tab').forEach((b) =>
@@ -12786,7 +13115,7 @@ async function renderOutboxPage() {
 
   document.getElementById('outboxSendBtn')?.addEventListener('click', () => runOutboxCampaign(ready, lock));
 
-  // 예약분을 지금 처리 — 크론이 하루 한 번이라 테스트 때 기다릴 수 없어 둔다
+  // 예약분을 지금 처리 — 자동 처리를 기다리지 않고 바로 내보낼 때 (테스트·급할 때)
   document.getElementById('outboxRunDue')?.addEventListener('click', async (e) => {
     const b = e.currentTarget;
     if (!confirm(
@@ -12798,24 +13127,33 @@ async function renderOutboxPage() {
     const was = b.textContent;
     b.textContent = '⏳ 내보내는 중…';
     try {
-      const r = await safeJsonFetch('/api/cron/process-schedules');
+      const r = await safeJsonFetch('/api/cron/process-schedules?source=button');
       if (!r || r.success === false) throw new Error(r?.error || '처리 실패');
 
-      // 응답은 { processed, due, results:[{id, ok, error}], sentToday, dailyCap, stoppedFor }
+      // 다른 곳(자동 처리·다른 창)에서 이미 돌고 있다 — 겹쳐 돌면 발송 간격이 무너져 한 번에 하나만 돈다
+      if (r.skipped === 'busy') {
+        alert('지금 자동 처리가 예약 메일을 내보내는 중입니다.\n\n끝나면 [📅 예약 발송]·[✅ 발송 완료] 에 반영됩니다. 1~2분 뒤 다시 확인해 주세요.');
+        return;
+      }
+
+      // 응답은 { processed, due, results:[{id, ok, error, canceled}], sentToday, dailyCap, stoppedFor }
       const res = r.results || [];
       const ok = res.filter((x) => x && x.ok).length;
-      const ng = res.filter((x) => x && !x.ok);
+      const stopped = res.filter((x) => x && !x.ok && x.canceled);     // 업체 상태가 바뀌어 보내지 않은 것
+      const ng = res.filter((x) => x && !x.ok && !x.canceled);
 
       alert(
         `예약 처리 결과\n\n` +
         `시각이 된 건    ${r.due ?? 0}건\n` +
         `처리한 건       ${r.processed ?? 0}건\n` +
         `  → 보냄        ${ok}건\n` +
+        (stopped.length ? `  → 안 보냄     ${stopped.length}건 (답장 옴·단계 바뀜 — 예약을 취소했습니다)\n` : '') +
         `  → 실패        ${ng.length}건\n` +
         `오늘 누적       ${r.sentToday ?? 0} / ${r.dailyCap ?? '-'}통\n` +
         (r.stoppedFor === 'daily-cap' ? '\n※ 하루 상한에 걸려 멈췄습니다.\n' : '') +
-        (r.stoppedFor === 'time-budget' ? '\n※ 시간이 길어져 멈췄습니다. 다시 누르면 이어서 나갑니다.\n' : '') +
+        (r.stoppedFor === 'time-budget' ? '\n※ 시간이 길어져 멈췄습니다. 남은 것은 몇 분 안에 자동으로 이어서 나갑니다.\n' : '') +
         (r.skipped === 'daily-cap' ? '\n※ 오늘 상한을 이미 채워 한 통도 나가지 않았습니다.\n' : '') +
+        (stopped.length ? `\n안 보낸 이유\n${stopped.slice(0, 5).map((x) => ' · ' + (x.error || '')).join('\n')}\n` : '') +
         (ng.length ? `\n실패 사유\n${ng.slice(0, 5).map((x) => ' · ' + (x.error || '알 수 없음')).join('\n')}\n` : '') +
         `\n[✅ 발송 완료] 탭에서 확인하세요.`,
       );
@@ -12837,9 +13175,11 @@ async function renderOutboxPage() {
     b.addEventListener('click', async () => {
       if (!confirm('이 예약을 취소합니다. 이 회사에는 메일이 나가지 않습니다.')) return;
       try {
-        await safeJsonFetch(`/api/mail/schedule/${b.dataset.schedId}`, { method: 'DELETE' });
-        renderOutboxPage();
+        // 그 사이 나갔거나 보내는 중이면 서버가 success:false 와 이유를 준다 — 조용히 넘기면 취소된 줄 안다
+        const r = await safeJsonFetch(`/api/mail/schedule/${b.dataset.schedId}`, { method: 'DELETE' });
+        if (r && r.success === false) alert(`취소하지 못했습니다 — ${r.error || '이미 처리된 예약입니다'}`);
       } catch (e) { alert(`취소 실패: ${e.message || e}`); }
+      renderOutboxPage();
     }));
 
   // baseLeads 는 id 를 leadId 로 맞춰 두므로 그대로 상세 팝업을 연다
@@ -13181,13 +13521,21 @@ async function runOutboxCampaign(ready, lock) {
     if (new Date(startAt).getTime() < Date.now()) { alert('지난 시각으로는 보낼 수 없습니다.'); return; }
   }
 
+  if (!String(_outboxCompose.subject || '').trim()) { alert('제목이 비어 있습니다.'); return; }
+  if (!String(_outboxCompose.body || '').trim()) { alert('본문이 비어 있습니다.'); return; }
+  const cap = (lock && lock.dailyCap) || 300;
+  const gapSec = Math.round(((lock && lock.intervalMs) || 8000) / 1000);
   const lines = [
     `${n.toLocaleString()}곳에 메일을 보냅니다.`,
     '',
     `보내는 주소  ${acc ? acc.smtpUser : '(기본 계정)'}`,
     `내보내기     ${_outboxCompose.startNow ? '지금부터' : new Date(startAt).toLocaleString('ko-KR')} · ${size}곳씩 ${gap}분 간격 (${batches}번)`,
+    `실제 속도    한 통에 ${gapSec}초씩 쉬어 가며 · 하루 최대 ${cap}통${n > cap ? ` (남은 것은 다음 날 이어서 — 약 ${Math.ceil(n / cap)}일)` : ''}`,
+    _outboxCompose.dirty
+      ? '문구         이 화면에서 고친 제목·본문으로 나갑니다 (저장된 양식은 그대로)'
+      : '문구         저장된 양식 그대로',
     _outboxCompose.followUp
-      ? `자동 재발송  답 없으면 ${_outboxCompose.followUpDays}일 뒤 다시 (최대 3회 · 답장 오면 중단)`
+      ? `자동 재발송  답 없으면 ${_outboxCompose.followUpDays}일 뒤 '팔로우업' 양식으로 다시 (최대 3회 · 답장 오면 중단)`
       : '자동 재발송  안 함',
   ];
   if (lock?.locked) {
@@ -13208,6 +13556,9 @@ async function runOutboxCampaign(ready, lock) {
         leadIds: ready.map((l) => l.leadId),
         templateId: _outboxCompose.templateId,
         mailAccountId: _outboxCompose.mailAccountId || undefined,
+        // 화면에서 고친 제목·본문 — 양식과 같으면 서버가 양식 그대로 보낸다 (api/mail/campaign)
+        subject: _outboxCompose.subject,
+        body: _outboxCompose.body,
         startAt: startAt ? new Date(startAt).toISOString() : undefined,
         batchSize: size,
         intervalMinutes: gap,
@@ -13219,10 +13570,10 @@ async function runOutboxCampaign(ready, lock) {
 
     alert(
       `✅ ${r.scheduled.toLocaleString()}곳 예약 완료\n\n` +
-      `${new Date(r.startAt).toLocaleString('ko-KR')} 부터\n` +
-      `${r.batchSize}곳씩 ${r.intervalMinutes}분 간격 · 총 ${r.batches}번\n` +
-      `마지막 묶음 ${new Date(r.lastAt).toLocaleString('ko-KR')}\n` +
-      (r.skipped?.length ? `\n제외 ${r.skipped.length}곳 (메일 없음·이미 예약·발송 한도)\n` : '') +
+      `${new Date(r.startAt).toLocaleString('ko-KR')} 부터 · ${r.batchSize}곳씩 ${r.intervalMinutes}분 간격 (${r.batches}번)\n` +
+      `예약 시각이 되면 몇 분 안에 나가기 시작합니다 — 한 통에 ${gapSec}초씩, 하루 최대 ${cap}통.\n` +
+      (r.edited ? '이 화면에서 고친 문구로 나갑니다.\n' : '') +
+      (r.skipped?.length ? `\n제외 ${r.skipped.length}곳 (메일 없음·이미 예약·발송 한도·단계 바뀜)\n` : '') +
       `\n[📅 예약 발송] 탭에서 확인·취소할 수 있습니다.`,
     );
     _outboxTab = 'scheduled';
@@ -13375,12 +13726,16 @@ function outboxBindComposeInputs(ready) {
       // 실제 발송 속도는 서버의 하루 상한이 정한다 (lib/outbound-lock.ts).
       // 여기 값은 "예약을 며칠에 걸쳐 깔지"를 정하는 것이라, 하루 상한을
       // 같이 보여주지 않으면 "10분 뒤면 다 나가겠네"로 잘못 읽힌다.
+      // 예전 문구("하루 300통씩이라 약 1일") 는 100곳이어도 하루가 걸리는 것처럼 읽혔다.
+      // 실제로는 한 통에 8초씩이라 100곳이면 15분 안팎이고, 하루 상한을 넘을 때만 다음 날로 넘어간다.
       const cap = (_outboundStatusCache && _outboundStatusCache.dailyCap) || 300;
-      const days = Math.ceil(n / cap);
+      const gapSec = Math.round(((_outboundStatusCache && _outboundStatusCache.intervalMs) || 8000) / 1000);
+      const speed = n > cap
+        ? `하루 ${cap}통까지만 나가서 전부 나가는 데 약 ${Math.ceil(n / cap)}일 걸립니다`
+        : `한 통에 ${gapSec}초씩이라 다 나가는 데 빨라도 약 ${Math.max(1, Math.ceil((n * gapSec) / 60))}분 걸립니다`;
       hint.textContent = on
-        ? `${n.toLocaleString()}곳 → ${batches}번에 나눠 예약됩니다.`
-          + ` 실제 발송은 하루 ${cap}통씩이라 전부 나가는 데 약 ${days}일 걸립니다`
-        : `${n.toLocaleString()}곳을 한 번에 예약합니다 — 그래도 발송은 하루 ${cap}통씩 나갑니다`;
+        ? `${n.toLocaleString()}곳 → ${batches}번에 나눠 예약됩니다. ${speed}`
+        : `${n.toLocaleString()}곳을 한 번에 예약합니다. ${speed}`;
       hint.style.color = on ? 'var(--text-tertiary)' : '#b45309';
     }
     const plan = document.getElementById('obPlanHint');
@@ -13710,16 +14065,50 @@ function outboxPagerHtml(page, pages, total, from, shown) {
     </div>`;
 }
 
+/**
+ * 날짜 묶음 열쇠 'YYYY-MM-DD' — **이 컴퓨터 시각(한국)** 기준.
+ * toISOString() 은 세계 표준시라, 한국 시각 오전 9시 전 예약이 전날로 묶이고 "오늘/내일" 이 하루씩 어긋났다.
+ */
+function localDayKey(v) {
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d.getTime())) return String(v || '').slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** "3분 전" · "2시간 전" · "어제" — 마지막 자동 처리 표시용 */
+function agoKo(v) {
+  const ms = Date.now() - new Date(v).getTime();
+  if (!isFinite(ms) || ms < 0) return '';
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return '방금';
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  return `${Math.floor(h / 24)}일 전`;
+}
+
 /** 📅 예약 발송 — 언제 · 어디로. 실패한 것도 사유와 함께 여기 남긴다 */
-function outboxScheduledHtml(pending, failed, canceled) {
+function outboxScheduledHtml(pending, failed, canceled, lastRun) {
   const byDay = new Map();
   for (const it of pending) {
-    const key = new Date(it.scheduledFor).toISOString().slice(0, 10);
+    const key = localDayKey(it.scheduledFor);
     if (!byDay.has(key)) byDay.set(key, []);
     byDay.get(key).push(it);
   }
   const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDayKey(new Date());
+  const hm = (v) => new Date(v).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  // 시각이 이미 지났는데 대기 중인 것 — 자동 처리가 돌면 나간다
+  const overdue = pending.filter((it) => it.status === 'pending' && new Date(it.scheduledFor).getTime() <= Date.now()).length;
+  const SRC_KO = { cron: '자동(서버)', browser: 'CRM 화면', button: '[지금 내보내기]', external: '외부 자동 처리' };
+  const lastRunAgoMin = lastRun && lastRun.at ? (Date.now() - new Date(lastRun.at).getTime()) / 60000 : Infinity;
+  // 시각 지난 예약이 있는데 30분 넘게 아무도 안 돌렸다 → 자동 처리가 멈춘 것. 화면에서 알려야 "왜 안 나가지" 를 안 겪는다
+  const runNote = lastRun && lastRun.running
+    ? '<span style="color:#166534;font-weight:700">⏳ 지금 내보내는 중</span>'
+    : lastRun && lastRun.at
+      ? `마지막 자동 처리 ${escapeHtml(agoKo(lastRun.at))}${SRC_KO[lastRun.source] ? ` (${escapeHtml(SRC_KO[lastRun.source])})` : ''}`
+      : '자동 처리 기록 없음';
+  const stalled = overdue > 0 && lastRunAgoMin > 30 && !(lastRun && lastRun.running);
   const dayLabel = (k) => {
     const d = new Date(k + 'T00:00:00');
     const diff = Math.round((d - new Date(today + 'T00:00:00')) / 86400000);
@@ -13742,9 +14131,10 @@ function outboxScheduledHtml(pending, failed, canceled) {
                   font-size:12.5px;color:#78350f;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <b>대기 중 ${pending.length.toLocaleString()}건</b>
         <span>${days.length}개 날짜</span>
-        <!-- 예약을 실제로 내보내는 건 하루 한 번 도는 크론이다(Vercel 무료 플랜은
-             하루 1회까지만 된다). 몇 분 뒤로 잡아놓고 나가는지 보고 싶을 때
-             하루를 기다릴 수는 없으므로, 지금 돌려보는 버튼을 둔다.
+        ${overdue ? `<span style="color:#b45309">· 시각 지남 ${overdue.toLocaleString()}건</span>` : ''}
+        <span style="font-size:11px;color:#92400e">· ${runNote}</span>
+        <!-- 예약은 자동 처리가 깨어날 때 나간다: CRM 화면이 열려 있으면 5분마다, 외부 자동 처리(cron-job.org 등)를
+             걸어 두면 10분마다, 둘 다 없으면 매일 오전 9시. 기다리지 않고 바로 보내고 싶을 때 이 버튼을 쓴다.
              예약 시각이 지난 것만 나간다 — 아직 안 된 것은 그대로 남는다. -->
         <button type="button" id="outboxRunDue" style="margin-left:auto;font-size:11.5px;font-weight:700;
                 padding:6px 13px;border-radius:8px;border:1px solid #b45309;background:#fff;
@@ -13752,7 +14142,15 @@ function outboxScheduledHtml(pending, failed, canceled) {
           title="예약 시각이 이미 지난 건을 지금 내보냅니다. 아직 시각이 안 된 건은 그대로 둡니다.">
           ⏱ 지금 예약분 내보내기
         </button>
-        <span style="margin-left:auto;font-size:11px">시각이 되면 자동으로 [발송 완료]로 넘어갑니다 · 취소는 회사 옆 ✕</span>
+      </div>
+      ${stalled ? `
+      <div style="padding:9px 16px;background:#fef2f2;border-bottom:1px solid #fecaca;font-size:12px;color:#991b1b;line-height:1.6">
+        ⚠️ 시각이 지난 예약 ${overdue.toLocaleString()}건이 아직 안 나갔습니다 — 자동 처리가 ${Number.isFinite(lastRunAgoMin) ? `${escapeHtml(agoKo(lastRun.at))}` : '한동안'} 이후로 돌지 않았습니다.
+        <b>[⏱ 지금 예약분 내보내기]</b> 를 누르면 바로 나갑니다.
+      </div>` : ''}
+      <div style="padding:7px 16px;border-bottom:1px solid #fde68a;font-size:11px;color:#92400e;background:#fffdf5">
+        예약 시각이 되면 몇 분 안에 나가고 [✅ 발송 완료] 로 넘어갑니다 · 한 통에 8초 간격 · 업체가 답장하거나
+        [검증 실패]·보관함·[↩ 발송 취소] 로 옮기면 그 업체 예약은 저절로 취소됩니다 · 직접 취소는 줄 끝 [취소]
       </div>
       ${days.map(([key, list]) => `
         <div style="padding:11px 16px;border-bottom:1px solid var(--border-subtle)">
@@ -13760,7 +14158,12 @@ function outboxScheduledHtml(pending, failed, canceled) {
             <b style="font-size:13px;color:var(--text-primary)">${escapeHtml(dayLabel(key))}</b>
             <span style="font-size:11.5px;color:var(--text-tertiary)">${list.length}곳</span>
             <span style="font-size:11px;color:var(--text-quaternary)">
-              ${new Date(list[0].scheduledFor).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 발송
+              ${(() => {
+                // 그날 첫 예약 ~ 마지막 예약 시각 (나눠 보내기면 묶음마다 시각이 다르다)
+                const first = hm(list[0].scheduledFor);
+                const last = hm(list[list.length - 1].scheduledFor);
+                return first === last ? `${first} 예약` : `${first} ~ ${last} 예약`;
+              })()}
             </span>
           </div>
           <!-- 회사명만 칩으로 늘어놓으면 "이 업체 맞나"를 못 가린다.
@@ -13786,17 +14189,28 @@ function outboxScheduledHtml(pending, failed, canceled) {
                     <td style="padding:7px 10px;font-family:monospace;font-size:11.5px;color:var(--text-tertiary);
                                max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                         title="${escapeAttr(it.to || '')}">${escapeHtml(it.to || '')}</td>
-                    <td style="padding:7px 10px;white-space:nowrap;width:64px;text-align:right">
-                      ${it.attemptNo && it.attemptNo > 1
-                        ? `<span style="padding:1px 6px;background:#fef3c7;color:#92400e;border-radius:99px;
-                                        font-size:10px;font-weight:800">${it.attemptNo}번째</span>` : ''}
+                    <td style="padding:7px 10px;white-space:nowrap;width:120px;text-align:right">
+                      <span style="font-size:11px;color:var(--text-quaternary);margin-right:4px">${hm(it.scheduledFor)}</span>
+                      ${String(it.batchId || '').startsWith('followup-')
+                        ? `<span title="답이 없어 다시 보내는 메일 — 앞서 보낸 메일의 답장(Re:)으로 나갑니다"
+                                 style="padding:1px 6px;background:#fef3c7;color:#92400e;border-radius:99px;
+                                        font-size:10px;font-weight:800">재발송 ${it.attemptNo || 2}번째</span>`
+                        : it.attemptNo && it.attemptNo > 1
+                          ? `<span style="padding:1px 6px;background:#fef3c7;color:#92400e;border-radius:99px;
+                                          font-size:10px;font-weight:800">${it.attemptNo}번째</span>` : ''}
+                      ${it.edited ? `<span title="발송 화면에서 이번만 고친 제목·본문으로 나갑니다"
+                                       style="padding:1px 6px;background:#e0e7ff;color:#3730a3;border-radius:99px;
+                                              font-size:10px;font-weight:800">고친 문구</span>` : ''}
                     </td>
-                    <td style="padding:7px 12px;white-space:nowrap;width:52px;text-align:right">
-                      <button type="button" class="outbox-sched-cancel" data-sched-id="${escapeAttr(it._id)}"
+                    <td style="padding:7px 12px;white-space:nowrap;width:64px;text-align:right">
+                      ${it.status === 'sending'
+                        ? `<span title="지금 메일 서버로 나가는 중입니다 — 취소할 수 없습니다"
+                                 style="font-size:11px;font-weight:700;color:#166534">⏳ 보내는 중</span>`
+                        : `<button type="button" class="outbox-sched-cancel" data-sched-id="${escapeAttr(it._id)}"
                         title="이 예약을 취소합니다 — 이 회사에는 나가지 않습니다"
                         style="border:1px solid var(--border-default);background:var(--bg-surface);
                                color:var(--text-tertiary);cursor:pointer;font-size:11px;
-                               line-height:1;padding:4px 8px;border-radius:7px">취소</button>
+                               line-height:1;padding:4px 8px;border-radius:7px">취소</button>`}
                     </td>
                   </tr>`;
                 }).join('')}
@@ -13822,11 +14236,23 @@ function outboxScheduledHtml(pending, failed, canceled) {
         </div>`).join('')}
     </div>`;
 
+  // 취소된 것은 왜 취소됐는지가 중요하다 — 답장이 와서인지, 단계를 옮겨서인지, 직접 눌러서인지 (최근 것부터)
+  const CANCEL_SHOW = 20;
   const canceledBlock = !canceled.length ? '' : `
-    <div style="margin-top:12px;font-size:12px;color:var(--text-tertiary)">
-      🚫 취소된 예약 ${canceled.length}건 — ${canceled.map((it) =>
-        escapeHtml((it.lead && it.lead.Company) || it.to || it.leadId)).join(' · ')}
-    </div>`;
+    <details style="margin-top:12px;border:1px solid var(--border-default);border-radius:12px;background:var(--bg-surface)">
+      <summary style="padding:10px 16px;cursor:pointer;font-size:12.5px;color:var(--text-secondary)">
+        🚫 취소된 예약 <b>${canceled.length.toLocaleString()}건</b> — 나가지 않았습니다 (눌러서 이유 보기)
+      </summary>
+      ${canceled.slice(0, CANCEL_SHOW).map((it) => `
+        <div style="padding:8px 16px;border-top:1px solid var(--border-subtle);font-size:12px">
+          <b style="color:var(--text-primary)">${escapeHtml((it.lead && it.lead.Company) || it.to || it.leadId)}</b>
+          <span style="color:var(--text-quaternary);margin-left:6px">
+            ${new Date(it.scheduledFor).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} 예정이었음
+          </span>
+          <div style="margin-top:2px;color:var(--text-tertiary)">${escapeHtml(it.canceledReason || '취소됨')}</div>
+        </div>`).join('')}
+      ${canceled.length > CANCEL_SHOW ? `<div style="padding:8px 16px;border-top:1px solid var(--border-subtle);font-size:11.5px;color:var(--text-quaternary)">외 ${(canceled.length - CANCEL_SHOW).toLocaleString()}건</div>` : ''}
+    </details>`;
 
   return pendingBlock + failedBlock + canceledBlock;
 }
@@ -13871,7 +14297,7 @@ function outboxSentHtml(sentSched, sentLeads) {
   // 마지막으로 나간 날 기준으로 묶는다 — "이날 나간 것들은 어떻게 됐나"를 본다
   const byDay = new Map();
   for (const r of rows) {
-    const key = String(r.last).slice(0, 10);
+    const key = localDayKey(r.last);   // 한국 시각 기준 날짜 (세계 표준시로 자르면 오전 9시 전 발송이 전날로 묶인다)
     if (!byDay.has(key)) byDay.set(key, []);
     byDay.get(key).push(r);
   }
@@ -15743,6 +16169,8 @@ async function reviewJudge(action) {
           : '옮기지 못했습니다. 보낼 메일 주소가 없거나 이미 다른 단계로 넘어간 업체입니다.');
       }
       lead.stage = action === 'unqueue' ? 'verified' : 'queued';
+      // 빼면서 잡혀 있던 예약도 서버가 같이 거둔다 — 사라진 줄 모르고 [📅 예약 발송] 을 찾지 않게 알린다
+      if (r.canceledSchedules) alert(`잡혀 있던 예약 ${r.canceledSchedules}건도 취소했습니다 — 이 업체에는 메일이 나가지 않습니다.`);
     } else if (action === 'failed') {
       if (!lead._id) throw new Error('이 리드는 여기서 옮길 수 없습니다');
       const r = await safeJsonFetch(`/api/leads/${lead._id}/stage`, {
@@ -15752,6 +16180,7 @@ async function reviewJudge(action) {
       });
       if (!r?.success) throw new Error(r?.error || '이동 실패');
       lead.stage = 'failed';
+      if (r.canceledSchedules) alert(`잡혀 있던 예약 ${r.canceledSchedules}건도 취소했습니다 — 이 업체에는 메일이 나가지 않습니다.`);
     }
 
     invalidateServerPage();

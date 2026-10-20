@@ -18,10 +18,11 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 
 /**
  * POST /api/mail/test-send — 발송관리의 [🧪 테스트 메일 보내기]
- * Body: { to, templateId, previewLeadId?, mailAccountId? }
+ * Body: { to, templateId, previewLeadId?, mailAccountId?, subject?, body? }
  *
  * 업체에 보내기 전에 **실제로 나갈 모양 그대로** 내 메일함으로 한 통 보내 본다.
- * 그래서 화면에 적힌 글이 아니라 저장된 양식으로 만든다 — 업체 발송(예약)도 저장된 양식을 쓰기 때문이다.
+ * 화면에서 고친 제목·본문(subject·body)이 오면 그것으로 만든다 — 업체 발송(예약)도 그 문구로 나간다 (2026-10-20).
+ * 오지 않으면 저장된 양식으로 만든다.
  * 회사명 치환 · 서명 · 글꼴 · 첨부까지 예약 발송(schedule-runner)과 같게 만들고, 제목 앞에만 [테스트] 를 붙인다.
  *
  * 예약을 거치지 않고 바로 보낸다. 업체의 발송 기록·단계·하루 한도에는 넣지 않는다.
@@ -56,8 +57,11 @@ export async function POST(req: Request) {
     const lead: any = body.previewLeadId ? await Lead.findOne({ leadId: body.previewLeadId }).lean() : null;
     const vars = lead ? buildVarsFromLead(lead) : { Company: 'Acme Beauty Co.', Country: 'United States', BuyerContact: 'Jane Doe' };
 
-    const subject = `[테스트] ${renderTemplate(tpl.subject || '', vars as any)}`;
-    let rendered = renderTemplate(tpl.body || '', vars as any);
+    // 화면에서 고친 제목·본문이 오면 그것으로 — 업체 발송도 고친 문구로 나간다 (api/mail/campaign subjectOverride)
+    const subjectSrc = typeof body?.subject === 'string' && body.subject.trim() ? body.subject : (tpl.subject || '');
+    const bodySrc = typeof body?.body === 'string' && body.body.trim() ? body.body : (tpl.body || '');
+    const subject = `[테스트] ${renderTemplate(subjectSrc, vars as any)}`;
+    let rendered = renderTemplate(bodySrc, vars as any);
     const sig = tpl.appendAccountSignature !== false ? buildSignatureBlock(acc, { html: !!tpl.bodyIsHtml }) : '';
     if (sig) rendered += sig;
 

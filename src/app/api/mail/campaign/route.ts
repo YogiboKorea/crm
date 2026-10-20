@@ -7,6 +7,8 @@ import { EmailTemplate } from '@/models/EmailTemplate';
 import { Lead } from '@/models/Lead';
 import { MAX_SEND_COUNT_PER_LEAD } from '@/lib/send-limits';
 import { loadTemplateAttachments } from '@/lib/mail/template-attachments';
+import { leadMailAddress } from '@/lib/mail/compose-new';
+import { STAGE_LABEL_KO, type Stage } from '@/lib/stages';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -31,6 +33,7 @@ export const maxDuration = 60;
  *   intervalMinutes?: number,   // 묶음 사이 간격 (기본 10)
  *   followUp?: boolean,         // 답 없으면 자동 재발송
  *   followUpDays?: number,      // 며칠 뒤 (기본 7)
+ *   subject?: string, body?: string,  // 이 화면에서 고친 제목·본문 (양식과 다를 때만 이번 예약에 붙는다)
  * }
  */
 export async function POST(req: Request) {
@@ -42,6 +45,12 @@ export async function POST(req: Request) {
   const templateId: string = String(body.templateId || '');
   if (!leadIds.length) return NextResponse.json({ success: false, error: 'leadIds 필수' }, { status: 400 });
   if (!templateId) return NextResponse.json({ success: false, error: 'templateId 필수' }, { status: 400 });
+
+  // 화면에서 고친 제목·본문 — 보내지 않았으면(옛 화면) 양식 그대로 보낸다
+  const subjectEdit = typeof body.subject === 'string' ? body.subject : null;
+  const bodyEdit = typeof body.body === 'string' ? body.body : null;
+  if (subjectEdit !== null && !subjectEdit.trim()) return NextResponse.json({ success: false, error: '제목이 비어 있습니다' }, { status: 400 });
+  if (bodyEdit !== null && !bodyEdit.trim()) return NextResponse.json({ success: false, error: '본문이 비어 있습니다' }, { status: 400 });
 
   const batchSize = Math.max(1, Math.min(200, Number(body.batchSize) || 100));
   const intervalMinutes = Math.max(1, Math.min(1440, Number(body.intervalMinutes) || 10));
@@ -62,6 +71,19 @@ export async function POST(req: Request) {
     const att = await loadTemplateAttachments((tpl as any).attachments);
     if (!att.ok) return NextResponse.json({ success: false, error: att.error }, { status: 400 });
 
+    // 양식과 다를 때만 이번 예약에 붙인다 — 양식 자체는 고치지 않는다 (다른 발송에 번지지 않게).
+    // 예전에는 화면에서 고쳐도 양식 원문이 나갔다 (2026-10-20 점검).
+    const subjectOverride = subjectEdit !== null && subjectEdit !== String((tpl as any).subject || '') ? subjectEdit : '';
+    const bodyOverride = bodyEdit !== null && bodyEdit !== String((tpl as any).body || '') ? bodyEdit : '';
+
+    // 고른 계정(없으면 대표 계정)으로 예약을 깐다. 그 계정이 없으면 예약을 만들지 않는다.
+    // user 를 넘겨 자기 계정만 — 예약 실행은 id 만 믿으므로 남의 계정 id 는 여기서 막는다.
+    // 업체를 고르기 전에 본다 — 계정이 잘못됐으면 업체 사정과 상관없이 그 이유를 먼저 알려야 한다.
+    const { account: outreach, error: accError } = await resolveOutreachAccount(body.mailAccountId, user);
+    if (!outreach) {
+      return NextResponse.json({ success: false, error: accError }, { status: 400 });
+    }
+
     const leads: any[] = await Lead.find(
       { leadId: { $in: leadIds }, deleted: { $ne: true } },
       { leadId: 1, Email: 1, Company: 1, stage: 1, emailHistory: 1 },
@@ -69,19 +91,23 @@ export async function POST(req: Request) {
 
     // 이미 예약이 걸린 곳은 건너뛴다 — 같은 곳에 두 번 깔리면 이틀 연속 나간다
     const already = await EmailSchedule.find(
-      { leadId: { $in: leadIds }, status: 'pending' }, { leadId: 1 },
+      { leadId: { $in: leadIds }, status: { $in: ['pending', 'sending'] } }, { leadId: 1 },
     ).lean();
     const pendingSet = new Set(already.map((a: any) => a.leadId));
 
     const targets: any[] = [];
     const skipped: Array<{ leadId: string; reason: string }> = [];
     for (const l of leads) {
-      const email = String(l.Email || '').trim();
-      if (!email || /^Not found/i.test(email) || !email.includes('@')) {
+      const email = leadMailAddress(l.Email);
+      if (!email) {
         skipped.push({ leadId: l.leadId, reason: '메일 주소 없음' }); continue;
       }
       if (pendingSet.has(l.leadId)) {
         skipped.push({ leadId: l.leadId, reason: '이미 예약됨' }); continue;
+      }
+      // [보낼 메일] 에 있는 곳만 — 보내는 순간에도 이 단계가 아니면 멈춘다 (schedule-runner.ts)
+      if (l.stage !== 'queued') {
+        skipped.push({ leadId: l.leadId, reason: `[${STAGE_LABEL_KO[l.stage as Stage] || l.stage}] 단계라 빠짐` }); continue;
       }
       const sentCount = (l.emailHistory || []).filter((h: any) => h?.status === 'sent').length;
       if (sentCount >= MAX_SEND_COUNT_PER_LEAD) {
@@ -94,13 +120,6 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: false, error: '보낼 수 있는 곳이 없습니다', skipped,
       }, { status: 400 });
-    }
-
-    // 고른 계정(없으면 대표 계정)으로 예약을 깐다. 그 계정이 없으면 예약을 만들지 않는다.
-    // user 를 넘겨 자기 계정만 — 예약 실행은 id 만 믿으므로 남의 계정 id 는 여기서 막는다.
-    const { account: outreach, error: accError } = await resolveOutreachAccount(body.mailAccountId, user);
-    if (!outreach) {
-      return NextResponse.json({ success: false, error: accError }, { status: 400 });
     }
 
     const batchId = `camp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -116,6 +135,8 @@ export async function POST(req: Request) {
         status: 'pending' as const,
         attempts: 0,
         attemptNo: t.attemptNo,
+        subjectOverride,
+        bodyOverride,
         followUp,
         followUpDays,
         batchId,
@@ -140,6 +161,7 @@ export async function POST(req: Request) {
       lastAt: lastAt.toISOString(),
       followUp,
       followUpDays,
+      edited: !!(subjectOverride || bodyOverride),
     });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message || '예약 생성 실패' }, { status: 500 });

@@ -38,6 +38,8 @@ try {
   madeBatches.push(r1.j.batchId);
   const d1 = await S.findOne({ batchId: r1.j.batchId });
   ok(r1.j.success && d1?.mailAccountId === String(def._id), `계정 안 고르면 대표 계정(${def.fromAddress || def.smtpUser})이 예약에 적힘`);
+  // 같은 업체에 예약이 걸려 있으면 또 잡지 않는다 (2026-10-20) — 다음 확인 전에 치운다
+  await S.deleteMany({ batchId: r1.j.batchId });
   if (other) {
     const r2 = await mk(String(other._id));
     madeBatches.push(r2.j.batchId);
@@ -108,9 +110,11 @@ try {
   await p.evaluate(() => document.querySelector('.rel-remove').click());
   ok(await waitFor(() => !!document.querySelector('.rel-card') || /없/.test(document.body.innerText), 15000) && await waitFor(() => ![...document.querySelectorAll('.rel-card')].some((c) => c.dataset.leadId === 'test-partner-remove-0914')), '삭제하면 목록으로 돌아가고 그 업체는 안 보임');
   await waitFor(() => false, 1500);
-  const gone = await L.findOne({ leadId: TEMP });
+  // 삭제 요청이 끝날 때까지 기다린다 — 개발 서버가 그 경로를 처음 컴파일하면 몇 초 걸려, 바로 보면 아직 안 바뀌어 있다
+  let gone = null;
+  for (let i = 0; i < 40 && !(gone && gone.deleted === true); i++) { gone = await L.findOne({ leadId: TEMP }); if (!(gone && gone.deleted === true)) await w(250); }
   console.log('      DB:', JSON.stringify({ deleted: gone?.deleted, deletedReason: gone?.deletedReason, deletedFromStage: gone?.deletedFromStage, stage: gone?.stage }));
-  ok(gone && gone.deleted === true && gone.deletedReason === '파트너십에서 삭제' && gone.deletedFromStage === 'partner' && gone.stage === 'partner', 'DB 에는 남아 있고 deleted 표시만 됨 (되살리기 가능)');
+  ok(gone && gone.deleted === true && gone.deletedReason === '파트너십 확정에서 삭제' && gone.deletedFromStage === 'partner' && gone.stage === 'partner', 'DB 에는 남아 있고 deleted 표시만 됨 (되살리기 가능)');
 } finally {
   const r = await L.deleteMany({ leadId: TEMP });
   console.log(`      (임시 파트너 ${r.deletedCount}건 지움)`);

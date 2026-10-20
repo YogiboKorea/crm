@@ -206,10 +206,41 @@ try {
     && /이카운트 보낸메일함을 그대로/.test(document.getElementById('content')?.innerText || document.body.innerText), { timeout: 20000 }).then(() => true).catch(() => false),
     '누르면 이카운트 보낸메일함 목록');
   ok(await p.evaluate(() => document.querySelector('.nav-item[data-view="tool-sent"]').classList.contains('active')), '사이드바에 [보낸 메일함] 이 켜져 보임');
+  // 보낸 메일함도 받은 메일함과 같은 틀 — 왼쪽 거래처 폴더 목록이 그대로 있고 [📤 보낸 메일함] 이 켜져 있다
+  const sentPanel = await p.evaluate(() => {
+    const sent = document.querySelector('.inbox-folders .inbox-group[data-group="__sent__"]');
+    return { panel: !!document.querySelector('.inbox-folders'), sentActive: sent ? getComputedStyle(sent).fontWeight >= 700 : false,
+      folders: document.querySelectorAll('.inbox-folders .inbox-group').length };
+  });
+  ok(sentPanel.panel && sentPanel.folders > 3, `보낸 메일함 화면에도 왼쪽 거래처 폴더 목록이 그대로 (${sentPanel.folders}칸)`);
+  ok(sentPanel.sentActive, '폴더 목록의 [📤 보낸 메일함] 이 켜져 있음');
+  // 거기서 거래처 폴더를 누르면 받은 메일함의 그 폴더로
+  const folderName = await p.evaluate(() => {
+    const f = [...document.querySelectorAll('.inbox-folders .inbox-group')].find((b) => !['', '__none__', '__sent__', '__trash__'].includes(b.dataset.group) && !/광고/.test(b.dataset.group));
+    f?.click();
+    return f?.dataset.group || '';
+  });
+  ok(await p.waitForFunction((g) => /받은 메일함/.test(document.getElementById('viewTitle')?.innerText || '')
+    && document.querySelector('.nav-item[data-view="tool-inbox"]').classList.contains('active')
+    && document.body.innerText.includes(`📁 ${g}`), { timeout: 20000 }, folderName).then(() => true).catch(() => false),
+    `보낸 메일함에서 거래처 폴더(${folderName})를 누르면 받은 메일함의 그 폴더가 열림`);
+
+  // 받은 메일함 폴더 목록 맨 아래(휴지통 위)에도 [📤 보낸 메일함] — 다른 폴더와 같은 모양 (대표님 요청)
   await p.evaluate(() => document.querySelector('.nav-item[data-view="tool-inbox"]').click());
   ok(await p.waitForFunction(() => /받은 메일함/.test(document.getElementById('viewTitle')?.innerText || '') && !!document.querySelector('tr.inbox-row'), { timeout: 20000 }).then(() => true).catch(() => false),
     '[받은 메일함] 을 누르면 받은 메일 목록으로 돌아옴 (보낸 메일함이 남아 있지 않음)');
-  ok(await p.evaluate(() => !document.querySelector('.inbox-group[data-group="__sent__"]')), '받은 메일함 폴더 목록 안의 예전 [보낸 메일함] 은 없어짐 (하나로)');
+  const inFolders = await p.evaluate(() => {
+    const items = [...document.querySelectorAll('.inbox-folders .inbox-group')];
+    const i = items.findIndex((b) => b.dataset.group === '__sent__');
+    return { has: i >= 0, nextIsTrash: items[i + 1]?.dataset.group === '__trash__', sameClass: items[i]?.className === items[0]?.className,
+      height: items[i] ? Math.round(items[i].getBoundingClientRect().height) : 0, refHeight: items[0] ? Math.round(items[0].getBoundingClientRect().height) : 0 };
+  });
+  ok(inFolders.has && inFolders.nextIsTrash, '폴더 목록 맨 아래 휴지통 바로 위에 [📤 보낸 메일함]');
+  ok(inFolders.sameClass && inFolders.height === inFolders.refHeight, `다른 폴더와 같은 모양 (높이 ${inFolders.height}px = ${inFolders.refHeight}px)`);
+  await p.evaluate(() => document.querySelector('.inbox-folders .inbox-group[data-group="__sent__"]').click());
+  ok(await p.waitForFunction(() => /보낸 메일함/.test(document.getElementById('viewTitle')?.innerText || '')
+    && document.querySelector('.nav-item[data-view="tool-sent"]').classList.contains('active'), { timeout: 20000 }).then(() => true).catch(() => false),
+    '폴더 목록의 [보낸 메일함] 을 눌러도 사이드바 [보낸 메일함] 과 같은 화면 (사이드바도 켜짐)');
 
   console.log(`\n자바스크립트 오류 ${errs.length}건${errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''}`);
   if (errs.length) fail += errs.length;

@@ -378,6 +378,14 @@ code {
 :root[data-sidebar-collapsed="true"] .nav-badge {
   display: none;
 }
+/* 🆕 최근 업데이트의 NEW 표시 — 숫자 배지보다 눈에 띄게 (2026-10-20) */
+.nav-item .nav-badge.nav-badge-new,
+:root:not([data-theme="dark"]) .nav-item .nav-badge.nav-badge-new {
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
 .nav-external {
   margin-left: auto;
   font-size: 12px;

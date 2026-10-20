@@ -57,12 +57,19 @@ jobs:
             exit 0
           fi
 
+          # 누가 깨웠는지 남긴다 — CRM 화면의 "마지막 자동 처리 (외부 자동 처리)" 표시용
+          case "$CRON_URL" in
+            *source=*) URL="$CRON_URL" ;;
+            *\?*)      URL="$CRON_URL&source=external" ;;
+            *)         URL="$CRON_URL?source=external" ;;
+          esac
+
           # 서버가 최대 300초까지 돌 수 있으므로 넉넉히 기다린다.
           # --fail 을 쓰지 않는 이유: 본문에 들어 있는 실패 사유를 보고 싶어서다.
           code=$(curl -sS -o /tmp/out.json -w '%{http_code}' \
                    --max-time 320 \
                    -H "Authorization: Bearer $CRON_SECRET" \
-                   "$CRON_URL")
+                   "$URL")
 
           echo "HTTP $code"
           cat /tmp/out.json || true
@@ -80,6 +87,7 @@ jobs:
             try { d = JSON.parse(fs.readFileSync("/tmp/out.json", "utf8")); } catch {}
             const r = d.results || [];
             const ok = r.filter(x => x && x.ok).length;
-            const ng = r.length - ok;
-            console.log(`시각이 된 건 ${d.due ?? 0} · 처리 ${d.processed ?? 0} · 보냄 ${ok} · 실패 ${ng} · 오늘 누적 ${d.sentToday ?? 0}/${d.dailyCap ?? "-"}`);
+            const stopped = r.filter(x => x && !x.ok && x.canceled).length;   // 답장 옴·단계 바뀜 → 안 보내고 취소
+            const ng = r.length - ok - stopped;
+            console.log(`시각이 된 건 ${d.due ?? 0} · 처리 ${d.processed ?? 0} · 보냄 ${ok} · 안 보냄 ${stopped} · 실패 ${ng} · 오늘 누적 ${d.sentToday ?? 0}/${d.dailyCap ?? "-"}${d.skipped ? " · " + d.skipped : ""}`);
           '

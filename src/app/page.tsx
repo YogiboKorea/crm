@@ -50,7 +50,7 @@ export default function Home() {
                 nav-item 이 아니다 (누른다고 지금 보던 화면이 바뀌지 않는다). */}
             <button className="nav-compose" id="navComposeBtn" type="button"
               title="새 메일 쓰기 — 받는 사람 여러 명·참조·첨부파일을 넣을 수 있습니다. 보내면 보낸메일함에 자동으로 남습니다">
-              <span className="nav-compose-icon" aria-hidden="true">✏</span><span className="nav-label">메일 쓰기</span>
+              <span className="nav-compose-icon" aria-hidden="true">✏️</span><span className="nav-label">메일 쓰기</span>
             </button>
             <button className="nav-item active" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
               <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
@@ -191,6 +191,12 @@ export default function Home() {
             </button>
             <button className="nav-item" data-view="tool-user-guide" type="button" title="사용 설명서 — 처음 쓰시는 분을 위한 단계별 가이드">
               <span className="nav-icon">📖</span><span className="nav-label">사용 설명서</span>
+            </button>
+            {/* 🆕 최근 업데이트 — 날짜별로 무엇이 바뀌었고 어떻게 쓰는지 (2026-10-20, 미팅 전 요청).
+                새 항목이 있으면 NEW 표시 — 이 화면을 한 번 열면 사라진다 (브라우저마다 따로 기억) */}
+            <button className="nav-item" data-view="tool-updates" type="button" title="최근 업데이트 — 날짜별로 무엇이 바뀌었고 어디서 어떻게 쓰는지">
+              <span className="nav-icon">🆕</span><span className="nav-label">최근 업데이트</span>
+              <span className="nav-badge nav-badge-new" data-nav-badge="updatesNew"></span>
             </button>
           </nav>
         </aside>
@@ -764,7 +770,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=697ccb94" strategy="afterInteractive" />
+      <Script src="/app.js?v=15f2dda8" strategy="afterInteractive" />
     </>
   );
 }

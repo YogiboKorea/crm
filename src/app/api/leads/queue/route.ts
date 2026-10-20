@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
+import { cancelPendingSchedules } from '@/lib/schedule-cancel';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -69,10 +70,15 @@ export async function POST(req: Request) {
 
     // 몇 건이 대상인지 먼저 세어 둔다 (all 일 때 skipped 계산용)
     const targetCount = await Lead.countDocuments(filter);
+    // [↩ 발송 취소] 로 빼는 곳 — 옮기기 전에 누구인지 적어 둔다 (아래에서 예약을 거둔다)
+    const undoneIds = undo ? (await Lead.find(filter, { leadId: 1 }).lean()).map((l: any) => l.leadId) : [];
 
     const r = await Lead.updateMany(filter, {
       $set: { stage: to, stageChangedAt: new Date().toISOString() },
     });
+
+    // 발송 리스트에서 뺐으면 이미 깔린 예약도 거둔다 — 예전에는 [발송 취소] 를 눌러도 그대로 나갔다 (2026-10-20 점검)
+    const canceledSchedules = undo ? await cancelPendingSchedules(undoneIds, '[↩ 발송 취소] 로 발송 리스트에서 뺐습니다') : 0;
 
     const [queuedTotal, verifiedTotal] = await Promise.all([
       Lead.countDocuments({ stage: 'queued', deleted: { $ne: true } }),
@@ -87,6 +93,8 @@ export async function POST(req: Request) {
       targetCount,
       queuedTotal,
       verifiedTotal,
+      // 같이 거둔 예약 수 — 화면이 "예약 N건도 취소했습니다" 를 알려 준다
+      canceledSchedules,
     });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message || '이동 실패' }, { status: 500 });
