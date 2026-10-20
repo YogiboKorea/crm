@@ -11916,7 +11916,7 @@ async function renderB2BEmailManager() {
              보내는 순간 서버가 그 주소에서 받아 파일로 붙인다. cafe24 오픈호스팅 주소를 그대로 쓰면 된다. -->
         <div id="tplAttachBox" style="padding:12px 14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:10px">
           <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:7px">📎 첨부파일
-            <span style="font-weight:400">· cafe24 오픈호스팅 등에 올린 <b>파일 주소</b>를 넣으면 보낼 때 파일로 붙여 보냅니다 (최대 5개 · 합계 10MB)</span></div>
+            <span style="font-weight:400">· PC 파일을 고르는 칸이 아닙니다 — cafe24 오픈호스팅 등에 올린 <b>파일 주소</b>를 넣으면 보낼 때 파일로 붙여 보냅니다 (최대 5개 · 합계 10MB)</span></div>
           ${(ed.attachments || []).length ? `
           <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px">
             ${(ed.attachments || []).map((a, i) => `
@@ -11935,7 +11935,8 @@ async function renderB2BEmailManager() {
             <input id="tplAttName" type="text" placeholder="받는 쪽에 보일 파일 이름 (비우면 주소의 이름)"
               style="flex:1;min-width:160px;padding:7px 9px;border:1px solid #fcd34d;border-radius:6px;font-size:12px;background:#fff;color:#0f172a">
             <button type="button" id="tplAttAdd"
-              style="padding:7px 14px;font-size:12px;font-weight:700;border:1px solid #d97706;background:#f59e0b;color:#fff;border-radius:6px;cursor:pointer">+ 첨부 추가</button>
+              title="왼쪽 칸의 파일 주소를 첨부로 붙입니다 — PC 파일을 고르는 버튼이 아닙니다"
+              style="padding:7px 14px;font-size:12px;font-weight:700;border:1px solid #d97706;background:#f59e0b;color:#fff;border-radius:6px;cursor:pointer">+ 주소로 첨부 추가</button>
           </div>
           <div style="font-size:10.5px;color:#92400e;margin-top:7px;line-height:1.6">
             첨부는 <b>[💾 저장]</b>해야 반영됩니다. 주소에서 파일을 못 받으면 메일을 보내지 않고 사유를 알려드립니다.<br>
@@ -12201,7 +12202,17 @@ async function renderB2BEmailManager() {
     const urlEl = document.getElementById('tplAttUrl');
     const nameEl = document.getElementById('tplAttName');
     const url = (urlEl?.value || '').trim();
-    if (!url) { urlEl?.focus(); return; }
+    // 주소 없이 누르면 예전에는 커서만 옮기고 끝나서 "첨부 버튼을 눌러도 창이 안 뜬다" 로 보였다 (2026-10-20 대표님 신고).
+    // 이 칸은 PC 파일을 고르는 곳이 아니다 — 어떻게 붙이는지 알려 준다.
+    if (!url) {
+      alert('메일 양식의 첨부는 PC에서 파일을 고르는 방식이 아니라, 인터넷에 올려 둔 파일의 주소를 넣는 방식입니다.\n\n'
+        + '1) cafe24 오픈호스팅처럼 파일을 바로 내려받을 수 있는 곳에 파일을 올리고\n'
+        + '2) 그 파일 주소를 왼쪽 칸에 붙여 넣은 뒤\n'
+        + '3) [+ 주소로 첨부 추가] 를 누르세요.\n\n'
+        + '한 통씩 직접 보내는 메일은 [✏️ 메일 쓰기]·[↩ 답장] 의 [📎 파일 첨부] 로 PC 파일을 바로 붙일 수 있습니다.');
+      urlEl?.focus();
+      return;
+    }
     if (!/^https?:\/\//i.test(url)) { alert('파일 주소는 http:// 또는 https:// 로 시작해야 합니다.'); return; }
     const cur = state.email.editor.attachments || [];
     if (cur.length >= 5) { alert('첨부파일은 5개까지 붙일 수 있습니다.'); return; }
@@ -12425,6 +12436,15 @@ var UPDATE_LOG = [
           '[📅 예약 발송] 위의 <b>마지막 자동 처리</b> 시각으로 잘 돌고 있는지 볼 수 있습니다.',
         ],
         go: 'pipeline-contacted', tab: 'scheduled', goLabel: '예약 발송',
+      },
+      {
+        kind: 'fix', icon: '📎', title: "메일 양식의 '첨부 추가'를 눌러도 아무 반응이 없던 것",
+        how: [
+          '메일 양식의 첨부는 PC 파일을 고르는 방식이 아니라 <b>파일 주소</b>(cafe24 오픈호스팅 등)를 넣는 방식입니다. 주소 없이 누르면 반응이 없어 고장처럼 보였습니다.',
+          '버튼 이름을 <b>[+ 주소로 첨부 추가]</b> 로 바꾸고, 주소 없이 누르면 붙이는 방법을 안내합니다.',
+          'PC 파일을 바로 붙이려면 <b>[✏️ 메일 쓰기]·[↩ 답장]</b> 의 <b>[📎 파일 첨부]</b> 를 쓰시면 됩니다.',
+        ],
+        go: 'tool-b2b-email', goLabel: '메일 양식',
       },
       {
         kind: 'data', icon: '🤖', title: '메일 AI 분석 — 10월 20일까지 받은 메일 반영',
