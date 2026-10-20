@@ -7413,7 +7413,7 @@ function relTimelineItemHtml(t, i) {
       <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:7px">
         <span style="font-size:11px;font-weight:800;padding:2px 9px;border-radius:99px;
                      background:${out ? 'var(--bg-surface)' : '#eff6ff'};color:${out ? 'var(--text-tertiary)' : '#1d4ed8'}">
-          ${out ? '↗ 보냄' : '↘ 받음'}</span>
+          ${out ? (t.outside ? '↗ 보냄 · 웹메일·아웃룩' : '↗ 보냄') : '↘ 받음'}</span>
         <span style="font-size:13.5px;font-weight:700;color:var(--text-primary);flex:1;min-width:0;
                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(t.subject || '(제목 없음)')}</span>
         <span style="font-size:11.5px;color:var(--text-quaternary);white-space:nowrap">${escapeHtml(when)}</span>
@@ -8986,7 +8986,8 @@ async function openConversationModal(leadId) {
     const bg = out ? '#eff6ff' : '#f0fdf4';
     const bd = out ? '#bfdbfe' : '#bbf7d0';
     const fg = out ? '#1e40af' : '#166534';
-    const who = out ? '📤 우리가 보냄' : '📥 상대 답장';
+    // 웹메일·아웃룩·휴대폰에서 보낸 답장도 보낸메일함에서 찾아 붙인다 (2026-10-20) — 어디서 보냈는지 같이 적는다
+    const who = out ? (t.outside ? '📤 우리가 보냄 · 웹메일·아웃룩' : '📤 우리가 보냄') : '📥 상대 답장';
     const meta = [];
     if (!out) {
       // 매칭 방식(domain/email-address)·분류 코드(b2b)는 개발용 정보라 보여주지 않는다
@@ -8997,6 +8998,7 @@ async function openConversationModal(leadId) {
     } else if (t.to) {
       meta.push(`to ${t.to}`);
     }
+    if (out && t.outside && t.bodyTruncated) meta.push('앞부분만 보입니다 — 전문은 [📤 보낸 메일함]에서');
 
     const quoteId = `conv-quote-${i}`;
     const quoteBlock = (!out && t.hasQuoted && t.bodyFull)
@@ -12353,6 +12355,19 @@ var UPDATE_LOG = [
     date: '2026-10-20',
     items: [
       {
+        // 대표님이 가장 많이 물으신 것 — "다른 곳에서 SMTP 로 보내도 내가 보낸 게 남나요?"
+        kind: 'guide', icon: '📮', title: '다른 곳에서 보낸 메일도 보낸메일함에 남기는 법',
+        how: [
+          '메일을 <b>보내는 서버(SMTP)</b>는 배달만 하고 보관하지 않습니다. 보낸메일함에 남기는 것은 메일 프로그램이 <b>받는 서버(IMAP)</b>에 한 부 넣어 줘야 해서, <b>어디서 보냈느냐</b>에 따라 남기도 하고 안 남기도 합니다.',
+          '<b>이 CRM</b>(새 메일·답장·발송 관리·예약)과 <b>이카운트 웹메일</b>에서 보낸 메일은 <b>설정 없이</b> 이카운트 보낸메일함에 남습니다.',
+          '<b>아웃룩·휴대폰 메일 앱</b> — 계정을 <b>IMAP 방식</b>으로 연결하면 남습니다 (POP3로 연결하면 그 PC·휴대폰에만 남습니다). 받는 서버 <b>wmbox4.ecount.com</b> · 993 · SSL / 보내는 서버 <b>wsmtp.ecount.com</b> · 465 · SSL. 먼저 이카운트 웹메일 → 개인기능설정 → 외부연동설정에서 <b>"메일 클라이언트 사용"</b>을 켭니다.',
+          '보낸 편지함 위치를 고르는 설정이 있으면 <b>서버의 보낸메일함</b>을 고릅니다 — 아웃룩은 계정 설정의 보낸 항목 저장 위치, 아이폰은 메일 계정 설정의 <b>고급 → 보낸 메일상자</b>.',
+          '<b>다른 사이트·프로그램</b>(쇼핑몰·대량 메일·그룹웨어 등 SMTP로만 보내는 곳)은 그 서비스에 "보낸 메일 IMAP 저장" 같은 설정이 있을 때 위 받는 서버 정보로 켜면 남습니다. 그런 설정이 없으면 보낸메일함에는 남지 않으니, <b>숨은참조에 내 주소</b>를 넣어 이카운트 받은메일함에 사본을 받습니다.',
+          '이카운트 보낸메일함에 남은 메일은 CRM <b>[📤 보낸 메일함]</b>에도 그대로 보입니다.',
+        ],
+        go: 'tool-sent', goLabel: '보낸 메일함',
+      },
+      {
         kind: 'new', icon: '✏️', title: '메일 쓰기 — 여러 명 · 참조 · 첨부 · 주소 자동 완성',
         how: [
           '사이드바 맨 위 <b>[✏️ 메일 쓰기]</b> 한 곳에서 씁니다. 받은 메일함 안에 있던 예전 버튼은 없앴습니다.',
@@ -12381,6 +12396,16 @@ var UPDATE_LOG = [
         go: 'tool-sent', goLabel: '보낸 메일함',
       },
       {
+        kind: 'new', icon: '💬', title: '업체 대화 — 웹메일·아웃룩에서 보낸 답장도 보입니다',
+        how: [
+          '이카운트 웹메일·아웃룩·휴대폰에서 업체에 답장하면, 그 내용이 업체 대화(<b>💬 대화 전체</b> · 대화 진행 중 · 파트너십 카드)에 <b>"📤 우리가 보냄 · 웹메일·아웃룩"</b> 으로 함께 보입니다.',
+          '예전에는 \'답함\' 표시만 남고 무슨 말을 했는지는 웹메일에서 찾아봐야 했습니다. 최근 보낸 메일 400통에서 업체 메일에 대한 답장 80통을 먼저 채워 두었습니다.',
+          '앞으로 보내는 답장도 CRM이 메일을 가져올 때마다 이어서 붙습니다.',
+          '답장이 아니라 새로 쓴 메일은 아직 업체 대화에 붙지 않습니다 — <b>[📤 보낸 메일함]</b>에서 보입니다.',
+        ],
+        go: 'pipeline-negotiating', goLabel: '대화 진행 중',
+      },
+      {
         kind: 'better', icon: '📅', title: '예약·묶음 발송 — 화면에 보이는 그대로 나갑니다',
         how: [
           '예약 시각이 되면 <b>몇 분 안에</b> 나갑니다. [📅 예약 발송] 위에 <b>마지막 자동 처리</b> 시각이 보이고, 급하면 <b>[⏱ 지금 예약분 내보내기]</b>.',
@@ -12389,6 +12414,15 @@ var UPDATE_LOG = [
           '<b>답장이 오면</b> 남은 재발송은 저절로 취소되고, 보내기 직전에도 한 번 더 확인합니다.',
           '재발송은 같은 소개 메일을 또 보내지 않고, <b>\'팔로우업\' 양식</b>을 첫 메일의 답장(Re: 제목)으로 보내 상대 메일함에서 한 대화로 묶입니다.',
           '여러 곳에서 동시에 눌러도 <b>한 통만</b> 나갑니다. 나가는 중에는 "⏳ 보내는 중" 이 뜹니다.',
+        ],
+        go: 'pipeline-contacted', tab: 'scheduled', goLabel: '예약 발송',
+      },
+      {
+        kind: 'better', icon: '⏰', title: '예약 메일 자동 처리 — 화면을 닫아 둬도 10분마다',
+        how: [
+          'CRM 화면을 닫아 둬도 <b>10분 안팎마다</b> 예약 시각이 된 메일이 나갑니다. 화면이 열려 있으면 5분마다도 돕니다.',
+          '예전에는 하루 한 번(오전 9시)만 돌아서, 오후에 잡은 예약이 다음 날 아침에 나갔습니다.',
+          '[📅 예약 발송] 위의 <b>마지막 자동 처리</b> 시각으로 잘 돌고 있는지 볼 수 있습니다.',
         ],
         go: 'pipeline-contacted', tab: 'scheduled', goLabel: '예약 발송',
       },
@@ -12484,12 +12518,8 @@ var UPDATE_LOG = [
 ];
 
 var UPDATE_NEXT = [
-  { state: 'soon', title: '예약 메일 10분마다 자동 처리',
-    desc: '설정만 남았습니다. 지금은 CRM 화면을 열어 두면 5분마다, 닫혀 있으면 매일 오전 9시에 나갑니다.' },
   { state: 'next', title: '답장에 이전 대화(원문) 붙이기 · 전달 · 임시저장',
     desc: '아웃룩에서 쓰시던 방식 그대로 쓰실 수 있게 — 다음 작업 후보입니다.' },
-  { state: 'review', title: '웹메일·아웃룩에서 쓴 답장도 업체 대화에 보이게',
-    desc: '지금은 [📤 보낸 메일함]에서만 보이고, 업체별 대화 화면에는 \'답함\' 표시만 남습니다. 거래처 폴더 안에서 받은·보낸 메일을 나눠 보는 것도 함께 검토 중입니다 (약 2일).' },
   { state: 'ask', title: '재발송(팔로우업) 문구',
     desc: "답이 없을 때 '2차 팔로우업 — 답장 없을 때' 양식이 나갑니다. 문구를 확인해 주세요.",
     go: 'tool-b2b-email', goLabel: '메일 양식' },
@@ -12500,8 +12530,10 @@ const UPDATE_KIND = {
   better: { label: '개선',     color: '#059669' },
   fix:    { label: '오류 수정', color: '#dc2626' },
   data:   { label: '정리·분석', color: '#7c3aed' },
+  guide:  { label: '설정 안내', color: '#0891b2' },
 };
 const UPDATE_NEXT_STATE = {
+  doing:  { label: '진행 중',   color: '#7c3aed' },
   soon:   { label: '설정만 남음', color: '#b45309' },
   next:   { label: '다음 작업',  color: '#2563eb' },
   review: { label: '검토 중',   color: '#64748b' },

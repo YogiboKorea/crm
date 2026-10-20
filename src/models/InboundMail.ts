@@ -69,6 +69,17 @@ export interface IInboundMail extends Document {
   // 웹메일에서 답한 건은 보낸메일함을 훑어 찾아낸다 (reconcile.ts).
   repliedAt?: Date | null;
   repliedOutside?: boolean;       // 앱 밖(웹메일·휴대폰)에서 답한 건
+  // 앱 밖(웹메일·아웃룩·휴대폰)에서 이 메일에 보낸 답장 — 보낸메일함에서 찾아 본문까지 붙여 둔다 (reconcile.ts).
+  // 업체 대화 화면이 이걸로 "우리가 뭐라고 답했는지" 를 보여 준다 (2026-10-20 대표님 요청).
+  outsideReplies?: Array<{
+    messageId: string;
+    at: Date | null;
+    subject: string;
+    to: string[];
+    cc: string[];
+    body: string;                 // 인용부를 걷어낸 새로 쓴 부분 (최대 4,000자)
+    bodyTruncated?: boolean;
+  }>;
 
   // ── 분석 (로컬 무료 / AI 유료) ─────────────────────────
   analysis?: {
@@ -178,6 +189,20 @@ const InboundMailSchema = new Schema<IInboundMail>({
   trashedAt: { type: Date, default: null },
   repliedAt: { type: Date, default: null },
   repliedOutside: { type: Boolean, default: false },
+  // 기본값을 두지 않는다 — 답장이 붙은 메일에만 생긴다 (수만 통에 빈 배열을 늘어놓지 않게)
+  outsideReplies: {
+    type: [{
+      _id: false,
+      messageId: { type: String, default: '' },
+      at: { type: Date, default: null },
+      subject: { type: String, default: '' },
+      to: { type: [String], default: [] },
+      cc: { type: [String], default: [] },
+      body: { type: String, default: '' },
+      bodyTruncated: { type: Boolean, default: false },
+    }],
+    default: undefined,
+  },
 
   // ⚠️ 여기 빠진 필드는 mongoose 가 조용히 버린다.
   //    AI 가 만들어 보낸 intent·suggestedAction 이 통째로 사라졌던 적이 있으니,
@@ -244,6 +269,12 @@ InboundMailSchema.index({ trashedAt: 1 });
 // vercelData 고유 — 리드별 답장 조회
 InboundMailSchema.index({ leadId: 1, date: -1 });
 InboundMailSchema.index({ direction: 1, date: -1 });
+
+// 개발 서버는 고친 파일을 다시 읽어도 mongoose 모델은 처음 만든 것을 계속 쓴다 — 새 칸(outsideReplies)이
+// 조용히 버려지지 않게, 예전 모양의 모델이 남아 있으면 버리고 새로 만든다 (운영은 배포마다 새로 뜬다).
+if (mongoose.models.InboundMail && !mongoose.models.InboundMail.schema.path('outsideReplies')) {
+  mongoose.deleteModel('InboundMail');
+}
 
 export const InboundMail =
   (mongoose.models.InboundMail as mongoose.Model<IInboundMail>) ||

@@ -61,6 +61,27 @@ export async function GET(req: Request) {
         scheduledFor: h.scheduledFor || '',
       }));
 
+    // ── 밖(웹메일·아웃룩·휴대폰)에서 보낸 답장 — 받은 메일에 붙여 둔 것 (lib/mail/reconcile.ts, 2026-10-20) ──
+    // 예전에는 '답함' 표시만 남고 무슨 말을 했는지 이 화면에 없었다. CRM 에서 보낸 것과 메일번호가 같으면 한 번만 보인다.
+    const seenIds = new Set(sent.map((x: any) => x.messageId).filter(Boolean));
+    const outside: any[] = [];
+    for (const m of inbound) {
+      for (const r of (m.outsideReplies || [])) {
+        if (!r?.messageId || seenIds.has(r.messageId)) continue;
+        seenIds.add(r.messageId);
+        outside.push({
+          direction: 'out' as const,
+          outside: true,
+          at: r.at ? new Date(r.at).toISOString() : '',
+          subject: r.subject || '',
+          body: r.body || '',
+          bodyTruncated: Boolean(r.bodyTruncated),
+          to: (r.to || []).join(', '),
+          messageId: r.messageId,
+        });
+      }
+    }
+
     // ── 받은 메일 → 타임라인 항목 ──
     const received = inbound.map((m: any) => ({
       direction: 'in' as const,
@@ -102,7 +123,7 @@ export async function GET(req: Request) {
     }));
 
     // 시간순 정렬 (오래된 것 → 최신, 대화 흐름대로)
-    const timeline = [...sent, ...received].sort(
+    const timeline = [...sent, ...outside, ...received].sort(
       (a, b) => new Date(a.at || 0).getTime() - new Date(b.at || 0).getTime(),
     );
 
@@ -150,7 +171,9 @@ export async function GET(req: Request) {
       },
       timeline,
       stats: {
-        sentCount: sent.length,
+        sentCount: sent.length + outside.length,
+        // 그중 웹메일·아웃룩·휴대폰에서 보낸 것
+        outsideCount: outside.length,
         receivedCount: received.length,
         // 마지막이 상대 메일이면 우리가 답할 차례다
         awaitingOurReply: Boolean(lastIn && timeline[timeline.length - 1]?.direction === 'in'),

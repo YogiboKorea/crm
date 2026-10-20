@@ -18,7 +18,9 @@
  */
 import { InboundMail } from '@/models/InboundMail';
 import { Lead } from '@/models/Lead';
-import { findSpecialFolder, fetchEnvelopes, type ImapConfig, type EnvelopeInfo } from './imap';
+import { findSpecialFolder, fetchEnvelopes, fetchMessageSource, type ImapConfig, type EnvelopeInfo } from './imap';
+import { parseMessage } from './parse';
+import { tidyMailText } from './text';
 import { normalizeSubject } from './thread';
 import { moveRepliedToNegotiating } from './stage-on-reply';
 
@@ -31,6 +33,16 @@ const SENT_SCAN = 400;
  * 메일에 답한 것을 영영 못 찾는다. 날짜 상한을 함께 걸었으므로 넉넉히 잡는다.
  */
 const SUBJECT_CANDIDATES = 60;
+
+/**
+ * 밖에서 보낸 답장의 본문을 한 번에 몇 통까지 받아 붙일지.
+ * 본문은 한 통씩 메일 서버에서 받아야 해서, 처음 돌 때 수십 통을 한꺼번에 받으면 수집이 길어진다.
+ * 남은 것은 다음 수집 때 이어서 붙는다.
+ */
+const ATTACH_PER_RUN = 25;
+
+/** 붙여 두는 답장 본문 길이 — 받은 메일 미리보기(ingest.ts PREVIEW_MAX)와 같은 기준 */
+const OUTSIDE_BODY_MAX = 4000;
 
 /** 사람이 정한 상태는 덮지 않는다 — 보관·무시는 이미 판단이 끝난 것이다 */
 const OVERWRITABLE = ['new', 'reviewing'];
@@ -51,6 +63,8 @@ export interface ReconcileResult {
   skippedForward: number;
   skippedNoMatch: number;
   leadsCleared: number;
+  /** 업체 대화에 본문을 붙인 밖에서 보낸 답장 수 */
+  attached: number;
 }
 
 /**
@@ -90,11 +104,11 @@ function isReplyTo(sent: EnvelopeInfo, mail: any): boolean {
  */
 export async function syncSentReplies(
   scoped: ImapConfig,
-  { accountId = 'main', limit = SENT_SCAN }: { accountId?: string; limit?: number } = {},
+  { accountId = 'main', limit = SENT_SCAN, attachLimit = ATTACH_PER_RUN }: { accountId?: string; limit?: number; attachLimit?: number } = {},
 ): Promise<ReconcileResult> {
   const out: ReconcileResult = {
     folder: null, scanned: 0, matched: 0,
-    skippedForward: 0, skippedNoMatch: 0, leadsCleared: 0,
+    skippedForward: 0, skippedNoMatch: 0, leadsCleared: 0, attached: 0,
   };
 
   const folder = await findSpecialFolder(scoped, 'sent');
@@ -107,6 +121,8 @@ export async function syncSentReplies(
 
   const scope = { accountId };
   const clearedLeads = new Set<string>();
+  // 본문을 받아 업체 대화에 붙일 답장 (아래 attachOutsideReplies)
+  const toAttach: Array<{ target: any; sent: EnvelopeInfo }> = [];
 
   for (const sent of messages) {
     // 전달은 회신이 아니다. 제목만으로 먼저 걸러 낸다 (받는사람 검사로도 대부분
@@ -121,7 +137,7 @@ export async function syncSentReplies(
     if (ids.length) {
       const found: any[] = await InboundMail.find(
         { ...scope, messageId: { $in: ids } },
-        { status: 1, date: 1, 'from.address': 1, messageId: 1, leadId: 1, repliedAt: 1 },
+        { status: 1, date: 1, 'from.address': 1, messageId: 1, leadId: 1, repliedAt: 1, 'outsideReplies.messageId': 1 },
       ).lean();
       const byId = new Map(found.map((m) => [m.messageId, m]));
       for (const id of ids) {
@@ -143,7 +159,7 @@ export async function syncSentReplies(
             'from.address': { $in: sent.to },
             date: { $lte: cutoff },
           },
-          { status: 1, subject: 1, date: 1, 'from.address': 1, leadId: 1, repliedAt: 1 },
+          { status: 1, subject: 1, date: 1, 'from.address': 1, leadId: 1, repliedAt: 1, 'outsideReplies.messageId': 1 },
         ).sort({ date: -1 }).limit(SUBJECT_CANDIDATES).lean();
 
         // 제목이 같은 것 중 회신 직전에 온 것 — 대화에서 실제로 답한 메일이다
@@ -153,6 +169,13 @@ export async function syncSentReplies(
     }
 
     if (!target) { out.skippedNoMatch++; continue; }
+
+    // 업체와 엮인 메일에 대한 답장이면 본문을 받아 업체 대화에 붙인다 (아래에서 한꺼번에).
+    // '답함' 표시를 덮을지와는 따로 본다 — 같은 메일에 두 번 답했으면 두 통 다 대화에 보여야 한다.
+    if (target.leadId && sent.messageId
+      && !(target.outsideReplies || []).some((r: any) => r.messageId === sent.messageId)) {
+      toAttach.push({ target, sent });
+    }
 
     // 이미 더 최근 회신이 기록돼 있으면 덮지 않는다.
     const prev = target.repliedAt ? new Date(target.repliedAt).getTime() : 0;
@@ -178,6 +201,8 @@ export async function syncSentReplies(
     }
   }
 
+  out.attached = await attachOutsideReplies(scoped, folder, toAttach.slice(0, Math.max(0, attachLimit)));
+
   // 리드의 '회신 필요' 도 함께 내린다 — 화면 배지가 실제와 맞아야 한다
   for (const leadId of clearedLeads) {
     const stillNeeds = await InboundMail.countDocuments({
@@ -192,4 +217,53 @@ export async function syncSentReplies(
   }
 
   return out;
+}
+
+/**
+ * 밖(웹메일·아웃룩·휴대폰)에서 보낸 답장의 **본문**을 받아 원래 받은 메일에 붙인다 (2026-10-20, 대표님 요청).
+ *
+ * 왜: 업체 대화 화면은 CRM 에서 보낸 것(Lead.emailHistory)과 받은 메일만 엮어서, 웹메일로 답한 건은
+ * '답함' 표시만 남고 무슨 말을 했는지 보이지 않았다. 대표님 답장은 열에 아홉이 밖에서 나간다 (10월 실측 77통 중 70통).
+ *
+ * 새 메일 문서를 만들지 않고 받은 메일에 붙이는 이유: 받은 메일함 목록·숫자·거래처 폴더·AI 분석은 받은 메일만
+ * 세도록 짜여 있다. 보낸 메일을 같은 곳에 문서로 넣으면 그 계산이 모두 흔들린다.
+ *
+ * CRM 에서 보낸 답장도 보낸메일함에 사본이 있다(sent-copy.ts) — 업체 발송 이력에 이미 있으므로 붙이지 않는다.
+ * 한 통이 실패해도 나머지는 계속한다 — 못 붙인 것은 다음 수집 때 다시 시도된다.
+ */
+async function attachOutsideReplies(
+  scoped: ImapConfig,
+  folder: string,
+  items: Array<{ target: any; sent: EnvelopeInfo }>,
+): Promise<number> {
+  let attached = 0;
+  for (const { target, sent } of items) {
+    try {
+      if (await Lead.exists({ leadId: target.leadId, 'emailHistory.messageId': sent.messageId })) continue;
+      const src = await fetchMessageSource(scoped, { folder, uid: sent.uid });
+      if (!src) continue;
+      const parsed = await parseMessage(src, { uid: sent.uid, folder });
+      const body = tidyMailText(parsed.bodyStripped || parsed.raw?.text || '');
+      const r = await InboundMail.updateOne(
+        { _id: target._id, 'outsideReplies.messageId': { $ne: sent.messageId } },
+        {
+          $push: {
+            outsideReplies: {
+              messageId: sent.messageId,
+              at: sent.date || parsed.date || null,
+              subject: sent.subject || parsed.subject || '',
+              to: sent.to || [],
+              cc: sent.cc || [],
+              body: body.slice(0, OUTSIDE_BODY_MAX),
+              bodyTruncated: body.length > OUTSIDE_BODY_MAX,
+            },
+          },
+        },
+      );
+      if (r.modifiedCount) attached++;
+    } catch {
+      /* 메일 서버가 느리거나 원본이 지워졌다 — 다음 수집 때 다시 시도한다 */
+    }
+  }
+  return attached;
 }
