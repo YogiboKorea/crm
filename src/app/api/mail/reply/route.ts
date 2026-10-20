@@ -3,20 +3,23 @@ import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { InboundMail } from '@/models/InboundMail';
 import { sendMail } from '@/lib/mailer';
-import { getMailScope, canUseAccount, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { getMailScope, canUseAccount, myAddresses, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 import { moveRepliedToNegotiating } from '@/lib/mail/stage-on-reply';
-import { composeReply, pickReplyAccount } from '@/lib/mail/compose-reply';
+import { composeReply, pickReplyAccount, replyRecipients } from '@/lib/mail/compose-reply';
 import { buildSignatureBlock } from '@/lib/template-vars';
 import { decryptSecret } from '@/lib/crypto';
+import { normalizeUploadIds, loadUploads, deleteUploads } from '@/lib/mail/uploads';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 /**
- * GET /api/mail/reply?inboundMailId=… — 이 메일에 답장하면 **끝에 붙을 서명**을 미리 돌려준다.
+ * GET /api/mail/reply?inboundMailId=… — 이 메일에 답장하면 **끝에 붙을 서명**과 **받을 사람**을 미리 돌려준다.
  *
  * 화면이 들고 있는 계정 목록으로 서명을 그리면, 목록을 아직 안 불러온 화면(답장 받음에서 바로 대화를 연 경우)
  * 에서는 서명이 비어 보였다. 보낼 때와 같은 계정 고르기(lib/mail/compose-reply.ts)를 서버에서 그대로 돌려 결과만 준다.
+ *
+ * recipients — [↩ 답장] / [↩↩ 전체 답장] 각각의 받는 사람·참조 (2026-10-20). 내 주소는 이미 빠져 있다.
  * 메일을 보내지 않는다.
  */
 export async function GET(req: Request) {
@@ -30,17 +33,22 @@ export async function GET(req: Request) {
     if (!/^[0-9a-f]{24}$/i.test(inboundMailId)) {
       return NextResponse.json({ success: false, error: 'inboundMailId 필요' }, { status: 400 });
     }
-    const mail: any = await InboundMail.findById(inboundMailId, { accountId: 1 }).lean();
+    const mail: any = await InboundMail.findById(inboundMailId, { accountId: 1, direction: 1, from: 1, to: 1, cc: 1 }).lean();
     // 남의 메일은 없는 메일과 똑같이 404 — 응답이 다르면 그런 메일이 있다는 게 드러난다
     if (!mail || !canUseAccount(scope, mail.accountId)) return NextResponse.json(NOT_YOURS, { status: 404 });
 
     const { account, error } = await pickReplyAccount(scope, mail, url.searchParams.get('mailAccountId') || undefined);
     if (!account) return NextResponse.json({ success: false, error }, { status: 400 });
 
+    // 전체 답장에서 뺄 내 주소 — 지금 답장할 계정 주소도 같이 (계정이 여러 개일 때 빠지지 않게)
+    const mine = await myAddresses(scope);
+    for (const v of [account.smtpUser, account.fromAddress]) if (v) mine.add(String(v).toLowerCase());
+
     return NextResponse.json({
       success: true,
       from: { name: account.fromName || '', address: account.fromAddress || account.smtpUser || '' },
       signatureHtml: buildSignatureBlock(account, { html: true }),
+      recipients: replyRecipients(mail, mine),
     });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message || '서명을 불러오지 못했습니다' }, { status: 500 });
@@ -65,6 +73,8 @@ export async function GET(req: Request) {
  *   subject?: string,        // 생략 시 "Re: 원문제목"
  *   mailAccountId?: string,  // 생략 시 기본 계정
  *   appendSignature?: boolean, // 기본 true
+ *   to?, cc?, bcc?           // 받는 사람·참조·숨은참조 (2026-10-20). to 를 비우면 원래 보낸 사람에게
+ *   attachments?: string[]   // 먼저 올려 둔 첨부 번호 (api/mail/upload) — 하나라도 못 찾으면 보내지 않는다
  * }
  */
 export async function POST(req: Request) {
@@ -82,7 +92,12 @@ export async function POST(req: Request) {
 
     const composed = await composeReply(scope, body);
     if (!composed.ok) return NextResponse.json(composed.payload, { status: composed.status });
-    const { mail, account, to, subject, html, text, bodySource, headers, threaded, from } = composed.reply;
+    const { mail, account, to, toList, cc, bcc, subject, html, text, bodySource, headers, threaded, from } = composed.reply;
+
+    // 첨부 — 하나라도 못 붙이면 보내지 않는다 ("첨부 드립니다" 라고 쓴 답장이 빈손으로 나가면 되돌릴 수 없다)
+    const uploadIds = normalizeUploadIds(body?.attachments);
+    const loaded = await loadUploads(scope.user, uploadIds);
+    if (!loaded.ok) return NextResponse.json({ success: false, error: loaded.error }, { status: 400 });
 
     let smtpPass = '';
     try {
@@ -92,11 +107,14 @@ export async function POST(req: Request) {
     }
 
     const result = await sendMail({
-      to,
+      to: toList,
+      cc,
+      bcc,
       subject,
       html,
       text,
       headers,
+      attachments: loaded.files.map((f) => ({ filename: f.filename, content: f.content, contentType: f.contentType })),
       smtpConfig: {
         host: account.smtpHost,
         port: account.smtpPort,
@@ -109,8 +127,12 @@ export async function POST(req: Request) {
     });
 
     if (!result.ok) {
+      // 첨부는 지우지 않는다 — 고쳐서 다시 [보내기] 하면 그대로 쓴다 (2시간 뒤 저절로 지워진다)
       return NextResponse.json({ success: false, error: result.error || '발송 실패' }, { status: 500 });
     }
+
+    // 보냈으니 맡겨 둔 첨부 조각은 지운다 — 사본은 이카운트 보낸메일함에 있다
+    await deleteUploads(scope.user, uploadIds).catch(() => { /* 못 지워도 2시간 뒤 저절로 지워진다 */ });
 
     const now = new Date().toISOString();
 
@@ -150,9 +172,13 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       to,
+      cc,
+      bcc,
+      attachments: loaded.files.map((f) => ({ filename: f.filename, size: f.size })),
       subject,
       messageId: result.messageId,
       dryRun: Boolean(result.dryRun),
+      savedToSent: result.savedToSent !== false,
       threaded,
       leadId: mail.leadId || null,
     });

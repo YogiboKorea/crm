@@ -43,7 +43,9 @@ function getTransporter(): nodemailer.Transporter {
 }
 
 export interface SendMailInput {
-  to: string;                 // 수신자
+  to: string | string[];      // 수신자 (여러 명이면 배열)
+  cc?: string[];              // 참조 — [✏ 메일 쓰기] (2026-10-20)
+  bcc?: string[];             // 숨은참조 — 받는 사람들에게는 안 보이고, 보낸메일함 사본에만 남는다
   subject: string;
   html?: string;              // HTML 본문 (bodyIsHtml=true일 때)
   text?: string;              // 텍스트 본문
@@ -162,6 +164,8 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
     const mailOptions = {
       from: `"${fromName}" <${fromAddress}>`,
       to: input.to,
+      cc: input.cc?.length ? input.cc : undefined,
+      bcc: input.bcc?.length ? input.bcc : undefined,
       subject: input.subject,
       html: input.html,
       text: input.text,

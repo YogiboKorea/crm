@@ -3,6 +3,7 @@ import { MailAccount } from '@/models/MailAccount';
 import { canUseAccount, NOT_YOURS, type MailScope } from './scope';
 import { resolveOutreachAccount } from './accounts';
 import { buildSignatureBlock } from '@/lib/template-vars';
+import { normalizeRecipients } from './compose-new';
 
 /**
  * 답장 한 통을 **조립한다** — 보내기(POST /api/mail/reply)와 미리보기(POST /api/mail/reply/preview)가 같이 쓴다.
@@ -22,12 +23,23 @@ export interface ReplyInput {
   mailAccountId?: string;
   appendSignature?: boolean;
   bodyIsHtml?: boolean;
+  /**
+   * 받는 사람·참조·숨은참조 (2026-10-20 — 답장 창에서 고칠 수 있게 됐다).
+   * to 를 비워 보내면 예전처럼 원래 메일의 보낸 사람(또는 우리가 보낸 메일이면 그 받는 사람)에게 간다.
+   */
+  to?: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
 }
 
 export interface ComposedReply {
   mail: any;
   account: any;
+  /** 받는 사람 (여러 명이면 ", " 로 이은 것 — 화면·이력 표시용) */
   to: string;
+  toList: string[];
+  cc: string[];
+  bcc: string[];
   subject: string;
   from: { name: string; address: string };
   html: string;
@@ -63,6 +75,43 @@ export async function pickReplyAccount(scope: MailScope, mail: any, mailAccountI
   return account ? { account } : { account: null, error: '발송할 메일 계정이 없습니다. 설정에서 등록하세요.' };
 }
 
+/**
+ * [↩ 답장] 과 [↩↩ 전체 답장] 이 각각 누구에게 가는지 (2026-10-20, 대표님 요청 "전체답장").
+ *
+ * 아웃룩·지메일과 같은 규칙:
+ *   · 답장       → 받은 메일이면 보낸 사람, 우리가 보낸 메일이면 그 메일의 상대(첫 바깥 주소)
+ *   · 전체 답장  → 받는 사람 = 보낸 사람 + 원래 받는 사람들, 참조 = 원래 참조들
+ * 둘 다 **내 주소는 뺀다** (안 빼면 나에게도 한 통 더 간다).
+ */
+export function replyRecipients(mail: any, mine: Set<string>): {
+  reply: { to: string[] };
+  replyAll: { to: string[]; cc: string[] };
+} {
+  const addr = (x: any) => String(x?.address || '').trim();
+  const notMine = (a: string) => Boolean(a) && !mine.has(a.toLowerCase());
+  const uniq = (list: string[]) => list.filter((a, i) => list.findIndex((b) => b.toLowerCase() === a.toLowerCase()) === i);
+  const without = (list: string[], taken: string[]) => list.filter((a) => !taken.some((t) => t.toLowerCase() === a.toLowerCase()));
+  const to: string[] = (mail?.to || []).map(addr).filter(Boolean);
+  const cc: string[] = (mail?.cc || []).map(addr).filter(Boolean);
+
+  if (mail?.direction === 'out') {
+    // 우리가 보낸 메일에서 이어서 보낼 때 — 보낸 사람이 우리라, 상대는 받는 사람 쪽이다
+    const first = to.find((a) => notMine(a) && !/@yogico\.kr$/i.test(a)) || to.find(notMine) || '';
+    const allTo = uniq(to.filter(notMine));
+    const replyAllTo = allTo.length ? allTo : (first ? [first] : []);
+    return {
+      reply: { to: first ? [first] : [] },
+      replyAll: { to: replyAllTo, cc: without(uniq(cc.filter(notMine)), replyAllTo) },
+    };
+  }
+  const sender = addr(mail?.from);
+  const allTo = uniq([sender, ...to].filter(notMine));
+  return {
+    reply: { to: sender ? [sender] : [] },
+    replyAll: { to: allTo, cc: without(uniq(cc.filter(notMine)), allTo) },
+  };
+}
+
 export async function composeReply(scope: MailScope, input: ReplyInput): Promise<ComposeResult> {
   const inboundMailId = String(input?.inboundMailId || '').trim();
   const source = String(input?.body || '').trim();
@@ -75,12 +124,20 @@ export async function composeReply(scope: MailScope, input: ReplyInput): Promise
   // 남의 메일은 없는 메일과 똑같이 404 — 응답이 다르면 그런 메일이 있다는 게 드러난다
   if (!canUseAccount(scope, mail.accountId)) return { ok: false, status: 404, payload: NOT_YOURS as any };
 
-  // 받은 메일에 답하면 보낸 사람에게, **우리가 보낸 메일**에서 이어서 보내면 그 메일의 받는 사람(상대)에게 간다.
+  // 받는 사람 — 화면이 정해 보냈으면 그대로(답장 창에서 고치거나 [전체 답장]을 고른 경우),
+  // 비어 있으면 예전처럼: 받은 메일이면 보낸 사람, **우리가 보낸 메일**에서 이어서 보내면 그 메일의 받는 사람(상대).
   // 보낸 메일의 from 은 우리 주소라, 그대로 쓰면 우리 자신에게 답장이 간다.
-  const to = mail.direction === 'out'
-    ? ((mail.to || []).find((t: any) => t?.address && !/@yogico\.kr$/i.test(t.address)) || (mail.to || [])[0])?.address
-    : mail.from?.address;
-  if (!to) return fail(400, '받을 주소를 찾을 수 없습니다');
+  const typed = Array.isArray(input?.to) ? input.to.join(',') : String(input?.to || '');
+  let defaultTo = '';
+  if (!typed.trim()) {
+    defaultTo = mail.direction === 'out'
+      ? ((mail.to || []).find((t: any) => t?.address && !/@yogico\.kr$/i.test(t.address)) || (mail.to || [])[0])?.address
+      : mail.from?.address;
+    if (!defaultTo) return fail(400, '받을 주소를 찾을 수 없습니다');
+  }
+  const R = normalizeRecipients({ to: typed.trim() ? typed : defaultTo, cc: input?.cc, bcc: input?.bcc });
+  if (!R.ok) return fail(400, R.error);
+  const to = R.to.join(', ');
 
   const picked = await pickReplyAccount(scope, mail, input?.mailAccountId);
   const account: any = picked.account;
@@ -125,6 +182,9 @@ export async function composeReply(scope: MailScope, input: ReplyInput): Promise
       mail,
       account,
       to,
+      toList: R.to,
+      cc: R.cc,
+      bcc: R.bcc,
       subject,
       from: { name: account.fromName || '', address: account.fromAddress || account.smtpUser },
       html,

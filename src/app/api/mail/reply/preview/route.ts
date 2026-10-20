@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { getMailScope, UNAUTHORIZED } from '@/lib/mail/scope';
 import { composeReply } from '@/lib/mail/compose-reply';
+import { describeUploads, normalizeUploadIds } from '@/lib/mail/uploads';
 
 export const runtime = 'nodejs';
 
@@ -32,12 +33,17 @@ export async function POST(req: Request) {
     const composed = await composeReply(scope, body);
     if (!composed.ok) return NextResponse.json(composed.payload, { status: composed.status });
     const r = composed.reply;
+    // 첨부는 이름·크기만 (내용은 읽지 않는다)
+    const files = await describeUploads(scope.user, normalizeUploadIds(body?.attachments));
 
     return NextResponse.json({
       success: true,
       preview: {
         from: r.from,
         to: r.to,
+        cc: r.cc,
+        bcc: r.bcc,
+        attachments: files.map((f) => ({ filename: f.filename, size: f.size, complete: f.complete })),
         subject: r.subject,
         html: r.html,
         text: r.text,

@@ -22,8 +22,67 @@ import type { MailScope } from './scope';
 /** 사람이 실제로 받을 수 있는 주소인가 — 화면·서버가 같은 기준을 쓴다 */
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 
+/**
+ * 받는 사람·참조·숨은참조를 합쳐 이만큼까지 (2026-10-20).
+ * 이 창은 사람이 직접 쓰는 메일이라 하루 발송 한도(send-limits)를 거치지 않는다.
+ * 한도 없이 두면 수백 명을 숨은참조로 넣어 사실상 대량 발송이 되고, 그러면 yogico.kr 이
+ * 스팸으로 찍혀 실거래 메일까지 상대 스팸함으로 간다. 여러 곳에 같은 글을 보낼 때는 [발송 관리]를 쓴다.
+ */
+export const MAX_COMPOSE_RECIPIENTS = 20;
+
+/**
+ * "a@x.com, b@y.com; 홍길동 <c@z.com>" 같은 입력을 주소 목록으로 바꾼다.
+ * 쉼표·세미콜론·줄바꿈으로 나눈다. 아웃룩에서 복사해 온 "이름 <주소>" 도 받는다.
+ */
+export function parseAddressList(input: unknown): { list: string[]; bad: string[] } {
+  const raw = Array.isArray(input) ? input.join(',') : String(input ?? '');
+  const list: string[] = [];
+  const bad: string[] = [];
+  for (const part of raw.split(/[,;\n]+/)) {
+    const s = part.trim();
+    if (!s) continue;
+    const m = s.match(/<([^<>\s]+)>\s*$/);
+    const addr = (m ? m[1] : s).trim().replace(/^mailto:/i, '');
+    if (!EMAIL_RE.test(addr)) { bad.push(s); continue; }
+    if (!list.some((x) => x.toLowerCase() === addr.toLowerCase())) list.push(addr);
+  }
+  return { list, bad };
+}
+
+/**
+ * 받는 사람·참조·숨은참조를 한꺼번에 다듬는다 — [✏ 메일 쓰기] 와 [↩ 답장] 이 같은 규칙을 쓴다 (2026-10-20).
+ *   · 틀린 주소가 하나라도 있으면 거절 (어느 주소인지 알려 준다)
+ *   · 받는 사람에 있는 주소가 참조·숨은참조에 또 있으면 한 번만 — 받는 쪽에 같은 메일이 두 통 가지 않게
+ *   · 합쳐 MAX_COMPOSE_RECIPIENTS 명까지
+ */
+export function normalizeRecipients(input: { to?: unknown; cc?: unknown; bcc?: unknown }):
+  { ok: true; to: string[]; cc: string[]; bcc: string[] } | { ok: false; error: string } {
+  const T = parseAddressList(input?.to);
+  const C = parseAddressList(input?.cc);
+  const B = parseAddressList(input?.bcc);
+  const wrong = [...T.bad, ...C.bad, ...B.bad];
+  if (wrong.length) return { ok: false, error: `주소가 올바르지 않습니다: ${wrong.slice(0, 3).join(', ')}` };
+  if (!T.list.length) return { ok: false, error: '받는 사람을 입력하세요' };
+  const seen = new Set(T.list.map((a) => a.toLowerCase()));
+  const notYet = (list: string[]) => list.filter((a) => {
+    const k = a.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  const cc = notYet(C.list);
+  const bcc = notYet(B.list);
+  const count = T.list.length + cc.length + bcc.length;
+  if (count > MAX_COMPOSE_RECIPIENTS) {
+    return { ok: false, error: `받는 사람·참조·숨은참조를 합쳐 ${MAX_COMPOSE_RECIPIENTS}명까지 보낼 수 있습니다 (지금 ${count}명). 여러 업체에 같은 글을 보낼 때는 [발송 관리]를 쓰세요.` };
+  }
+  return { ok: true, to: T.list, cc, bcc };
+}
+
 export interface NewMailInput {
-  to?: string;
+  to?: string | string[];
+  cc?: string | string[];
+  bcc?: string | string[];
   subject?: string;
   body?: string;
   bodyIsHtml?: boolean;
@@ -33,7 +92,11 @@ export interface NewMailInput {
 
 export interface ComposedNewMail {
   account: any;
+  /** 받는 사람 첫 주소 (예전 호출자 호환 · 업체 찾기 기준) */
   to: string;
+  toList: string[];
+  cc: string[];
+  bcc: string[];
   subject: string;
   from: { name: string; address: string };
   html: string;
@@ -41,8 +104,10 @@ export interface ComposedNewMail {
   /** 본문 원문 (업체 발송 이력에 남길 용도) */
   bodySource: string;
   signatureAppended: boolean;
-  /** 받는 주소가 등록된 업체와 같으면 그 업체 — 보낸 뒤 대화 이력에 붙는다 */
+  /** 받는 주소가 등록된 업체와 같으면 그 업체 — 보낸 뒤 대화 이력에 붙는다 (첫 번째 업체) */
   lead: { leadId: string; company: string; stage: string } | null;
+  /** 받는 사람·참조 중 등록된 업체 전부 — 각 업체 대화 이력에 남긴다 */
+  leads: Array<{ leadId: string; company: string; stage: string; email: string }>;
 }
 
 export type ComposeNewResult =
@@ -52,12 +117,14 @@ export type ComposeNewResult =
 const fail = (status: number, error: string): ComposeNewResult => ({ ok: false, status, payload: { success: false, error } });
 
 export async function composeNewMail(scope: MailScope, input: NewMailInput): Promise<ComposeNewResult> {
-  const to = String(input?.to || '').trim();
   const subject = String(input?.subject || '').trim();
   const source = String(input?.body || '').trim();
 
-  if (!to) return fail(400, '받는 사람을 입력하세요');
-  if (!EMAIL_RE.test(to)) return fail(400, `받는 사람 주소가 올바르지 않습니다: ${to}`);
+  const R = normalizeRecipients(input);
+  if (!R.ok) return fail(400, R.error);
+  const T = { list: R.to };
+  const { cc, bcc } = R;
+  const to = T.list[0];
   if (!subject) return fail(400, '제목을 입력하세요');
   if (!source) return fail(400, '본문이 비어 있습니다');
 
@@ -81,21 +148,33 @@ export async function composeNewMail(scope: MailScope, input: NewMailInput): Pro
     ? source.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n').replace(/<[^>]+>/g, '').trim()
     : source;
 
-  // 받는 주소가 등록된 업체면 알려 준다 — 보낸 뒤 그 업체 대화 이력에 붙이고, 미리보기에도 이름을 보여준다
-  let lead: ComposedNewMail['lead'] = null;
+  // 받는 사람·참조 주소가 등록된 업체면 알려 준다 — 보낸 뒤 그 업체 대화 이력에 붙이고, 미리보기에도 이름을 보여준다.
+  // 숨은참조는 넣지 않는다 — 그 업체 대화 이력에 "숨겨서 보낸 메일" 이 드러나면 안 된다.
+  const leads: ComposedNewMail['leads'] = [];
   try {
-    const hit: any = await Lead.findOne(
-      { Email: new RegExp(`^${to.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), deleted: { $ne: true } },
-      { leadId: 1, Company: 1, stage: 1 },
-    ).lean();
-    if (hit) lead = { leadId: hit.leadId, company: hit.Company || '', stage: hit.stage || '' };
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const addrs = [...T.list, ...cc];
+    const hits: any[] = await Lead.find(
+      { Email: { $in: addrs.map((a) => new RegExp(`^${esc(a)}$`, 'i')) }, deleted: { $ne: true } },
+      { leadId: 1, Company: 1, stage: 1, Email: 1 },
+    ).limit(MAX_COMPOSE_RECIPIENTS).lean();
+    for (const a of addrs) {
+      const h = hits.find((x) => String(x.Email || '').toLowerCase() === a.toLowerCase());
+      if (h && !leads.some((l) => l.leadId === h.leadId)) {
+        leads.push({ leadId: h.leadId, company: h.Company || '', stage: h.stage || '', email: a });
+      }
+    }
   } catch { /* 업체를 못 찾아도 메일은 보낼 수 있다 */ }
+  const lead = leads[0] ? { leadId: leads[0].leadId, company: leads[0].company, stage: leads[0].stage } : null;
 
   return {
     ok: true,
     mail: {
       account,
       to,
+      toList: T.list,
+      cc,
+      bcc,
       subject,
       from: { name: account.fromName || '', address: account.fromAddress || account.smtpUser },
       html,
@@ -103,6 +182,7 @@ export async function composeNewMail(scope: MailScope, input: NewMailInput): Pro
       bodySource: source,
       signatureAppended: Boolean(sigHtml),
       lead,
+      leads,
     },
   };
 }

@@ -497,6 +497,33 @@ a.nav-item {
   font-weight: 600;
 }
 
+/* [✏ 메일 쓰기] — 받은 메일함 바로 위 (2026-10-20). 화면을 바꾸는 메뉴가 아니라 쓰기 창을 띄우는
+   버튼이라 메뉴(nav-item)와 다르게 꽉 찬 파란 버튼으로 둔다 — 지메일의 [편지쓰기] 자리와 같다. */
+.nav-compose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 4px 0 8px;
+  padding: 10px var(--sp-3);
+  min-height: 40px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--brand);
+  border: none;
+  border-radius: var(--r-md);
+  box-shadow: 0 2px 8px rgba(49, 130, 246, .28);
+  cursor: pointer;
+  transition: filter .15s, box-shadow .15s;
+}
+.nav-compose:hover { filter: brightness(1.06); box-shadow: 0 4px 12px rgba(49, 130, 246, .36); }
+.nav-compose:focus-visible { outline: 2px solid var(--brand-text); outline-offset: 2px; }
+.nav-compose .nav-label { flex: none; }
+.nav-compose-icon { font-size: 15px; }
+:root[data-sidebar-collapsed="true"] .nav-compose { padding: 10px 0; }
+
 /* ── Topbar ─────────────────────────────────────────────────── */
 .topbar {
   display: flex;

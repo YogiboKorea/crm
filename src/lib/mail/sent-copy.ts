@@ -19,6 +19,9 @@ export async function saveToSentFolder(account: any, mailOptions: Record<string,
 
     // 방금 보낸 것과 같은 내용으로 원문(MIME)을 만든다 — 네트워크로 나가지 않는 transport
     const composer = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' });
+    // 숨은참조는 보낼 때 머리말에서 빠진다(받는 사람에게 안 보이게). 하지만 내 보낸메일함 사본에는
+    // 누구에게 숨겨서 보냈는지 남아야 한다 — 아웃룩·웹메일도 그렇게 한다.
+    composer.use('stream', (mail: any, done: () => void) => { mail.message.keepBcc = true; done(); });
     const built: any = await composer.sendMail(mailOptions);
     const raw: Buffer = built.message;
     if (!raw?.length) return { ok: false, error: '원문을 만들지 못했습니다' };

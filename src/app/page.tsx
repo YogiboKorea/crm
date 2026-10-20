@@ -45,9 +45,21 @@ export default function Home() {
                 · 최근 2개월
               </span>
             </div>
+            {/* ✏ 메일 쓰기 — 받은 메일함 바로 위, 어느 화면에서든 한 번에 연다 (대표님 요청 2026-10-20).
+                전에는 받은 메일함 화면 안 오른쪽 위에만 있어서 찾기 어려웠다. 화면 이동이 아니라 쓰기 창을 띄우는 버튼이라
+                nav-item 이 아니다 (누른다고 지금 보던 화면이 바뀌지 않는다). */}
+            <button className="nav-compose" id="navComposeBtn" type="button"
+              title="새 메일 쓰기 — 받는 사람 여러 명·참조·첨부파일을 넣을 수 있습니다. 보내면 보낸메일함에 자동으로 남습니다">
+              <span className="nav-compose-icon" aria-hidden="true">✏</span><span className="nav-label">메일 쓰기</span>
+            </button>
             <button className="nav-item active" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
               <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
               <span className="nav-badge" data-nav-badge="inboxUnread"></span>
+            </button>
+            {/* 📤 보낸 메일함 — 받은 메일함과 따로 (대표님 요청 2026-10-20 "내가 보낸 것도 받은 메일함에 있으니 헷갈린다").
+                예전에는 받은 메일함 폴더 목록 맨 아래에 숨어 있었다. 이카운트 보낸메일함을 그대로 읽는다 (/api/mail/sent). */}
+            <button className="nav-item" data-view="tool-sent" type="button" title="보낸 메일함 — 이카운트 보낸메일함을 그대로 보여줍니다. CRM·웹메일·아웃룩(IMAP)에서 보낸 메일이 모두 여기 모입니다">
+              <span className="nav-icon">📤</span><span className="nav-label">보낸 메일함</span>
             </button>
             <button className="nav-item" data-view="tool-inbox-needsreply" type="button" title="회신 필요 — 상대가 질문·요청을 보냈고 아직 우리가 답하지 않은 메일 (최근 2개월)">
               <span className="nav-icon">⚠️</span><span className="nav-label">회신 필요</span>
@@ -752,7 +764,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=7eb830ca" strategy="afterInteractive" />
+      <Script src="/app.js?v=697ccb94" strategy="afterInteractive" />
     </>
   );
 }

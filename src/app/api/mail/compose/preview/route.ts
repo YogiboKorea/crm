@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { getMailScope, UNAUTHORIZED } from '@/lib/mail/scope';
 import { composeNewMail } from '@/lib/mail/compose-new';
+import { describeUploads, normalizeUploadIds } from '@/lib/mail/uploads';
 
 export const runtime = 'nodejs';
 
@@ -30,11 +31,18 @@ export async function POST(req: Request) {
     if (!composed.ok) return NextResponse.json(composed.payload, { status: composed.status });
     const m = composed.mail;
 
+    // 첨부는 이름·크기만 (내용은 읽지 않는다). 아직 덜 올라간 파일은 complete=false 로 알려 준다.
+    const files = await describeUploads(scope.user, normalizeUploadIds(body?.attachments));
+
     return NextResponse.json({
       success: true,
       preview: {
         from: m.from,
-        to: m.to,
+        to: m.toList.join(', '),
+        cc: m.cc,
+        bcc: m.bcc,
+        attachments: files.map((f) => ({ filename: f.filename, size: f.size, complete: f.complete })),
+        leads: m.leads,
         subject: m.subject,
         html: m.html,
         text: m.text,

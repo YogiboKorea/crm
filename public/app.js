@@ -291,6 +291,8 @@ async function init() {
   initThemeToggle();
   initSidebarToggle();
   initNavDrawer();
+  // 사이드바 [✏ 메일 쓰기] — 어느 화면에서든 쓰기 창을 띄운다 (보던 화면은 그대로)
+  document.getElementById('navComposeBtn')?.addEventListener('click', () => openComposeMailModal());
   initAttachmentDownloads();
   initReviewBar();     // 상세 팝업의 이전/다음·판정 버튼
   // 저장된 페이지 크기 복원 (사용자가 이전에 선택한 값 유지)
@@ -400,7 +402,8 @@ function initNavDrawer() {
   // 메뉴를 고르면 닫는다. 사이드바 전체에 위임해 두면 나중에 메뉴가
   // 늘어나도 따로 손댈 곳이 없다.
   sidebar.addEventListener('click', (e) => {
-    if (e.target.closest('.nav-item, .nav-external')) setOpen(false);
+    // [✏ 메일 쓰기] 도 닫는다 — 서랍이 열린 채면 쓰기 창이 서랍 뒤로 가려 보인다
+    if (e.target.closest('.nav-item, .nav-external, .nav-compose')) setOpen(false);
   });
 
   document.addEventListener('keydown', (e) => {
@@ -1823,9 +1826,20 @@ async function _renderInner(seq) {
     Object.assign(_inboxState, { page: 1, classification: '', q: '', linked: '', group: '', trashed: false, today: false, sent: false });
     _inboxState.lastView = state.view;
   }
+  // 📤 보낸 메일함 — 사이드바에서 따로 연다 (2026-10-20). 이카운트 보낸메일함을 그 자리에서 읽는다.
+  // lastView 를 남겨 두어야 [받은 메일함] 으로 돌아갈 때 위의 초기화가 돌아 sent 표시가 풀린다
+  // (안 그러면 받은 메일함을 눌러도 보낸 메일함이 그대로 보인다).
+  if (state.view === "tool-sent") {
+    els.viewTitle.textContent = "📤 보낸 메일함";
+    els.viewSubtitle.textContent = "이카운트 보낸메일함을 그대로 보여줍니다 · CRM·웹메일·아웃룩(IMAP)에서 보낸 메일이 모두 여기 모입니다.";
+    _inboxState.sent = true;
+    _inboxState.lastView = 'tool-sent';
+    renderSentMailPage();
+    return;
+  }
   if (state.view === "tool-inbox") {
     els.viewTitle.textContent = "📥 받은 메일함";
-    els.viewSubtitle.textContent = "이카운트 메일함에서 수집한 수신 메일. 대화 단위로 접어서 표시.";
+    els.viewSubtitle.textContent = "받은 메일만 — 내가 보낸 메일은 [📤 보낸 메일함]에 있습니다. 대화 단위로 접어서 표시.";
     renderInboxPage({ needsReplyOnly: false });
     return;
   }
@@ -4618,10 +4632,15 @@ var AD_FOLDER_NAME = '광고·자동발송';
 // (/api/mail/sent). 받은 메일함 숫자·대화 묶기에 섞이지 않고, 웹메일과 늘 같다.
 // 메일 서버에 붙어서 읽기 때문에 한 쪽에 2~5초 걸린다 — 기다리는 동안 무엇을 하는지 적어 둔다.
 var _sentState = { page: 1, q: '', data: null, busy: false };
-/** 보낸 메일함 폴더를 받은 메일함 폴더 목록에 보여줄지 — 대표님 요청으로 일단 숨김 (2026-09-14) */
-var SHOW_SENT_MAILBOX = true;   // 대표님 요청으로 다시 켬 (2026-09-14)
+/**
+ * 보낸 메일함을 받은 메일함 **폴더 목록 안에도** 보여줄지.
+ * 2026-10-20 사이드바 [📤 보낸 메일함] 으로 따로 뺐다 (대표님 요청 "받은 메일함과 보낸 메일함을 분리") — 두 군데 있으면 헷갈린다.
+ */
+var SHOW_SENT_MAILBOX = false;
 
 async function renderSentMailPage() {
+  // 사이드바에서 바로 열면 받은 메일함을 안 거쳐 계정 목록이 아직 없다 — 받은 메일함이 보던 메일함과 같게 맞춘다
+  await loadInboxAccounts();
   const accountId = currentMailboxAccountId();
   els.content.innerHTML = `<div class="inline-loader">이카운트 보낸메일함을 읽는 중… (2~5초)</div>`;
 
@@ -4630,7 +4649,7 @@ async function renderSentMailPage() {
   if (accountId && accountId !== 'all') params.set('accountId', accountId);
 
   const d = await safeJsonFetch('/api/mail/sent?' + params.toString());
-  if (!_inboxState.sent || (state.view !== 'tool-inbox' && state.view !== 'tool-inbox-needsreply')) return;   // 기다리는 사이 다른 화면으로 갔다
+  if (!_inboxState.sent || !['tool-sent', 'tool-inbox', 'tool-inbox-needsreply'].includes(state.view)) return;   // 기다리는 사이 다른 화면으로 갔다
 
   const back = `<button type="button" id="sentBack"
       style="padding:7px 14px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-surface);
@@ -4748,6 +4767,11 @@ function leaveSentMailPage() {
   _inboxState.sent = false;
   _sentState.page = 1;
   _sentState.q = '';
+  // 사이드바 [📤 보낸 메일함] 으로 들어왔으면 [📥 받은 메일함] 메뉴로 옮겨 간다 — 메뉴 표시도 같이 바뀌어야 한다
+  if (state.view === 'tool-sent') {
+    document.querySelector('.nav-item[data-view="tool-inbox"]')?.click();
+    return;
+  }
   render();
 }
 
@@ -5098,13 +5122,7 @@ async function renderInboxPage(opts) {
       ${accounts.length > 1
         ? `<span style="font-size:11px;color:var(--text-tertiary);white-space:nowrap">아래 탭에서 전환 ↓</span>`
         : ''}
-      <!-- 새 메일 쓰기 — 읽는 곳에서 바로 쓸 수 있어야 한다 (대표님 요청 2026-09-17).
-           여기서 보내면 이카운트 보낸메일함에 사본이 반드시 남는다. 아웃룩에서 보내면 안 남는다. -->
-      <button type="button" id="inboxComposeBtn"
-        title="주소를 직접 적어 새 메일을 씁니다 — 보낸메일함에 자동으로 남습니다"
-        style="flex:none;padding:9px 16px;font-size:13px;font-weight:800;border:none;border-radius:9px;
-               background:#2563eb;color:#fff;cursor:pointer;white-space:nowrap;
-               box-shadow:0 2px 8px rgba(37,99,235,.28)">✏ 새 메일 쓰기</button>
+      <!-- [✏ 새 메일 쓰기] 는 사이드바 받은 메일함 위 [✏ 메일 쓰기] 하나로 옮겼다 (2026-10-20, 대표님 요청 "하나로 빼 달라") -->
     </div>`;
 
   // ── 오늘 온 메일 ──
@@ -5767,7 +5785,6 @@ function bindInboxActions() {
       render();
     });
   }
-  els.content.querySelector('#inboxComposeBtn')?.addEventListener('click', () => openComposeMailModal());
   els.content.querySelector('#inboxIngestBtn')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
@@ -8165,6 +8182,7 @@ async function renderTrashPage() {
 function closeMailDetailModal() {
   const el = document.getElementById('mailDetailRoot');
   if (!el) return;                 // 열려 있지 않으면 잠금 카운트를 건드리지 않는다
+  el._cleanupUploads?.();          // 답장에 올려 두고 안 보낸 첨부 조각을 지운다 (bindConversationReply)
   el.remove();
   unlockBodyScroll();
 }
@@ -8868,6 +8886,7 @@ async function renderMailSettingsPage() {
 function closeConversationModal() {
   const el = document.getElementById('conversationModalRoot');
   if (!el) return;
+  el._cleanupUploads?.();          // 답장에 올려 두고 안 보낸 첨부 조각을 지운다 (bindConversationReply)
   el.remove();
   unlockBodyScroll();
 }
@@ -9201,6 +9220,45 @@ function replyBoxHtml(lastInbound) {
         </span>
       </div>
 
+      <!-- 받는 사람 — [↩ 답장] / [↩↩ 전체 답장] (2026-10-20, 대표님 요청).
+           거래처 메일은 거의 늘 참조가 붙는다(전무님·Dangaard 팀). 전체 답장을 고르면 원래 받는 사람·참조가 한 번에 들어온다.
+           어느 쪽이든 아래 칸에서 직접 고칠 수 있다 (자동 완성). 후보는 서버가 정한다 — 내 주소는 빠져 있다 (GET /api/mail/reply). -->
+      <div class="conv-recipients" style="margin-bottom:9px;padding:9px 11px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px">
+          <div role="group" aria-label="답장 방식" style="display:inline-flex;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden">
+            <button type="button" data-reply-mode="one" aria-pressed="true"
+              style="padding:6px 13px;font-size:12.5px;font-weight:800;border:none;cursor:pointer;background:#2563eb;color:#fff">↩ 답장</button>
+            <button type="button" data-reply-mode="all" aria-pressed="false" disabled
+              title="원래 메일의 받는 사람·참조 모두에게 답합니다"
+              style="padding:6px 13px;font-size:12.5px;font-weight:800;border:none;border-left:1px solid #cbd5e1;cursor:pointer;background:#fff;color:#94a3b8">↩↩ 전체 답장</button>
+          </div>
+          <span id="convModeNote" style="font-size:11.5px;color:#64748b">보낸 사람에게만 답합니다</span>
+        </div>
+        <label style="display:block;margin-bottom:4px">
+          <span style="font-size:11px;font-weight:700;color:#64748b">받는 사람</span>
+          <input id="convTo" type="text" inputmode="email" autocomplete="off" value="${escapeAttr(lastInbound.from?.address || '')}"
+            placeholder="주소·이름·회사명 두 글자부터 — 여러 명은 쉼표(,)로"
+            style="width:100%;margin-top:3px;padding:8px 11px;font-size:13px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a">
+        </label>
+        <button type="button" id="convCcToggle"
+          style="margin:4px 0 0;padding:0;border:none;background:none;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer">
+          + 참조 · 숨은참조 추가</button>
+        <div id="convCcRows" hidden>
+          <label style="display:block;margin:6px 0 6px">
+            <span style="font-size:11px;font-weight:700;color:#64748b">참조 (CC)</span>
+            <input id="convCc" type="text" inputmode="email" autocomplete="off"
+              placeholder="받는 사람 모두에게 보이는 참조 — 여러 명은 쉼표(,)로"
+              style="width:100%;margin-top:3px;padding:8px 11px;font-size:13px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a">
+          </label>
+          <label style="display:block">
+            <span style="font-size:11px;font-weight:700;color:#64748b">숨은참조 (BCC)</span>
+            <input id="convBcc" type="text" inputmode="email" autocomplete="off"
+              placeholder="다른 받는 사람에게는 안 보입니다 — 내 보낸메일함 사본에만 남습니다"
+              style="width:100%;margin-top:3px;padding:8px 11px;font-size:13px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a">
+          </label>
+        </div>
+      </div>
+
       <!-- 초안 생성이 무엇인지 한 줄로. 처음 보는 사람은 이 버튼이
            '내 대신 메일을 보내버리는 것'으로 오해하기 쉬워서 명시한다. -->
       <div style="padding:8px 11px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;
@@ -9303,6 +9361,9 @@ function replyBoxHtml(lastInbound) {
           <div style="color:#94a3b8">초안을 생성하면 왼쪽 영문 내용이 여기에 한국어로 표시됩니다.</div>
         </div>
       </div>
+
+      <!-- 첨부파일 — 답장에도 가격표·계약서·CIPL 이 붙는다 (2026-10-20). 이 답장 칸에 끌어다 놓아도 된다 -->
+      ${attachmentBoxHtml('conv')}
 
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
         <!-- 보내기 전에 받는 사람이 볼 모습 그대로 — 보내는 사람·받는 사람·제목·본문·서명 전체 -->
@@ -9454,6 +9515,66 @@ function bindConversationReply(leadId, rootId) {
   sigChk?.addEventListener('change', syncSig);
   syncSig();
 
+  // ── 받는 사람 · [↩ 답장] / [↩↩ 전체 답장] (2026-10-20, 대표님 요청) ──
+  // 누구에게 갈지 후보는 서버가 정한다 (GET /api/mail/reply 의 recipients — 내 주소는 이미 빠져 있다).
+  // 아래 서명 불러오기와 같은 요청으로 받는다. 어느 쪽을 고르든 칸에서 직접 고칠 수 있다.
+  const toEl = root.querySelector('#convTo');
+  const ccEl = root.querySelector('#convCc');
+  const bccEl = root.querySelector('#convBcc');
+  const ccRows = root.querySelector('#convCcRows');
+  const ccToggle = root.querySelector('#convCcToggle');
+  const modeNote = root.querySelector('#convModeNote');
+  const modeBtns = root.querySelectorAll('[data-reply-mode]');
+  let rec = null;   // { reply: { to }, replyAll: { to, cc } }
+  const showCc = () => { if (ccRows) ccRows.hidden = false; if (ccToggle) ccToggle.hidden = true; };
+  ccToggle?.addEventListener('click', () => { showCc(); ccEl?.focus(); });
+  [toEl, ccEl, bccEl].forEach((el) => attachAddressAutocomplete(el));
+  toEl?.addEventListener('input', () => { toEl.dataset.touched = '1'; });
+
+  const paintModes = (mode) => modeBtns.forEach((b) => {
+    const on = b.dataset.replyMode === mode;
+    b.setAttribute('aria-pressed', String(on));
+    b.style.background = on ? '#2563eb' : '#fff';
+    b.style.color = on ? '#fff' : (b.disabled ? '#94a3b8' : '#1e40af');
+  });
+  const setMode = (mode) => {
+    paintModes(mode);
+    if (!rec || !toEl || !ccEl) return;
+    if (mode === 'all') {
+      toEl.value = rec.replyAll.to.join(', ');
+      ccEl.value = rec.replyAll.cc.join(', ');
+      if (rec.replyAll.cc.length) showCc();
+      if (modeNote) modeNote.textContent = `원래 받는 사람·참조 ${rec.replyAll.to.length + rec.replyAll.cc.length}명 모두에게 답합니다`;
+    } else {
+      toEl.value = rec.reply.to.join(', ');
+      ccEl.value = '';
+      if (modeNote) modeNote.textContent = '보낸 사람에게만 답합니다';
+    }
+  };
+  modeBtns.forEach((b) => b.addEventListener('click', () => { if (!b.disabled) setMode(b.dataset.replyMode); }));
+
+  // 서버가 정한 후보를 받으면 [전체 답장] 을 켤지 정한다. 이미 손댄 칸은 덮어쓰지 않는다.
+  const applyRecipients = (r) => {
+    if (!r || !r.reply || !r.replyAll) return;
+    rec = r;
+    const everyone = [...r.replyAll.to, ...r.replyAll.cc];
+    const allBtn = root.querySelector('[data-reply-mode="all"]');
+    if (allBtn) {
+      const more = everyone.length > r.reply.to.length;
+      allBtn.disabled = !more;
+      allBtn.textContent = more ? `↩↩ 전체 답장 (${everyone.length}명)` : '↩↩ 전체 답장';
+      allBtn.title = more ? `원래 받는 사람·참조 모두에게: ${everyone.join(', ')}` : '원래 메일에 다른 받는 사람·참조가 없습니다';
+      allBtn.style.cursor = more ? 'pointer' : 'default';
+    }
+    if (toEl && !toEl.dataset.touched && r.reply.to.length) toEl.value = r.reply.to.join(', ');
+    paintModes(root.querySelector('[data-reply-mode="all"]')?.getAttribute('aria-pressed') === 'true' ? 'all' : 'one');
+  };
+
+  // ── 첨부파일 (공용 createAttachmentBox) — 답장 칸 어디에 끌어다 놓아도 붙는다 ──
+  // 안 보내고 창을 닫으면 올려 둔 조각을 지운다 (closeConversationModal · closeMailDetailModal 이 부른다)
+  const att = createAttachmentBox({ prefix: 'conv', scope: root, dropTarget: root.querySelector('.conv-reply') });
+  root._cleanupUploads = () => att.cleanup();
+
   // 실제로 붙을 서명을 서버에서 받아 채운다.
   // 화면의 계정 목록(_mailAccounts)으로 그리면, 목록을 아직 안 불러온 채 대화를 열었을 때 서명이 비어 보였다.
   const sigLabel = root.querySelector('#convSigLabel');
@@ -9466,6 +9587,7 @@ function bindConversationReply(leadId, rootId) {
           if (sigLabel) sigLabel.innerHTML = `<span style="color:#b91c1c">서명을 불러오지 못했습니다 — ${escapeHtml((r && r.error) || '')}</span>`;
           return;
         }
+        applyRecipients(r.recipients);   // [↩ 답장] / [↩↩ 전체 답장] 후보
         const addr = r.from?.address || '';
         if (r.signatureHtml) {
           if (sigLabel) sigLabel.textContent = `서명 · ${addr} 계정으로 보냅니다`;
@@ -9535,7 +9657,7 @@ function bindConversationReply(leadId, rootId) {
 
   /**
    * 보낼 내용을 모은다 — [보내기] 와 [👁 미리보기] 가 **같은 값**을 서버에 넘겨야 미리보기를 믿을 수 있다.
-   * 본문이 비었으면 null.
+   * 보낼 수 없으면 { err }, 아니면 { payload, summary }.
    */
   const collectReplyPayload = () => {
     const ta = root.querySelector('#convReplyBody');
@@ -9550,12 +9672,31 @@ function bindConversationReply(leadId, rootId) {
     if (text && wrapCss) text = `<div style="${escapeAttr(wrapCss)}">${text}</div>`;
     // 서식 태그만 남고 글자가 없는 경우(빈 <br> 등)를 걸러낸다
     const plainLen = (ta?.innerText || '').trim().length;
-    if (!plainLen) return null;
+    if (!plainLen) return { err: '본문을 입력하세요', empty: true };
+
+    // 받는 사람·참조·숨은참조 — 서버와 같은 규칙으로 먼저 걸러 바로 알려 준다
+    const T = parseAddressInput(toEl?.value);
+    const C = parseAddressInput(ccEl?.value);
+    const B = parseAddressInput(bccEl?.value);
+    if (!T.list.length && !T.bad.length) return { err: '받는 사람을 입력하세요' };
+    const bad = [...T.bad, ...C.bad, ...B.bad];
+    if (bad.length) return { err: `주소를 확인하세요: ${bad.slice(0, 3).join(', ')}` };
+    if (T.list.length + C.list.length + B.list.length > 20) return { err: '받는 사람·참조·숨은참조를 합쳐 20명까지입니다' };
+    const attachProblem = att.problem();
+    if (attachProblem) return { err: attachProblem };
+
     return {
-      inboundMailId: btn.dataset.inboundId,
-      body: text,
-      bodyIsHtml: true,   // 서식 편집기라 본문이 HTML 이다
-      appendSignature: root.querySelector('#convReplySig')?.checked !== false,
+      payload: {
+        inboundMailId: btn.dataset.inboundId,
+        body: text,
+        bodyIsHtml: true,   // 서식 편집기라 본문이 HTML 이다
+        appendSignature: root.querySelector('#convReplySig')?.checked !== false,
+        to: T.list.join(', '),
+        cc: C.list.join(', '),
+        bcc: B.list.join(', '),
+        attachments: att.ids(),
+      },
+      summary: { to: T.list, cc: C.list, bcc: B.list, files: att.names() },
     };
   };
 
@@ -9564,9 +9705,9 @@ function bindConversationReply(leadId, rootId) {
   const previewBtn = root.querySelector('#convReplyPreview');
   previewBtn?.addEventListener('click', async () => {
     const msg = root.querySelector('#convReplyMsg');
-    const payload = collectReplyPayload();
-    if (!payload) {
-      msg.innerHTML = '<span style="color:#b91c1c">본문을 입력하면 미리 볼 수 있습니다</span>';
+    const { err, empty, payload } = collectReplyPayload();
+    if (err) {
+      msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(empty ? '본문을 입력하면 미리 볼 수 있습니다' : err)}</span>`;
       return;
     }
     previewBtn.disabled = true;
@@ -9593,10 +9734,22 @@ function bindConversationReply(leadId, rootId) {
 
   btn.addEventListener('click', async () => {
     const msg = root.querySelector('#convReplyMsg');
-    const payload = collectReplyPayload();
-    if (!payload) {
-      msg.innerHTML = '<span style="color:#b91c1c">본문을 입력하세요</span>';
+    const { err, payload, summary } = collectReplyPayload();
+    if (err) {
+      msg.innerHTML = `<span style="color:#b91c1c">${escapeHtml(err)}</span>`;
       return;
+    }
+    // 여러 명에게 가거나 파일이 붙으면 나가기 전에 한 번 더 보여준다 — 전체 답장은 되돌릴 수 없다.
+    // 한 사람에게 글만 보내는 평소 답장은 예전처럼 바로 나간다.
+    const people = summary.to.length + summary.cc.length + summary.bcc.length;
+    if (people > 1 || summary.files.length) {
+      const lines = [
+        `받는 사람: ${summary.to.join(', ')}`,
+        summary.cc.length ? `참조: ${summary.cc.join(', ')}` : '',
+        summary.bcc.length ? `숨은참조: ${summary.bcc.join(', ')}` : '',
+        summary.files.length ? `첨부: ${summary.files.join(', ')}` : '',
+      ].filter(Boolean);
+      if (!confirm(`${lines.join('\n')}\n\n이대로 답장을 보낼까요?`)) return;
     }
     btn.disabled = true;
     btn.textContent = '보내는 중…';
@@ -9608,6 +9761,7 @@ function bindConversationReply(leadId, rootId) {
         body: JSON.stringify(payload),
       });
       if (r.success) {
+        att.markSent();   // 첨부 조각은 서버가 이미 지웠다 — 창을 닫을 때 다시 지우러 가지 않는다
         msg.innerHTML = `<span style="color:#166534">✅ ${r.dryRun ? '발송 시뮬레이션 완료' : '보냈습니다'}</span>`;
         if (leadId) {
           // 업체 대화에서 보낸 것 — 타임라인을 다시 그려 방금 보낸 회신이 보이게 한다
@@ -9644,6 +9798,252 @@ function bindConversationReply(leadId, rootId) {
  * @param pv    서버(api/mail/reply/preview)가 조립한 결과
  * @param onSend [이대로 보내기] 를 누르면 부를 함수 — 원래 [보내기] 와 같은 경로로 보낸다
  */
+// ═══ 메일 쓰기·답장 공용 — 주소 자동 완성 · 받는 사람 읽기 · 첨부파일 (2026-10-20) ═══════════
+// [✏ 메일 쓰기] 와 [↩ 답장] 이 같은 코드를 쓴다. 두 벌이면 한쪽만 고쳐진다.
+
+/**
+ * 주소 칸에 자동 완성을 붙인다 (대표님 요청 2026-10-20 — "그동안 주고받은 업체 주소가 몇 글자만 쳐도 뜨게").
+ * 주소 일부(lcl@, dangaard)·이름·회사명으로 찾는다 (api/mail/contacts — 주고받은 메일 + 등록 업체, 자주·최근 순).
+ * 여러 명을 쉼표로 적으므로 **지금 치고 있는 마지막 칸**만 찾고, 고르면 그 칸을 주소로 바꾼 뒤 쉼표를 붙인다.
+ * 화살표·Enter·Tab 으로도 고른다. Esc 는 목록만 닫는다 (쓰기 창까지 닫히지 않게).
+ */
+function attachAddressAutocomplete(input) {
+  if (!input) return;
+  const host = input.parentElement;
+  host.style.position = 'relative';
+  const menu = document.createElement('div');
+  menu.className = 'cm-ac';
+  menu.hidden = true;
+  menu.style.cssText = 'position:absolute;left:0;right:0;top:100%;z-index:5;margin-top:2px;background:#fff;'
+    + 'border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 10px 24px rgba(15,23,42,.14);overflow:hidden;max-height:300px;overflow-y:auto';
+  host.appendChild(menu);
+  let timer = null; let items = []; let sel = -1; let seq = 0;
+
+  const lastTok = () => input.value.split(/[,;]/).pop().trim();
+  const hide = () => { menu.hidden = true; items = []; sel = -1; };
+  const pick = (c) => {
+    const parts = input.value.split(/[,;]/).map((s) => s.trim());
+    parts[parts.length - 1] = c.address;
+    input.value = parts.filter(Boolean).join(', ') + ', ';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    hide();
+    input.focus();
+  };
+  const draw = () => {
+    menu.innerHTML = items.map((c, i) => {
+      const label = c.name || c.company || c.address;
+      const meta = c.count
+        ? `주고받은 메일 ${c.count}통${c.last ? ` · ${new Date(c.last).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` : ''}`
+        : '등록 업체';
+      return `<div data-ac="${i}" style="padding:7px 11px;cursor:pointer;font-size:12.5px;line-height:1.4;
+                   background:${i === sel ? '#eff6ff' : '#fff'};border-bottom:1px solid #f1f5f9">
+        <div style="color:#0f172a;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${escapeHtml(label)}${c.company && c.name ? ` <span style="font-weight:500;color:#64748b">· ${escapeHtml(c.company)}</span>` : ''}</div>
+        <div style="color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.address)}
+          <span style="color:#94a3b8"> · ${escapeHtml(meta)}</span></div>
+      </div>`;
+    }).join('');
+    menu.hidden = !items.length;
+    menu.querySelectorAll('[data-ac]').forEach((el) => {
+      el.addEventListener('mousedown', (e) => { e.preventDefault(); pick(items[Number(el.dataset.ac)]); });
+    });
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = lastTok();
+    if (q.length < 2) { hide(); return; }
+    timer = setTimeout(async () => {
+      const my = ++seq;
+      try {
+        const r = await safeJsonFetch(`/api/mail/contacts?q=${encodeURIComponent(q)}`);
+        if (my !== seq) return;   // 더 늦게 친 글자의 결과가 먼저 왔으면 버린다
+        items = r?.contacts || [];
+        sel = items.length ? 0 : -1;
+        draw();
+      } catch { hide(); }
+    }, 220);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (menu.hidden || !items.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % items.length; draw(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = (sel - 1 + items.length) % items.length; draw(); }
+    else if (e.key === 'Enter' || e.key === 'Tab') { if (sel >= 0) { e.preventDefault(); pick(items[sel]); } }
+    else if (e.key === 'Escape') { e.stopPropagation(); hide(); }
+  });
+  input.addEventListener('blur', () => setTimeout(hide, 150));
+}
+
+/**
+ * 주소 칸 글자를 주소 목록으로 — "a@x.com, 홍길동 <b@y.com>; c@z.com".
+ * 서버(lib/mail/compose-new.ts parseAddressList)와 같은 규칙이다. 여기서 먼저 걸러 바로 알려 준다.
+ */
+function parseAddressInput(s) {
+  const list = []; const bad = [];
+  for (const part of String(s || '').split(/[,;\n]+/)) {
+    const t = part.trim();
+    if (!t) continue;
+    const m = t.match(/<([^<>\s]+)>\s*$/);
+    const addr = (m ? m[1] : t).trim();
+    if (/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(addr)) list.push(addr); else bad.push(t);
+  }
+  return { list, bad };
+}
+
+// 첨부 한도 — 서버(lib/mail/uploads.ts)와 같은 값. 바꾸면 거기도 같이.
+var ATTACH_CHUNK = 3 * 1024 * 1024;
+var ATTACH_MAX_TOTAL = 10 * 1024 * 1024;
+var ATTACH_MAX_FILES = 10;
+var ATTACH_BLOCKED = /\.(exe|bat|cmd|com|scr|msi|vbs|js|jse|wsf|ps1|jar|lnk|cpl|hta|reg|dll)$/i;
+var ATTACH_HINT = '파일 하나·합계 <b>10MB까지</b> (넘으면 드롭박스·구글드라이브 링크로) · 10개까지 · 여기에 끌어다 놓아도 됩니다';
+
+/** 첨부 칸 — [✏ 메일 쓰기] 와 [↩ 답장] 이 같은 모양을 쓴다. prefix 로 id 를 나눈다 (cm · conv) */
+function attachmentBoxHtml(prefix) {
+  return `
+    <div id="${prefix}FilesBox" style="margin-top:10px;padding:10px 12px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button type="button" id="${prefix}AttachBtn"
+          style="padding:7px 13px;font-size:12.5px;font-weight:800;border:1px solid #cbd5e1;border-radius:8px;
+                 background:#fff;color:#0f172a;cursor:pointer">📎 파일 첨부</button>
+        <input type="file" id="${prefix}FileInput" multiple hidden>
+        <span id="${prefix}FilesHint" style="font-size:11.5px;color:#64748b;line-height:1.6">${ATTACH_HINT}</span>
+      </div>
+      <!-- 10MB 를 넘어 못 붙인 파일 — 경고창을 닫은 뒤에도 무엇이 빠졌는지 남겨 둔다 -->
+      <div id="${prefix}FilesWarn" hidden style="margin-top:7px;padding:7px 10px;background:#fef2f2;border:1px solid #fecaca;
+           border-radius:7px;font-size:12px;color:#991b1b;line-height:1.6"></div>
+      <div id="${prefix}Files" style="margin-top:4px"></div>
+    </div>`;
+}
+
+/**
+ * 첨부 칸을 움직이게 한다 — 고르는 즉시 3MB 조각으로 올려 둔다 (api/mail/upload · 서버 요청 한도 4.5MB 때문).
+ * 보낼 때는 번호만 넘기고 서버가 조각을 이어 붙인다. 안 보내고 닫으면 cleanup() 으로 지운다(못 지워도 2시간 뒤 저절로).
+ *
+ * 10MB 를 넘는 파일은 **경고창**으로 막는다 (대표님 요청 2026-10-20 — 작은 글씨로만 알리면 놓친다).
+ *
+ * @returns {{ files, ids, names, problem, cleanup, markSent }}
+ */
+function createAttachmentBox({ prefix, scope, dropTarget }) {
+  const $ = (id) => scope.querySelector(`#${prefix}${id}`);
+  const files = [];
+  let sent = false;
+  const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`);
+  const totalSize = () => files.reduce((s, f) => s + (f.status === 'error' ? 0 : f.size), 0);
+  const drop = (f) => { if (f.uploadId) fetch(`/api/mail/upload?id=${encodeURIComponent(f.uploadId)}`, { method: 'DELETE' }).catch(() => {}); };
+
+  const draw = () => {
+    const box = $('Files');
+    if (!box) return;
+    box.innerHTML = files.map((f) => {
+      const pct = f.total ? Math.round((f.done / f.total) * 100) : 0;
+      const state = f.status === 'done'
+        ? '<span style="color:#166534">✓ 첨부됨</span>'
+        : f.status === 'error'
+          ? `<span style="color:#b91c1c">✕ ${escapeHtml(f.error || '실패')}</span>`
+          : `<span style="color:#2563eb">올리는 중 ${pct}%</span>`;
+      return `
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 9px;background:#fff;
+                    border:1px solid ${f.status === 'error' ? '#fecaca' : '#e2e8f0'};border-radius:7px;font-size:12.5px">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#0f172a">📎 ${escapeHtml(f.name)}</span>
+          <span style="color:#94a3b8;white-space:nowrap">${fmtAttachmentSize(f.size)}</span>
+          <span style="white-space:nowrap;font-size:11.5px">${state}</span>
+          <button type="button" data-unattach="${escapeAttr(f.key)}" title="빼기"
+            style="border:none;background:none;color:#94a3b8;font-size:15px;cursor:pointer;line-height:1">×</button>
+        </div>`;
+    }).join('');
+    const hint = $('FilesHint');
+    if (hint) hint.innerHTML = files.length ? `${files.length}개 · ${fmtAttachmentSize(totalSize())} / 10MB` : ATTACH_HINT;
+    box.querySelectorAll('[data-unattach]').forEach((b) => b.addEventListener('click', () => {
+      const i = files.findIndex((f) => f.key === b.dataset.unattach);
+      if (i < 0) return;
+      const [f] = files.splice(i, 1);
+      f.cancelled = true;
+      drop(f);
+      draw();
+    }));
+  };
+
+  // 조각을 하나씩 올린다. 끊기면 한 번 더 시도한다 (같은 조각을 다시 보내도 서버는 덮어쓸 뿐이다)
+  const upload = async (f, file) => {
+    for (let i = 0; i < f.total; i++) {
+      if (f.cancelled) return;
+      const part = file.slice(i * ATTACH_CHUNK, Math.min(file.size, (i + 1) * ATTACH_CHUNK));
+      const qs = new URLSearchParams({ id: f.uploadId, i: String(i), n: String(f.total), size: String(f.size), name: f.name, type: f.type });
+      let r = null;
+      for (let tryNo = 0; tryNo < 2 && !(r && r.success); tryNo++) {
+        try {
+          const res = await fetch(`/api/mail/upload?${qs}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: part });
+          r = await res.json().catch(() => ({ success: false, error: `서버 응답 ${res.status}` }));
+          if (!res.ok && res.status < 500) break;   // 크기·종류 문제는 다시 해도 같다
+        } catch (e) { r = { success: false, error: '연결이 끊겼습니다' }; }
+      }
+      if (!r || !r.success) { f.status = 'error'; f.error = r?.error || '올리지 못했습니다'; draw(); return; }
+      f.done = i + 1;
+      draw();
+    }
+    if (!f.cancelled) { f.status = 'done'; draw(); }
+  };
+
+  const add = (list) => {
+    const tooBig = [];   // 10MB 때문에 못 붙인 것 — 경고창 + 칸 안에 빨간 안내
+    const other = [];
+    for (const file of Array.from(list || [])) {
+      if (files.length >= ATTACH_MAX_FILES) { other.push(`첨부는 ${ATTACH_MAX_FILES}개까지입니다`); break; }
+      if (!file.size) { other.push(`"${file.name}" 은 빈 파일입니다`); continue; }
+      if (ATTACH_BLOCKED.test(file.name)) { other.push(`"${file.name}" 은 실행 파일이라 붙일 수 없습니다 (받는 쪽이 막거나 스팸으로 처리)`); continue; }
+      if (file.size > ATTACH_MAX_TOTAL) { tooBig.push(`${file.name} (${fmtAttachmentSize(file.size)})`); continue; }
+      if (totalSize() + file.size > ATTACH_MAX_TOTAL) { tooBig.push(`${file.name} (${fmtAttachmentSize(file.size)}) — 이미 붙인 파일과 합치면 10MB 를 넘습니다`); continue; }
+      const f = {
+        key: newId(), uploadId: newId().replace(/[^A-Za-z0-9_-]/g, ''), name: file.name, size: file.size,
+        type: file.type || 'application/octet-stream', done: 0, total: Math.ceil(file.size / ATTACH_CHUNK), status: 'uploading',
+      };
+      files.push(f);
+      upload(f, file);
+    }
+    draw();
+    const warn = $('FilesWarn');
+    if (tooBig.length) {
+      if (warn) {
+        warn.hidden = false;
+        warn.innerHTML = `⚠ <b>10MB 이상은 올릴 수 없습니다</b> — 아래 파일은 붙이지 않았습니다.<br>
+          ${tooBig.map((t) => `· ${escapeHtml(t)}`).join('<br>')}<br>
+          드롭박스·구글드라이브에 올린 뒤 <b>공유 링크를 본문에 붙여</b> 보내 주세요.`;
+      }
+      alert(`⚠ 10MB 이상은 올릴 수 없습니다.\n\n${tooBig.map((t) => `· ${t}`).join('\n')}\n\n`
+        + '메일 한 통에 붙일 수 있는 첨부는 합계 10MB까지입니다.\n'
+        + '큰 파일은 드롭박스·구글드라이브에 올린 뒤, 공유 링크를 본문에 붙여 보내 주세요.');
+    } else if (warn) {
+      warn.hidden = true;
+    }
+    if (other.length) alert(other.join('\n'));
+  };
+
+  $('AttachBtn')?.addEventListener('click', () => $('FileInput')?.click());
+  $('FileInput')?.addEventListener('change', (e) => { add(e.target.files); e.target.value = ''; });
+  // 창 어디에 끌어다 놓아도 붙는다 — 탐색기에서 바로 끌어오는 게 가장 빠르다
+  const target = dropTarget || $('FilesBox');
+  target?.addEventListener('dragover', (e) => { e.preventDefault(); const b = $('FilesBox'); if (b) b.style.borderColor = '#2563eb'; });
+  target?.addEventListener('dragleave', () => { const b = $('FilesBox'); if (b) b.style.borderColor = '#cbd5e1'; });
+  target?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const b = $('FilesBox'); if (b) b.style.borderColor = '#cbd5e1';
+    if (e.dataTransfer?.files?.length) add(e.dataTransfer.files);
+  });
+
+  return {
+    files,
+    ids: () => files.map((f) => f.uploadId),
+    names: () => files.map((f) => f.name),
+    /** 보내면 안 되는 상태면 그 이유, 아니면 '' */
+    problem: () => (files.some((f) => f.status === 'uploading')
+      ? '첨부파일이 아직 올라가는 중입니다 — 잠시 뒤 다시 눌러 주세요'
+      : files.some((f) => f.status === 'error') ? '올리지 못한 첨부파일이 있습니다 — 빼거나 다시 붙여 주세요' : ''),
+    /** 안 보내고 닫을 때 — 올려 둔 조각을 지운다 */
+    cleanup: () => { if (!sent) files.forEach(drop); },
+    /** 보냈다 — 조각은 서버가 이미 지웠다 */
+    markSent: () => { sent = true; },
+  };
+}
+
 /**
  * ✏ 새 메일 쓰기 — 주소를 직접 적어 한 통 보낸다 (2026-09-17, 대표님 요청).
  *
@@ -9690,15 +10090,34 @@ async function openComposeMailModal(preset = {}) {
                보낼 메일 계정이 없습니다. [📬 메일 계정 관리]에서 먼저 등록하세요.
              </div>`}
 
+        <!-- 받는 사람은 여러 명 — 쉼표로 나눈다. 아웃룩에서 복사한 "이름 <주소>" 도 그대로 붙여 넣으면 된다 (2026-10-20) -->
         <label style="display:block;margin-bottom:4px">
           <span style="font-size:11px;font-weight:700;color:#64748b">받는 사람</span>
-          <input id="cmTo" type="email" autocomplete="off" value="${escapeAttr(preset.to || '')}"
-            placeholder="hello@example.com — 회사 이름으로 찾을 수도 있습니다"
+          <input id="cmTo" type="text" inputmode="email" autocomplete="off" value="${escapeAttr(preset.to || '')}"
+            placeholder="주소·이름·회사명 두 글자부터 — 주고받은 주소가 뜹니다 · 여러 명은 쉼표(,)로"
             style="width:100%;margin-top:3px;padding:9px 11px;font-size:13px;border:1px solid #cbd5e1;
                    border-radius:8px;background:#fff;color:#0f172a">
         </label>
-        <!-- 등록된 업체에서 찾기 — 주소를 외우지 않아도 되고, 오타로 엉뚱한 곳에 가는 것도 줄인다 -->
-        <div id="cmSuggest" style="margin:0 0 10px;font-size:12px;color:#64748b;min-height:16px"></div>
+        <!-- 참조·숨은참조 — 거래처 메일은 거의 늘 참조가 붙는다 (전무님·Dangaard 팀 등). 평소엔 접어 둔다 -->
+        <button type="button" id="cmCcToggle"
+          style="margin:6px 0 8px;padding:0;border:none;background:none;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer">
+          + 참조 · 숨은참조 추가</button>
+        <div id="cmCcRows" hidden>
+          <label style="display:block;margin-bottom:8px">
+            <span style="font-size:11px;font-weight:700;color:#64748b">참조 (CC)</span>
+            <input id="cmCc" type="text" inputmode="email" autocomplete="off" value="${escapeAttr(preset.cc || '')}"
+              placeholder="받는 사람 모두에게 보이는 참조 — 여러 명은 쉼표(,)로"
+              style="width:100%;margin-top:3px;padding:9px 11px;font-size:13px;border:1px solid #cbd5e1;
+                     border-radius:8px;background:#fff;color:#0f172a">
+          </label>
+          <label style="display:block;margin-bottom:10px">
+            <span style="font-size:11px;font-weight:700;color:#64748b">숨은참조 (BCC)</span>
+            <input id="cmBcc" type="text" inputmode="email" autocomplete="off" value=""
+              placeholder="다른 받는 사람에게는 안 보입니다 — 내 보낸메일함 사본에만 남습니다"
+              style="width:100%;margin-top:3px;padding:9px 11px;font-size:13px;border:1px solid #cbd5e1;
+                     border-radius:8px;background:#fff;color:#0f172a">
+          </label>
+        </div>
 
         <label style="display:block;margin-bottom:10px">
           <span style="font-size:11px;font-weight:700;color:#64748b">제목</span>
@@ -9737,9 +10156,20 @@ async function openComposeMailModal(preset = {}) {
             <div id="cmSigBody"></div>
           </div>
         </div>
+
+        <!-- 첨부파일 — 가격표·계약서·CIPL 처럼 거래처 메일에는 거의 늘 파일이 붙는다 (2026-10-20).
+             고르는 즉시 조각으로 나눠 올려 둔다 (api/mail/upload). 이 창에 끌어다 놓아도 된다. -->
+        ${attachmentBoxHtml('cm')}
       </div>
 
+      <!-- AI 검토 결과 — 보내기 전에 받는 사람·첨부·숫자·날짜를 한 번 더 본다 (api/mail/compose/review) -->
+      <div id="cmReview" hidden style="margin:0 18px 14px"></div>
+
       <div style="display:flex;gap:8px;align-items:center;padding:13px 18px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-wrap:wrap">
+        <button type="button" id="cmReviewBtn"
+          title="보내기 전 점검 — 받는 사람·첨부 누락·빈칸·숫자와 날짜(최근 주고받은 메일과 대조)·오탈자. 누를 때만 AI 를 씁니다(1회 몇 원)"
+          style="padding:9px 16px;font-size:13px;font-weight:800;border:1px solid #7c3aed;border-radius:8px;
+                 background:#faf5ff;color:#6d28d9;cursor:pointer">🤖 AI 검토</button>
         <button type="button" id="cmPreview"
           style="padding:9px 16px;font-size:13px;font-weight:800;border:1px solid #2563eb;border-radius:8px;
                  background:#fff;color:#1d4ed8;cursor:pointer">👁 미리보기</button>
@@ -9752,11 +10182,25 @@ async function openComposeMailModal(preset = {}) {
   document.body.appendChild(wrap);
 
   const $ = (id) => wrap.querySelector(`#${id}`);
-  const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
-  const onKey = (e) => { if (e.key === 'Escape' && !document.getElementById('replyPreviewModal')) close(); };
+  // 첨부 칸 — 공용 (createAttachmentBox). 아래에서 만든다.
+  let att = null;
+  let sent = false;
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+    // 안 보내고 닫으면 올려 둔 조각을 지운다 (못 지워도 2시간 뒤 저절로 지워진다)
+    att?.cleanup();
+  };
+  // 쓰던 메일이 있으면 닫기 전에 묻는다 — 바깥을 잘못 누르거나 Esc 한 번에 본문·첨부가 통째로 사라졌다
+  const closeAsk = () => {
+    const dirty = !sent && ((bodyEl?.innerText || '').trim() || ($('cmSubject')?.value || '').trim() || att?.files.length);
+    if (dirty && !confirm('쓰던 메일을 닫을까요? 본문과 첨부파일이 사라집니다.')) return;
+    close();
+  };
+  const onKey = (e) => { if (e.key === 'Escape' && !document.getElementById('replyPreviewModal')) closeAsk(); };
   document.addEventListener('keydown', onKey);
-  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
-  wrap.querySelectorAll('[data-cm-close]').forEach((b) => b.addEventListener('click', close));
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) closeAsk(); });
+  wrap.querySelectorAll('[data-cm-close]').forEach((b) => b.addEventListener('click', closeAsk));
 
   // ── 서식 ──
   const bodyEl = $('cmBody');
@@ -9793,43 +10237,126 @@ async function openComposeMailModal(preset = {}) {
   $('cmAccount')?.addEventListener('change', syncSig);
   syncSig();
 
-  // ── 받는 사람 — 등록된 업체에서 찾기 ──
-  let sugTimer = null;
-  $('cmTo').addEventListener('input', () => {
-    clearTimeout(sugTimer);
-    const q = $('cmTo').value.trim();
-    const box = $('cmSuggest');
-    if (q.length < 2 || /@/.test(q)) { box.innerHTML = ''; return; }
-    sugTimer = setTimeout(async () => {
-      try {
-        const r = await safeJsonFetch(`/api/leads?q=${encodeURIComponent(q)}&limit=6`);
-        const hits = (r?.leads || r?.data || []).filter((l) => /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(String(l.Email || '')));
-        box.innerHTML = hits.length
-          ? `<span style="color:#94a3b8">업체에서 찾음 —</span> ${hits.map((l) => `
-              <button type="button" class="cm-pick" data-email="${escapeAttr(l.Email)}"
-                style="margin:2px 3px 0 0;padding:3px 9px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:99px;
-                       background:#fff;color:#334155;cursor:pointer">${escapeHtml(l.Company || l.Email)}</button>`).join('')}`
-          : '';
-        box.querySelectorAll('.cm-pick').forEach((b) => b.addEventListener('click', () => {
-          $('cmTo').value = b.dataset.email;
-          box.innerHTML = `<span style="color:#166534">${escapeHtml(b.textContent.trim())} · ${escapeHtml(b.dataset.email)}</span>`;
-        }));
-      } catch { box.innerHTML = ''; }
-    }, 350);
-  });
+  // ── 주소 자동 완성 — 받는 사람·참조·숨은참조 (공용 attachAddressAutocomplete) ──
+  ['cmTo', 'cmCc', 'cmBcc'].forEach((id) => attachAddressAutocomplete($(id)));
+
+  // ── 참조 · 숨은참조 — 처음엔 접어 두고, 미리 채워져 왔으면 펼친다 ──
+  const showCc = () => { $('cmCcRows').hidden = false; $('cmCcToggle').hidden = true; };
+  $('cmCcToggle').addEventListener('click', () => { showCc(); $('cmCc').focus(); });
+  if (preset.cc) showCc();
+
+  // ── 첨부파일 (공용 createAttachmentBox) — 쓰기 창 어디에 끌어다 놓아도 붙는다 ──
+  att = createAttachmentBox({ prefix: 'cm', scope: wrap, dropTarget: wrap.querySelector('[role="dialog"]') });
 
   // ── 보낼 내용 모으기 — [미리보기]와 [보내기]가 같은 값을 쓴다 ──
+  // 주소 검사는 서버와 같은 규칙이다 (parseAddressInput). 여기서 먼저 걸러 바로 알려 준다.
   const collect = () => {
-    const to = $('cmTo').value.trim();
+    const T = parseAddressInput($('cmTo').value);
+    const C = parseAddressInput($('cmCc').value);
+    const B = parseAddressInput($('cmBcc').value);
     const subject = $('cmSubject').value.trim();
     const body = (bodyEl.innerHTML || '').trim();
-    if (!to) return { err: '받는 사람을 입력하세요' };
-    if (!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(to)) return { err: '받는 사람 주소를 확인하세요' };
+    if (!T.list.length && !T.bad.length) return { err: '받는 사람을 입력하세요' };
+    const bad = [...T.bad, ...C.bad, ...B.bad];
+    if (bad.length) return { err: `주소를 확인하세요: ${bad.slice(0, 3).join(', ')}` };
+    if (T.list.length + C.list.length + B.list.length > 20) return { err: '받는 사람·참조·숨은참조를 합쳐 20명까지입니다. 여러 업체에 같은 글은 [발송 관리]로 보내세요' };
     if (!subject) return { err: '제목을 입력하세요' };
     if (!(bodyEl.innerText || '').trim()) return { err: '내용을 입력하세요' };
-    return { payload: { to, subject, body, bodyIsHtml: true, mailAccountId: $('cmAccount')?.value || null, appendSignature: $('cmSig').checked } };
+    const attachProblem = att.problem();
+    if (attachProblem) return { err: attachProblem };
+    return {
+      payload: {
+        to: T.list.join(', '), cc: C.list.join(', '), bcc: B.list.join(', '),
+        subject, body, bodyIsHtml: true,
+        mailAccountId: $('cmAccount')?.value || null, appendSignature: $('cmSig').checked,
+        attachments: att.ids(),
+      },
+      summary: { to: T.list, cc: C.list, bcc: B.list, files: att.names() },
+    };
   };
   const say = (html) => { $('cmMsg').innerHTML = html; };
+
+  // ── 🤖 AI 검토 — 보내기 전 점검 (2026-10-20, 대표님 요청 "AI 검토 받기 · 데이터 검증") ──
+  // 서버가 규칙 점검(무료)을 먼저 하고, AI 가 받는 사람과 최근 주고받은 메일을 대조해 숫자·날짜·조건 어긋남과
+  // 빠진 답·오탈자를 본다. 고쳐 주는 것은 [수정안으로 바꾸기] 를 눌러야만 들어간다 — 자동으로 바꾸지 않는다.
+  const SEV = {
+    high: { label: '꼭 확인', bg: '#fef2f2', bd: '#fecaca', fg: '#991b1b' },
+    mid: { label: '확인', bg: '#fffbeb', bd: '#fde68a', fg: '#92400e' },
+    low: { label: '참고', bg: '#f8fafc', bd: '#e2e8f0', fg: '#475569' },
+  };
+  const CAT = { recipient: '받는 사람', attachment: '첨부', data: '숫자·날짜', language: '문장', missing: '빠진 답', tone: '톤', other: '기타' };
+  const drawReview = (r) => {
+    const box = $('cmReview');
+    const all = [
+      ...(r.checks || []).map((x) => ({ ...x, by: '자동 점검' })),
+      ...((r.ai?.issues) || []).map((x) => ({ ...x, by: 'AI' })),
+    ].sort((a, b) => ['high', 'mid', 'low'].indexOf(a.severity) - ['high', 'mid', 'low'].indexOf(b.severity));
+    const worst = all.some((x) => x.severity === 'high') ? 'fix' : (all.some((x) => x.severity === 'mid') ? 'check' : (r.ai?.verdict || 'ok'));
+    const head = worst === 'fix'
+      ? { t: '⛔ 고치고 보내세요', c: '#991b1b', b: '#fef2f2' }
+      : worst === 'check'
+        ? { t: '⚠ 확인하고 보내세요', c: '#92400e', b: '#fffbeb' }
+        : { t: '✅ 그대로 보내도 됩니다', c: '#166534', b: '#f0fdf4' };
+    box.innerHTML = `
+      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;background:${head.b}">
+          <b style="font-size:13.5px;color:${head.c}">${head.t}</b>
+          <span style="font-size:11.5px;color:#64748b">${r.ai
+            ? `AI 가 최근 주고받은 메일 ${r.ai.contextMails}통과 대조했습니다${r.ai.krw ? ` · 이번 검토 약 ${r.ai.krw.toLocaleString()}원` : ''}`
+            : escapeHtml(r.aiError ? `AI 검토 실패 — ${r.aiError} (자동 점검만 표시)` : (r.aiNote || '자동 점검만 했습니다'))}</span>
+          <button type="button" data-rv-close style="margin-left:auto;border:none;background:none;color:#94a3b8;font-size:16px;cursor:pointer">×</button>
+        </div>
+        ${r.ai?.summaryKo ? `<div style="padding:8px 12px;font-size:12.5px;color:#334155;line-height:1.6;border-top:1px solid #f1f5f9">${escapeHtml(r.ai.summaryKo)}</div>` : ''}
+        ${all.length ? `<div style="padding:4px 10px 10px">${all.map((x) => {
+          const s = SEV[x.severity] || SEV.low;
+          return `<div style="margin-top:6px;padding:7px 10px;background:${s.bg};border:1px solid ${s.bd};border-radius:8px;font-size:12.5px;line-height:1.55">
+            <div><b style="color:${s.fg}">${s.label}</b>
+              <span style="color:#94a3b8"> · ${escapeHtml(CAT[x.category] || '기타')} · ${x.by}</span></div>
+            <div style="color:#0f172a">${escapeHtml(x.message || '')}</div>
+            ${x.quote ? `<div style="color:#64748b;font-size:11.5px">“${escapeHtml(String(x.quote).slice(0, 160))}”</div>` : ''}
+            ${x.suggestion ? `<div style="color:#475569">→ ${escapeHtml(x.suggestion)}</div>` : ''}
+          </div>`;
+        }).join('')}</div>` : ''}
+        ${r.ai?.revisedBody ? `
+          <div style="padding:0 12px 10px">
+            <details>
+              <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:#6d28d9;padding:4px 0">✍ AI 수정안 보기 (오탈자·문법·명백한 오류만 고친 본문)</summary>
+              <div style="white-space:pre-wrap;font-size:13px;line-height:1.7;color:#0f172a;background:#faf5ff;border:1px solid #e9d5ff;
+                          border-radius:8px;padding:10px 12px;margin:4px 0 8px;max-height:240px;overflow:auto">${escapeHtml(r.ai.revisedBody)}</div>
+              <button type="button" data-rv-apply style="padding:6px 12px;font-size:12px;font-weight:800;border:1px solid #7c3aed;
+                border-radius:7px;background:#fff;color:#6d28d9;cursor:pointer">수정안으로 바꾸기</button>
+            </details>
+          </div>` : ''}
+      </div>`;
+    box.hidden = false;
+    box.querySelector('[data-rv-close]')?.addEventListener('click', () => { box.hidden = true; });
+    box.querySelector('[data-rv-apply]')?.addEventListener('click', () => {
+      if (!confirm('본문을 AI 수정안으로 바꿀까요?\n굵게·목록 같은 서식은 사라지고 글자만 남습니다. 바꾼 뒤에도 직접 고칠 수 있습니다.')) return;
+      bodyEl.innerHTML = escapeHtml(r.ai.revisedBody).replace(/\n/g, '<br>');
+      say('<span style="color:#6d28d9">AI 수정안으로 바꿨습니다 — 한 번 읽어 보고 보내세요</span>');
+    });
+    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  $('cmReviewBtn').addEventListener('click', async () => {
+    const { err, payload } = collect();
+    if (err) { say(`<span style="color:#b91c1c">${escapeHtml(err)}</span>`); return; }
+    const btn = $('cmReviewBtn');
+    btn.disabled = true;
+    btn.textContent = '🤖 검토 중…';
+    say('');
+    try {
+      const r = await safeJsonFetch('/api/mail/compose/review', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (!r?.success) throw new Error(r?.error || '검토 실패');
+      drawReview(r);
+    } catch (e) {
+      say(`<span style="color:#b91c1c">AI 검토 실패 — ${escapeHtml(String(e.message || e))}</span>`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🤖 AI 검토';
+    }
+  });
 
   $('cmPreview').addEventListener('click', async () => {
     const { err, payload } = collect();
@@ -9847,10 +10374,17 @@ async function openComposeMailModal(preset = {}) {
   });
 
   $('cmSend').addEventListener('click', async () => {
-    const { err, payload } = collect();
+    const { err, payload, summary } = collect();
     if (err) { say(`<span style="color:#b91c1c">${escapeHtml(err)}</span>`); return; }
-    // 주소를 손으로 치는 화면이라, 나가기 전에 받는 사람을 한 번 더 보여준다
-    if (!confirm(`${payload.to}\n\n이 주소로 지금 메일을 보냅니다.\n제목: ${payload.subject}\n\n보낼까요?`)) return;
+    // 주소를 손으로 치는 화면이라, 나가기 전에 받는 사람·참조·첨부를 한 번 더 보여준다
+    const lines = [
+      `받는 사람: ${summary.to.join(', ')}`,
+      summary.cc.length ? `참조: ${summary.cc.join(', ')}` : '',
+      summary.bcc.length ? `숨은참조: ${summary.bcc.join(', ')}` : '',
+      `제목: ${payload.subject}`,
+      summary.files.length ? `첨부: ${summary.files.join(', ')}` : '첨부: 없음',
+    ].filter(Boolean);
+    if (!confirm(`${lines.join('\n')}\n\n지금 보낼까요?`)) return;
     const btn = $('cmSend');
     btn.disabled = true;
     btn.textContent = '보내는 중…';
@@ -9860,7 +10394,10 @@ async function openComposeMailModal(preset = {}) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
       if (!r?.success) throw new Error(r?.error || '발송 실패');
-      say(`<span style="color:#166534">✅ 보냈습니다${r.lead?.company ? ` · ${escapeHtml(r.lead.company)} 대화에 기록됨` : ''}</span>`);
+      sent = true;   // 보낸 뒤에는 닫을 때 묻지 않고, 첨부 조각도 서버가 이미 지웠다
+      att.markSent();
+      const companies = (r.leads || []).map((l) => l.company).filter(Boolean);
+      say(`<span style="color:#166534">✅ 보냈습니다${companies.length ? ` · ${escapeHtml(companies.join(', '))} 대화에 기록됨` : ''}</span>`);
       setTimeout(() => { close(); if (state.view === 'tool-inbox') render(); }, 1200);
     } catch (e) {
       say(`<span style="color:#b91c1c">${escapeHtml(String(e.message || e))}</span>`);
@@ -9901,12 +10438,18 @@ function openReplyPreviewModal(pv, onSend) {
       <div style="padding:10px 18px 4px">
         ${row('보내는 사람', escapeHtml(fromLine))}
         ${row('받는 사람', escapeHtml(pv.to || ''))}
+        ${(pv.cc || []).length ? row('참조', escapeHtml(pv.cc.join(', '))) : ''}
+        ${(pv.bcc || []).length ? row('숨은참조', `${escapeHtml(pv.bcc.join(', '))}
+          <span style="color:#94a3b8;font-size:11.5px"> · 다른 받는 사람에게는 안 보입니다</span>`) : ''}
         ${row('제목', `<b>${escapeHtml(pv.subject || '')}</b>`)}
+        ${(pv.attachments || []).length ? row('첨부', pv.attachments.map((f) => `📎 ${escapeHtml(f.filename || '(이름 없음)')}
+          <span style="color:#94a3b8;font-size:11.5px">${fmtAttachmentSize(f.size)}${f.complete === false ? ' · ⚠ 아직 올라가는 중' : ''}</span>`).join('<br>')) : ''}
         ${orig.subject ? row('답장 대상', `<span style="color:#475569">${escapeHtml(orig.subject)}</span>
           <span style="color:#94a3b8;font-size:11.5px"> · ${escapeHtml(orig.from || '')}${origDate ? ` · ${escapeHtml(origDate)}` : ''}</span>`) : ''}
 ${pv.isNew
-          ? (pv.lead
-            ? row('업체', `<span style="color:#166534">✓ ${escapeHtml(pv.lead.company || '')} 와 같은 주소입니다 — 보내면 그 업체 대화에 기록됩니다</span>`)
+          ? ((pv.leads || (pv.lead ? [pv.lead] : [])).length
+            ? row('업체', `<span style="color:#166534">✓ ${escapeHtml((pv.leads || [pv.lead]).map((l) => l.company || '').filter(Boolean).join(', '))}
+                — 등록된 업체 주소입니다. 보내면 그 업체 대화에 기록됩니다</span>`)
             : row('업체', '<span style="color:#64748b">등록된 업체 주소가 아닙니다 — 대화 기록에는 남지 않습니다</span>'))
           : row('대화 연결', pv.threaded
             ? '<span style="color:#166534">✓ 상대 메일함에서 원래 메일과 같은 대화로 묶입니다</span>'

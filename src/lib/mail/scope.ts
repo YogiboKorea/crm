@@ -121,6 +121,21 @@ export async function getMailScope(): Promise<MailScope | null> {
   return { user, isMaster: isMasterUser(user), accountIds: s.accountIds, mailboxGroups: s.mailboxGroups };
 }
 
+/**
+ * 내 주소들 — 내가 볼 수 있는 계정의 보내는 주소 전부 (소문자).
+ *   · 전체 답장에서 뺀다 — 안 빼면 나 자신에게도 한 통 더 간다 (lib/mail/compose-reply.ts)
+ *   · 받은 메일함 목록에서 뺀다 — 내가 보낸 메일이 받은편지함에 사본으로 들어와 섞이면 헷갈린다 (api/mail/inbox)
+ */
+export async function myAddresses(scope: MailScope): Promise<Set<string>> {
+  const ids = scope.accountIds.filter((id) => /^[0-9a-f]{24}$/i.test(id));
+  const accs: any[] = ids.length ? await MailAccount.find({ _id: { $in: ids } }, { smtpUser: 1, fromAddress: 1 }).lean() : [];
+  const set = new Set<string>();
+  for (const a of accs) {
+    for (const v of [a.smtpUser, a.fromAddress]) if (v) set.add(String(v).trim().toLowerCase());
+  }
+  return set;
+}
+
 /** 이 계정 id 와 같은 메일함인 계정 id 들 (범위 안의 것만 · 자기 자신 포함) */
 export function mailboxIds(scope: MailScope, accountId: string): string[] {
   const ids = scope.mailboxGroups?.[String(accountId)] || [String(accountId)];

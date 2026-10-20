@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { InboundMail } from '@/models/InboundMail';
 import { seoulDayStart, replyWindowFilter, REPLY_WINDOW_DAYS } from '@/lib/mail/period';
 import { learnSenderGroups, suggestGroupBySender } from '@/lib/mail/groups';
-import { getMailScope, accountParamFilter, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
+import { getMailScope, accountParamFilter, myAddresses, UNAUTHORIZED, NOT_YOURS } from '@/lib/mail/scope';
 import { NOISE_CLASSES as NOISE } from '@/lib/mail/classify';
 
 export const runtime = 'nodejs';
@@ -94,6 +94,18 @@ export async function GET(req: Request) {
     const acc = accountParamFilter(scope, accountId);
     if (acc.denied) return NextResponse.json(NOT_YOURS, { status: 403 });
     Object.assign(query, acc.filter);
+
+    // 받은 메일함에는 **받은 메일만** — 내가 보낸 메일은 [📤 보낸 메일함] 에서 본다 (2026-10-20, 대표님 요청).
+    // 나를 참조에 넣었거나 전체 답장에 내가 들어가면 내가 보낸 메일이 받은편지함에도 사본으로 들어와,
+    // 목록에 섞여 헷갈렸다 (대표님 메일함 최근 2달 32통).
+    // 동료(@yogico.kr)가 보낸 메일은 빼지 않는다 — 나에게는 받은 메일이고, 참조로 받은 업무 메일이 대부분이다 (320통).
+    // 휴지통은 무엇이든 되돌릴 수 있게 그대로 보여준다. 대화를 열면 내 답장까지 전부 보인다 (api/mail/thread).
+    if (searchParams.get('trashed') !== '1') {
+      const mine = Array.from(await myAddresses(scope));
+      if (mine.length) {
+        query['from.address'] = { $nin: mine.map((a) => new RegExp(`^${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) };
+      }
+    }
 
     // ── 오늘 온 메일 ──
     // 폴더와 섞이지 않는 별도의 축이다. 폴더는 "어느 거래처인가",
