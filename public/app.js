@@ -9300,16 +9300,18 @@ function replyBoxHtml(lastInbound) {
            '내 대신 메일을 보내버리는 것'으로 오해하기 쉬워서 명시한다. -->
       <div style="padding:8px 11px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;
                   font-size:11.5px;color:#3730a3;line-height:1.6;margin-bottom:8px">
-        <b>🧠 초안 생성</b> — 아래 칸에 한국어로 요지만 적으면, AI가 <b>받은 메일 내용을 읽고</b>
-        상대 언어에 맞는 답장 초안을 써 줍니다. 한글 대역본이 오른쪽에 같이 나와 내용을 확인할 수 있습니다.
+        <b>🧠 초안 생성</b> — 아래 칸에 한국어로 요지만 적고 <b>Enter</b> 를 누르면, AI가 <b>받은 메일 내용을 읽고</b>
+        <b>영어 답장 초안</b>을 써 줍니다 (한국어로 온 메일에는 한국어로). 오른쪽에 무엇을 썼는지 <b>한글 요약</b>이 같이 나옵니다.
         <b>자동으로 발송되지 않습니다</b> — 고친 뒤 [보내기]를 눌러야 나갑니다.
       </div>
 
-      <div style="display:flex;gap:6px;margin-bottom:9px">
-        <input type="text" id="convDraftIntent"
-          placeholder="한국어로 요지만 (예: MOQ 500개 확인, FOB 단가 회신, 샘플 다음주 발송)"
-          style="flex:1;padding:8px 11px;font-size:12.5px;border:1px solid #cbd5e1;border-radius:8px;
-                 background:#ffffff;color:#0f172a">
+      <!-- 요지 칸은 여러 줄 — 한 줄짜리라 길게 적으면 앞부분이 안 보였다 (2026-10-20 의견).
+           Enter 로 바로 초안을 만들고, 줄바꿈은 Shift+Enter. -->
+      <div style="display:flex;gap:6px;margin-bottom:9px;align-items:stretch">
+        <textarea id="convDraftIntent" rows="3"
+          placeholder="한국어로 요지만 (예: MOQ 500개 확인, FOB 단가 회신, 샘플 다음주 발송)&#10;Enter = 초안 생성 · Shift+Enter = 줄바꿈"
+          style="flex:1;min-height:76px;padding:9px 11px;font-size:13px;line-height:1.55;border:1px solid #cbd5e1;border-radius:8px;
+                 background:#ffffff;color:#0f172a;resize:vertical;font-family:inherit"></textarea>
         <button type="button" id="convDraftBtn" data-inbound-id="${escapeAttr(lastInbound._id)}"
           style="padding:8px 13px;font-size:12px;font-weight:700;border:1px solid #6366f1;border-radius:8px;
                  background:#eef2ff;color:#4338ca;cursor:pointer;white-space:nowrap">🧠 초안 생성</button>
@@ -9393,9 +9395,9 @@ function replyBoxHtml(lastInbound) {
              border-radius:8px;font-size:14px;color:#334155;line-height:1.75;min-height:236px;
              max-height:calc(44vh + 30px);overflow-y:auto">
           <div style="font-size:10.5px;font-weight:800;color:#64748b;margin-bottom:6px">
-            KR 한글 대역본 <span style="font-weight:400">· 검토용 · 발송되지 않음</span>
+            KR 한글 요약 <span style="font-weight:400">· 초안에 무엇을 썼는지 · 발송되지 않음</span>
           </div>
-          <div style="color:#94a3b8">초안을 생성하면 왼쪽 영문 내용이 여기에 한국어로 표시됩니다.</div>
+          <div style="color:#94a3b8">초안을 생성하면 왼쪽 영어 답장에 무엇을 썼는지 여기에 한글로 요약됩니다.</div>
         </div>
       </div>
 
@@ -9646,9 +9648,16 @@ function bindConversationReply(leadId, rootId) {
   }
 
   // ── AI 초안 생성 ──
-  // 한국어로 적은 의도를 상대 언어 본문으로 바꿔 회신 상자에 채운다.
+  // 한국어로 적은 의도를 영어 본문(한국어로 온 메일엔 한국어)으로 바꿔 회신 상자에 채우고, 한글 요약을 옆에 둔다.
   // 발송은 하지 않는다 — 사람이 읽고 고친 뒤 [보내기] 를 눌러야 나간다.
   const draftBtn = root.querySelector('#convDraftBtn');
+  // 요지 칸에서 Enter = 초안 생성, Shift+Enter = 줄바꿈 (2026-10-20 의견).
+  // 한글은 조합 중에 Enter 가 한 번 더 들어오므로(isComposing) 그때는 무시한다 — 안 그러면 마지막 글자가 빠진 채 생성된다.
+  root.querySelector('#convDraftIntent')?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    if (draftBtn && !draftBtn.disabled) draftBtn.click();
+  });
   draftBtn?.addEventListener('click', async () => {
     const intentEl = root.querySelector('#convDraftIntent');
     const msg = root.querySelector('#convReplyMsg');
@@ -9675,7 +9684,7 @@ function bindConversationReply(leadId, rootId) {
         const koBox = root.querySelector('#convDraftKo');
         if (koBox) {
           koBox.innerHTML = `
-            <div style="font-size:10.5px;font-weight:800;color:#64748b;margin-bottom:6px">KR 한글 대역본 <span style="font-weight:400">· 검토용 · 발송되지 않음</span></div>
+            <div style="font-size:10.5px;font-weight:800;color:#64748b;margin-bottom:6px">KR 한글 요약 <span style="font-weight:400">· 초안에 무엇을 썼는지 · 발송되지 않음</span></div>
             <div style="white-space:pre-wrap">${escapeHtml(r.draft.bodyKo || '')}</div>
             ${r.draft.notes ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #cbd5e1;color:#b45309">
               <b>확인 필요</b> · ${escapeHtml(r.draft.notes)}</div>` : ''}`;
@@ -12438,6 +12447,38 @@ var UPDATE_LOG = [
         go: 'pipeline-contacted', tab: 'scheduled', goLabel: '예약 발송',
       },
       {
+        kind: 'better', icon: '🧠', title: 'AI 답장 초안 — 영어 메일 + 한글 요약 · Enter 로 바로',
+        how: [
+          '답장 창의 요지 칸을 넓혔습니다 (3줄). 한국어로 요지를 적고 <b>Enter</b> 를 치면 바로 초안을 만듭니다 — 줄바꿈은 Shift+Enter.',
+          '초안은 <b>영어</b>로 씁니다 (한국어로 온 메일에는 한국어로). 오른쪽에는 전문 번역 대신 <b>무엇을 썼는지 한글 요약</b>이 나옵니다.',
+        ],
+        go: 'tool-inbox', goLabel: '받은 메일함',
+      },
+      {
+        kind: 'new', icon: '🗂', title: '전무님 메일함도 거래처 폴더로 나눴습니다',
+        how: [
+          '전무님(hoon) 메일함에 대표님 거래처 폴더와 같은 이름의 폴더가 생겼습니다 — Dangaard Beauty · Osstem Pharma Vussen · 사업개발 · Blue Marble Israel · My K Romania 등, 사내 메일은 <b>· 사내</b>.',
+          '앞으로 같은 곳에서 오는 메일은 같은 폴더로 저절로 들어갑니다. 잘못 들어간 메일은 폴더로 옮기면 그대로 기억합니다.',
+        ],
+        go: 'tool-inbox', goLabel: '받은 메일함',
+      },
+      {
+        kind: 'better', icon: '📨', title: '나눠 보내기 기본값 — 50곳씩 10분 간격',
+        how: [
+          '발송 관리의 나눠 보내기 기본값을 100곳 → <b>50곳</b>으로 바꿨습니다. 한 통에 8초라 50곳이 7분 남짓이어서, 10분 간격이면 묶음이 밀리지 않고 화면 안내와 실제가 맞습니다.',
+          '숫자는 보낼 때마다 화면에서 바꿀 수 있습니다. 하루 최대 300통은 그대로입니다.',
+        ],
+        go: 'pipeline-contacted', goLabel: '발송 관리',
+      },
+      {
+        kind: 'better', icon: '🔐', title: '비밀번호를 바꾸면 다른 곳의 로그인은 끊깁니다',
+        how: [
+          '<b>[👤 CRM 계정 관리]</b>에서 비밀번호를 바꾸면, 같은 아이디로 다른 PC·휴대폰에 로그인해 있던 곳은 다음 화면 이동 때 로그인 화면으로 갑니다. 바꾼 본인은 그대로 씁니다.',
+          '예전에는 비밀번호를 바꿔도 이미 들어와 있던 곳은 하루 동안 그대로 쓸 수 있었습니다. 아이디·비밀번호는 각자 자기 것만 쓰세요 — 메일함도 아이디마다 따로 보입니다.',
+        ],
+        go: 'tool-crm-account', goLabel: 'CRM 계정 관리',
+      },
+      {
         kind: 'fix', icon: '📎', title: "메일 양식의 '첨부 추가'를 눌러도 아무 반응이 없던 것",
         how: [
           '메일 양식의 첨부는 PC 파일을 고르는 방식이 아니라 <b>파일 주소</b>(cafe24 오픈호스팅 등)를 넣는 방식입니다. 주소 없이 누르면 반응이 없어 고장처럼 보였습니다.',
@@ -12766,7 +12807,7 @@ function renderUserGuidePage() {
            미분류 메일은 제목 앞 <b>[❔ 폴더 지정]</b> 으로 그 자리에서 넣습니다.<br>
          <b>메일 열기</b> — <b>왼쪽 반은 받은 편지, 오른쪽 반은 답장 칸</b>입니다. 분석이 끝난 메일은 위에 <b>✅ AI 분석 완료</b>와 요약이 보입니다.<br>
          <b>첨부파일</b> — 본문 아래 파일 단추를 누르면 내려받습니다.<br>
-         <b>답장</b> — 한국어로 요지만 적고 <b>[🧠 초안 생성]</b> 을 누르면 AI가 상대 언어로 초안을 써 줍니다. 글꼴·크기도 바꿀 수 있습니다.<br>
+         <b>답장</b> — 한국어로 요지만 적고 <b>[🧠 초안 생성]</b> 을 누르거나 Enter 를 치면 AI가 영어로 초안을 써 주고, 무엇을 썼는지 한글 요약을 옆에 보여 줍니다. 글꼴·크기도 바꿀 수 있습니다.<br>
          <b>⚠️ 회신 필요</b> — 상대가 물어봤는데 아직 답하지 않은 메일만 모읍니다. 14일이 지난 것과 이미 답장한 것은 빠집니다.<br>
          <b>⏰ 기한 관리</b> — 본문에서 찾은 날짜(회신 기한·미팅·신청 마감) 순으로 봅니다.<br>
          <b>↗ 보낸 메일</b> — 우리가 보낸 메일도 대화 흐름을 보려고 함께 가져옵니다. 할 일로 세지 않습니다.`,
@@ -13010,7 +13051,9 @@ var _outboxCompose = {
   // ── 나눠 보내기 ──
   // 100곳을 한 번에 쏘면 수신 서버가 대량 발송으로 본다. 같은 도메인으로
   // 실거래 메일도 나가기 때문에 평판이 깎이면 그쪽까지 스팸함으로 간다.
-  batchSize: 100,                 // 100곳씩 나눠 예약 (대표님 결정 2026-09-14)
+  // 50곳씩 나눠 예약 (2026-10-20 — 예전 100곳). 한 통에 8초라 50곳이 7분 남짓이라, 10분 간격이면
+  // 묶음이 서로 밀리지 않고 화면의 "50곳씩 10분 간격" 이 실제와 거의 맞는다. 100곳이면 묶음이 이어 붙었다.
+  batchSize: 50,
   testTo: '',                     // 🧪 테스트 메일 받을 주소 — 비어 있으면 보내는 계정(본인 메일)
   testToEdited: false,            // 사람이 직접 고쳤으면 계정을 바꿔도 덮지 않는다
   intervalMinutes: 10,

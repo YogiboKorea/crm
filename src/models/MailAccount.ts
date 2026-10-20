@@ -39,6 +39,11 @@ export interface IMailAccount extends Document {
    * 폴더명은 그대로 거래처(group) 이름이 된다.
    */
   imapFolders?: string[];
+  /**
+   * CRM 에서만 쓰는 거래처 폴더 이름 (2026-10-20). 메일 서버에는 없는 폴더라 수집은 읽지 않고,
+   * 받은 메일함 왼쪽 폴더 목록에만 보인다 (lib/mail/groups.ts getFolderOrder). scripts/regroup-mailbox.mts 가 채운다.
+   */
+  crmFolders?: string[];
 
   lastVerifiedAt?: string;    // 마지막 성공적으로 SMTP 연결한 시각
   lastVerifyError?: string;   // 마지막 verify 실패 사유
@@ -83,6 +88,7 @@ const MailAccountSchema = new Schema<IMailAccount>({
   isTestSender: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   imapFolders: { type: [String], default: [] },
+  crmFolders: { type: [String], default: [] },
 
   lastVerifiedAt: { type: String, default: '' },
   lastVerifyError: { type: String, default: '' },
@@ -97,6 +103,11 @@ const MailAccountSchema = new Schema<IMailAccount>({
 
 // 소유자별로 accountName + smtpUser 조합은 unique (같은 계정 중복 등록 방지)
 MailAccountSchema.index({ owner: 1, smtpUser: 1 }, { unique: true });
+
+// 개발 서버는 고친 파일을 다시 읽어도 mongoose 모델은 처음 것을 계속 쓴다 — 새 칸이 조용히 버려지지 않게 새로 만든다
+if (mongoose.models.MailAccount && !mongoose.models.MailAccount.schema.path('crmFolders')) {
+  mongoose.deleteModel('MailAccount');
+}
 
 export const MailAccount =
   (mongoose.models.MailAccount as mongoose.Model<IMailAccount>) ||

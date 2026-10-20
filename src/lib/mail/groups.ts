@@ -234,6 +234,7 @@ async function getFolderOrder(accountId?: string, accountIds?: string[] | null):
 
   const accounts: any[] = await MailAccount.find(query, {
     imapFolders: 1,
+    crmFolders: 1,
     isDefault: 1,
     updatedAt: 1,
   }).lean();
@@ -253,6 +254,13 @@ async function getFolderOrder(accountId?: string, accountIds?: string[] | null):
     for (const folder of account.imapFolders || []) {
       const group = groupNameFromFolder(folder);
       if (!group || group === folder) continue;
+      if (!accountOrder.has(group)) accountOrder.set(group, accountOrder.size);
+      if (!merged.has(group)) merged.set(group, merged.size);
+    }
+    // CRM 에서만 쓰는 폴더 — 메일 서버에 폴더가 없는 계정도 거래처별로 나눠 보이게 (2026-10-20, 전무님 메일함).
+    // 이름이 곧 그룹이다. 메일 서버 폴더 뒤에 둔다.
+    for (const group of account.crmFolders || []) {
+      if (!group) continue;
       if (!accountOrder.has(group)) accountOrder.set(group, accountOrder.size);
       if (!merged.has(group)) merged.set(group, merged.size);
     }

@@ -29,7 +29,7 @@ export const maxDuration = 60;
  * Body: {
  *   leadIds: string[], templateId: string, mailAccountId?: string,
  *   startAt?: string(ISO),      // 없으면 지금부터
- *   batchSize?: number,         // 한 묶음에 몇 곳 (기본 30)
+ *   batchSize?: number,         // 한 묶음에 몇 곳 (기본 50)
  *   intervalMinutes?: number,   // 묶음 사이 간격 (기본 10)
  *   followUp?: boolean,         // 답 없으면 자동 재발송
  *   followUpDays?: number,      // 며칠 뒤 (기본 7)
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   if (subjectEdit !== null && !subjectEdit.trim()) return NextResponse.json({ success: false, error: '제목이 비어 있습니다' }, { status: 400 });
   if (bodyEdit !== null && !bodyEdit.trim()) return NextResponse.json({ success: false, error: '본문이 비어 있습니다' }, { status: 400 });
 
-  const batchSize = Math.max(1, Math.min(200, Number(body.batchSize) || 100));
+  const batchSize = Math.max(1, Math.min(200, Number(body.batchSize) || 50));
   const intervalMinutes = Math.max(1, Math.min(1440, Number(body.intervalMinutes) || 10));
   const followUp = body.followUp === true;
   const followUpDays = Math.max(1, Math.min(60, Number(body.followUpDays) || 7));
