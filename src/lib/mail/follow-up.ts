@@ -20,10 +20,11 @@ import { CONVERSATION_STAGES as SHARED_CONVERSATION_STAGES } from '@/lib/stages'
  *   · 이미 다음 예약이 있다    → 같은 곳에 두 번 깔리면 연달아 나간다
  *   · [발송 완료] 가 아니다     → 보관함·검증 실패·발송 리스트 등으로 옮긴 곳 (보내는 순간에도 다시 본다)
  *
- * 무엇을 보내는가 (2026-10-20):
- * 예전에는 첫 메일 양식을 그대로 또 보냈다 — 받는 쪽에는 "같은 광고가 한 주 뒤 또 왔다" 로 보인다.
- * 이제 [📝 메일 양식] 에서 용도가 '팔로우업' 인 양식으로 보내고, 앞서 보낸 메일의 답장(Re: 제목)으로 묶는다
- * (schedule-runner.ts). 팔로우업 양식이 하나도 없을 때만 첫 메일 양식으로 보낸다.
+ * 무엇을 보내는가 (2026-10-21):
+ * 차수마다 다른 양식이 나간다 — 2번째 메일은 [2차 팔로우업], 3번째 메일은 [3차 마지막 팔로우업]
+ * (lib/mail/template-steps.ts). 앞서 보낸 메일의 답장(Re: 제목)으로 묶는다 (schedule-runner.ts).
+ * 예전(10/20)에는 2·3번째가 같은 '팔로우업' 양식이라 받는 쪽에 같은 글이 두 번 갔다.
+ * 그 차수 양식을 '사용 안 함' 으로 꺼 두었을 때만 다른 팔로우업 양식 → 첫 메일 양식 순으로 대신 쓴다.
  */
 
 /** 팔로우업 대상이 아닌 단계 — 이미 대화가 시작된 곳 (lib/stages.ts 공용) */
@@ -79,6 +80,14 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
     const mine = followTpls.find((t) => t.createdBy && t.createdBy === createdBy);
     return String((mine || followTpls[0])?._id || fallback);
   };
+  // 몇 번째 메일인지에 맞는 차수 양식 — 2번째는 2차, 3번째는 3차
+  const stepTpls: any[] = await EmailTemplate.find(
+    { step: { $in: [2, 3] }, isActive: { $ne: false } }, { _id: 1, step: 1 },
+  ).lean();
+  const templateForAttempt = (attemptNo: number, createdBy: string, fallback: string) => {
+    const s = stepTpls.find((t) => t.step === Math.min(3, attemptNo));
+    return s ? String(s._id) : followTemplateFor(createdBy, fallback);
+  };
 
   const toInsert: any[] = [];
   for (const [leadId, last] of latest) {
@@ -121,7 +130,7 @@ export async function createDueFollowUps(now = new Date()): Promise<FollowUpResu
 
     toInsert.push({
       leadId,
-      templateId: followTemplateFor(last.createdBy || '', last.templateId),
+      templateId: templateForAttempt(sentCount + 1, last.createdBy || '', last.templateId),
       mailAccountId: last.mailAccountId || '',
       to: email,
       scheduledFor: now,

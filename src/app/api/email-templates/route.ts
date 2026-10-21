@@ -2,18 +2,20 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { TEMPLATE_VARS, TEMPLATE_VAR_GROUPS } from '@/lib/template-vars';
-import { normalizeTemplateAttachments } from '@/lib/mail/template-attachments';
+import { ensureStepTemplates } from '@/lib/mail/template-steps';
 
 export const runtime = 'nodejs';
 
 /**
  * GET  /api/email-templates          → 전체 목록 + 사용 가능한 변수 정보
- * POST /api/email-templates          → 새 템플릿 생성
+ * POST /api/email-templates          → 막아 둠 — 양식은 1·2·3차 세 칸으로 고정 (lib/mail/template-steps.ts)
  */
 export async function GET() {
   try {
     await dbConnect();
-    const templates = await EmailTemplate.find({}).sort({ updatedAt: -1 }).lean();
+    // 1·2·3차 칸이 비어 있으면 채운다 (쓰던 양식을 옮기거나 예시로) — 이미 있는 문구는 그대로
+    await ensureStepTemplates();
+    const templates = await EmailTemplate.find({}).sort({ step: 1, updatedAt: -1 }).lean();
     return NextResponse.json({
       success: true,
       templates,
@@ -32,32 +34,12 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    if (!body?.name || !body?.subject || !body?.body) {
-      return NextResponse.json(
-        { success: false, error: 'name/subject/body 필수' },
-        { status: 400 },
-      );
-    }
-    const atts = normalizeTemplateAttachments(body.attachments);
-    if (!atts.ok) return NextResponse.json({ success: false, error: atts.error }, { status: 400 });
-    await dbConnect();
-    const t = await EmailTemplate.create({
-      name: String(body.name).trim(),
-      language: body.language === 'ko' ? 'ko' : 'en',
-      subject: String(body.subject),
-      body: String(body.body),
-      bodyIsHtml: body.bodyIsHtml === true,
-      purpose: body.purpose || 'intro',
-      isActive: body.isActive !== false,
-      appendAccountSignature: body.appendAccountSignature !== false,
-      attachments: atts.list,
-      createdBy: body.createdBy || '',
-    });
-    return NextResponse.json({ success: true, template: t });
-  } catch (e: any) {
-    return NextResponse.json({ success: false, error: e?.message || 'unknown' }, { status: 500 });
-  }
+export async function POST() {
+  // 양식은 1차 첫 소개 · 2차 팔로우업 · 3차 마지막 팔로우업 세 개로 정해 두고 고치기만 한다 (2026-10-21 요청).
+  // 새로 만들 수 있으면 같은 용도 양식이 쌓여 "답이 없을 때 어느 문구가 나가지" 를 알 수 없게 된다.
+  // 빈 칸은 GET 이 채운다 (ensureStepTemplates).
+  return NextResponse.json(
+    { success: false, error: '메일 양식은 1차·2차·3차 세 개로 정해져 있습니다. 새로 만들지 말고 해당 차수 양식을 고쳐 주세요.' },
+    { status: 400 },
+  );
 }

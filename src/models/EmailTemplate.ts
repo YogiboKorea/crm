@@ -11,6 +11,12 @@ export interface IEmailTemplate extends Document {
   body: string;                // 본문 (HTML 또는 텍스트, 변수 치환 가능)
   bodyIsHtml: boolean;
   purpose: 'intro' | 'followup' | 're-engage' | 'partner-onboarding' | 'other';
+  /**
+   * 몇 번째 메일에 쓰는 양식인가 (2026-10-21) — 1 = 첫 소개, 2 = 팔로우업, 3 = 마지막 팔로우업.
+   * 양식은 이 세 칸으로 고정이고 화면에서는 고치기만 한다 (lib/mail/template-steps.ts).
+   * 답이 없어 다시 보낼 때 2번째 메일은 2차, 3번째 메일은 3차 양식으로 나간다 (lib/mail/follow-up.ts).
+   */
+  step?: 1 | 2 | 3 | null;
   isActive: boolean;
   // 발송 시 선택된 메일 계정의 서명 블록 (이름/직함/회사/이메일/전화) 자동 추가
   // 사용자가 본문에 발송자 정보를 손대지 않아도 되게 함
@@ -34,6 +40,7 @@ const EmailTemplateSchema = new Schema<IEmailTemplate>({
     enum: ['intro', 'followup', 're-engage', 'partner-onboarding', 'other'],
     default: 'intro',
   },
+  step: { type: Number, enum: [1, 2, 3, null], default: null },
   isActive: { type: Boolean, default: true },
   appendAccountSignature: { type: Boolean, default: true },
   attachments: {
@@ -42,6 +49,11 @@ const EmailTemplateSchema = new Schema<IEmailTemplate>({
   },
   createdBy: { type: String, default: '' },
 }, { timestamps: true });
+
+// 개발 서버는 mongoose 모델을 처음 만든 것으로 계속 쓴다 — 새 칸(step)이 조용히 버려지지 않게 예전 모델은 버린다
+if (mongoose.models.EmailTemplate && !mongoose.models.EmailTemplate.schema.path('step')) {
+  mongoose.deleteModel('EmailTemplate');
+}
 
 export const EmailTemplate =
   (mongoose.models.EmailTemplate as mongoose.Model<IEmailTemplate>) ||

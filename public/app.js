@@ -1796,7 +1796,7 @@ async function _renderInner(seq) {
   // ── 새 부가 도구 페이지 스켈레톤 ──────────────────────────────
   if (state.view === "tool-b2b-email") {
     els.viewTitle.textContent = "📝 메일 양식";
-    els.viewSubtitle.textContent = "해외 업체에 보낼 메일 문구를 만들어 두고, [발송 관리]에서 골라 씁니다.";
+    els.viewSubtitle.textContent = "1차 첫 소개 · 2차 팔로우업 · 3차 마지막 팔로우업 — 차수마다 나갈 문구를 고칩니다.";
     renderB2BEmailManager();
     return;
   }
@@ -3187,8 +3187,7 @@ async function openComposeModal(scope) {
 
   // 최초 진입 시 기본 템플릿 자동 선택
   if (!_composeState.templateId && state.email.templates.length > 0) {
-    const defaultTpl = state.email.templates.find(t => t.purpose === 'intro' && t.language === 'en')
-                    || state.email.templates[0];
+    const defaultTpl = firstStepTemplate(state.email.templates);
     _composeState.templateId = defaultTpl._id;
     _composeState.subject = defaultTpl.subject;
     _composeState.body = defaultTpl.body;
@@ -3395,7 +3394,7 @@ function renderComposeModal() {
                 <option value="">— 커스텀 (템플릿 없이) —</option>
                 ${state.email.templates.map(t => `
                   <option value="${escapeAttr(t._id)}" ${t._id === _composeState.templateId ? 'selected' : ''}>
-                    ${escapeHtml(t.name)} (${t.language === 'ko' ? '🇰🇷' : '🇺🇸'} ${t.purpose})
+                    ${escapeHtml(templateOptionLabel(t))}
                   </option>
                 `).join('')}
               </select>
@@ -11526,6 +11525,27 @@ function attachVariableAutocomplete(textareaId) {
 }
 
 
+/**
+ * 1·2·3차 양식 — 몇 번째 메일에 나가는가 (서버 lib/mail/template-steps.ts 와 같은 칸, 2026-10-21).
+ * 양식은 이 세 칸으로 고정이고 여기서는 고치기만 한다.
+ */
+const TEMPLATE_STEP_KO = {
+  1: { label: '1차 첫 소개', when: '처음 보낼 때 — [발송 관리]에서 보내거나 예약하면 이 양식이 나갑니다', bg: '#e0e7ff', fg: '#3730a3' },
+  2: { label: '2차 팔로우업', when: '1차 뒤 답이 없으면 정한 날 뒤 자동으로 — 1차 메일의 답장(Re:)으로 묶여 나갑니다', bg: '#fef3c7', fg: '#92400e' },
+  3: { label: '3차 마지막 팔로우업', when: '2차 뒤에도 답이 없으면 자동으로 — 같은 곳에 보내는 마지막 메일입니다', bg: '#fee2e2', fg: '#991b1b' },
+};
+/** 양식 고르는 칸에 보일 이름 — 차수가 먼저 읽히게. 이름이 "2차 …" 로 시작하면 겹치지 않게 뗀다 */
+function templateOptionLabel(t) {
+  const name = String((t && t.name) || '');
+  return TEMPLATE_STEP_KO[t && t.step] ? `${t.step}차 · ${name.replace(/^\s*\d\s*차\s*/, '')}` : name;
+}
+/** 처음 보낼 때 기본으로 고를 양식 — 1차 */
+function firstStepTemplate(tpls) {
+  return (tpls || []).find((t) => t.step === 1)
+    || (tpls || []).find((t) => t.purpose === 'intro' && t.language === 'en')
+    || (tpls || [])[0];
+}
+
 /** 양식 용도 — 목록에서 한눈에 구분되게 */
 const TEMPLATE_PURPOSE_KO = {
   intro: { label: '첫 소개', bg: '#e0e7ff', fg: '#3730a3' },
@@ -11536,15 +11556,17 @@ const TEMPLATE_PURPOSE_KO = {
 };
 
 /**
- * 📝 메일 양식 — 목록(게시판).
+ * 📝 메일 양식 — 1차·2차·3차 세 칸 (2026-10-21).
  *
- * 영업 담당자마다, 상황마다 쓰는 문구가 다르다. 하나만 편집하는 화면이면
- * 그때그때 덮어쓰는 수밖에 없어서 지난 문구가 남지 않는다. 여러 개 저장해
- * 두고 발송할 때 고르는 편이 실제 쓰임에 맞다.
+ * 예전에는 양식을 여러 개 만들어 골라 쓰게 했는데, 답이 없을 때 2·3번째에
+ * 어느 문구가 나가는지 알 수 없었다. 이제 차수마다 양식이 하나씩 정해져 있고
+ * 실제 발송도 그 차수 양식으로 나간다. 여기서는 새로 만들거나 지우지 않고 고치기만 한다.
  */
 function renderTemplateListPage(templates) {
+  // 1·2·3차 순서로. 차수가 없는 예전 양식이 남아 있으면 그 뒤에
   const list = (templates || []).slice().sort((a, b) =>
-    String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    (a.step || 9) - (b.step || 9) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  const steps = Object.keys(TEMPLATE_STEP_KO).map(Number);
 
   const fmt = (v) => v
     ? new Date(v).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' })
@@ -11561,34 +11583,43 @@ function renderTemplateListPage(templates) {
           <h3 style="margin:0;font-size:19px;font-weight:800;color:var(--text-primary);
                      letter-spacing:-.01em">메일 양식</h3>
           <div style="font-size:13px;color:var(--text-secondary);margin-top:5px;line-height:1.65">
-            상황별로 양식을 만들어 두고, 메일 보낼 때 골라 씁니다.
+            메일은 <b style="color:var(--text-primary)">차수마다 다른 양식</b>으로 나갑니다. 여기서는 문구만 고칩니다.
             <code style="background:var(--brand-soft,#eef2ff);padding:2px 7px;border-radius:5px;
                          color:var(--brand-text,#4338ca);font-weight:700;font-size:12px">[회사명]</code>
             을 넣으면 각 회사 이름으로 바뀝니다.
           </div>
         </div>
-        <button id="tplNewBtn" type="button"
-          style="font-size:13.5px;font-weight:700;padding:11px 20px;white-space:nowrap;
-                 background:var(--brand,#4f46e5);color:#fff;border:none;border-radius:10px;
-                 cursor:pointer;box-shadow:0 2px 8px rgba(79,70,229,.28)">
-          + 새 양식 작성
-        </button>
+      </div>
+
+      <!-- 실제로 나가는 순서 — 1차 → 2차 → 3차 -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 16px;padding:12px 15px;
+                  background:var(--bg-surface-alt);border:1px solid var(--border-subtle);border-radius:11px;
+                  font-size:12.5px;color:var(--text-secondary);line-height:1.6">
+        ${steps.map((n, i) => {
+          const st = TEMPLATE_STEP_KO[n];
+          const chip = `<span style="padding:3px 10px;background:${st.bg};color:${st.fg};border-radius:99px;font-weight:800;white-space:nowrap">${st.label}</span>`;
+          return i ? `<span style="color:var(--text-quaternary);white-space:nowrap">→ 답 없으면 정한 날 뒤 →</span>${chip}` : chip;
+        }).join('')}
+        <span style="flex-basis:100%;font-size:11.5px;color:var(--text-tertiary)">
+          답장이 오면 그 자리에서 멈춥니다 · 같은 곳에 최대 3통 · 며칠 뒤에 다시 보낼지는 [발송 관리]에서 정합니다
+        </span>
       </div>
 
       ${!list.length ? `
         <div style="padding:56px 28px;text-align:center;background:var(--bg-surface);
                     border:1px dashed var(--border-default);border-radius:14px">
           <div style="font-size:38px;margin-bottom:12px;opacity:.5">📝</div>
-          <div style="font-size:15px;font-weight:800;color:var(--text-primary)">저장된 양식이 없습니다</div>
+          <div style="font-size:15px;font-weight:800;color:var(--text-primary)">양식을 불러오지 못했습니다</div>
           <div style="font-size:13px;margin-top:7px;line-height:1.7;color:var(--text-tertiary)">
-            [+ 새 양식 작성] 을 눌러 첫 양식을 만들어 주세요.<br>
-            만든 양식은 <b style="color:var(--text-secondary)">발송 관리 → 보낼 메일</b> 에서 고를 수 있습니다.
+            새로고침해 주세요. 1차·2차·3차 양식은 열 때 저절로 채워집니다.
           </div>
         </div>
       ` : `
         <div style="display:flex;flex-direction:column;gap:11px">
           ${list.map((t) => {
-            const p = TEMPLATE_PURPOSE_KO[t.purpose] || TEMPLATE_PURPOSE_KO.other;
+            // 차수가 있으면 차수 색·이름으로, 없으면(예전 양식) 용도로
+            const st = TEMPLATE_STEP_KO[t.step];
+            const p = st || TEMPLATE_PURPOSE_KO[t.purpose] || TEMPLATE_PURPOSE_KO.other;
             const preview = truncate(strip(t.body), 140);
             return `
             <div class="tpl-card" data-tpl-id="${escapeAttr(t._id)}"
@@ -11604,10 +11635,10 @@ function renderTemplateListPage(templates) {
               <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px">
                 <div style="min-width:0;flex:1">
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="padding:3px 11px;background:${p.bg};color:${p.fg};border-radius:99px;
+                                 font-size:12px;font-weight:800;letter-spacing:.01em">${p.label}</span>
                     <strong style="font-size:15px;font-weight:800;color:var(--text-primary);
                                    letter-spacing:-.01em">${escapeHtml(t.name || '(이름 없음)')}</strong>
-                    <span style="padding:2px 9px;background:${p.bg};color:${p.fg};border-radius:99px;
-                                 font-size:10.5px;font-weight:800;letter-spacing:.02em">${p.label}</span>
                     ${t.isActive === false
                       ? '<span style="padding:2px 9px;background:var(--bg-surface-hover);color:var(--text-tertiary);border-radius:99px;font-size:10.5px;font-weight:700">사용 안 함</span>'
                       : ''}
@@ -11615,6 +11646,7 @@ function renderTemplateListPage(templates) {
                       ? `<span title="${escapeAttr(t.attachments.map((a) => a.name).join(', '))}" style="padding:2px 9px;background:#fffbeb;color:#92400e;border:1px solid #fde68a;border-radius:99px;font-size:10.5px;font-weight:700">📎 첨부 ${t.attachments.length}</span>`
                       : ''}
                   </div>
+                  ${st ? `<div style="font-size:12px;color:${st.fg};margin-top:7px;font-weight:600">⏱ ${escapeHtml(st.when)}</div>` : ''}
 
                   <div style="display:flex;align-items:baseline;gap:7px;margin-top:9px;min-width:0">
                     <span style="font-size:10.5px;font-weight:800;color:var(--text-quaternary);
@@ -11646,11 +11678,6 @@ function renderTemplateListPage(templates) {
                       style="font-size:11.5px;font-weight:700;padding:6px 14px;
                              border:1px solid #2563eb;border-radius:8px;
                              background:var(--bg-surface);color:#1d4ed8;cursor:pointer">✏ 수정</button>
-                    <button type="button" class="tpl-del" data-tpl-id="${escapeAttr(t._id)}"
-                      title="이 양식을 삭제합니다"
-                      style="font-size:11.5px;font-weight:600;padding:6px 12px;
-                             border:1px solid var(--border-default);border-radius:8px;
-                             background:var(--bg-surface);color:#dc2626;cursor:pointer">삭제</button>
                   </div>
                 </div>
               </div>
@@ -11661,9 +11688,8 @@ function renderTemplateListPage(templates) {
         <div style="margin-top:16px;padding:13px 17px;background:var(--bg-surface-alt);
                     border:1px solid var(--border-subtle);border-radius:11px;
                     font-size:12px;color:var(--text-tertiary);line-height:1.7">
-          💡 양식은 <b style="color:var(--text-secondary)">[✏ 수정]</b> 으로 언제든 고칠 수 있습니다.
-          상황마다 다른 문구가 필요하면 <b style="color:var(--text-secondary)">[+ 새 양식 작성]</b> 으로 하나 더 만들어 두고,
-          발송할 때 골라 쓰면 됩니다.
+          💡 양식은 <b style="color:var(--text-secondary)">1차·2차·3차 세 개로 정해져 있어</b> 새로 만들거나 지우지 않습니다.
+          <b style="color:var(--text-secondary)">[✏ 수정]</b> 으로 문구만 고치면 아직 안 나간 예약·재발송에도 고친 문구로 나갑니다.
         </div>
       `}
     </div>`;
@@ -11682,13 +11708,11 @@ function renderTemplateListPage(templates) {
     });
   });
 
-  document.getElementById('tplNewBtn')?.addEventListener('click', () => openTemplateEditor(null));
-
   // 카드 아무 데나 눌러도 열리고, [✏ 수정] 을 눌러도 같은 곳이 열린다.
   // 카드 클릭만으로는 "눌러도 되는 건가" 를 모르는 사람이 있어 버튼도 같이 둔다.
   els.content.querySelectorAll('.tpl-card').forEach((el) => {
     el.addEventListener('click', (e) => {
-      if (e.target.closest('.tpl-del') || e.target.closest('.tpl-copy')) return;
+      if (e.target.closest('.tpl-copy')) return;
       openTemplateEditor(el.dataset.tplId);
     });
   });
@@ -11710,23 +11734,7 @@ function renderTemplateListPage(templates) {
     });
   });
 
-  els.content.querySelectorAll('.tpl-del').forEach((b) => {
-    b.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const t = (state.email.templates || []).find((x) => x._id === b.dataset.tplId);
-      if (!t) return;
-      if (!confirm(`양식 "${t.name}" 을(를) 삭제합니다.\n되돌릴 수 없습니다. 진행할까요?`)) return;
-      try {
-        const r = await safeJsonFetch(`/api/email-templates/${t._id}`, { method: 'DELETE' });
-        if (!r?.success) throw new Error(r?.error || '삭제 실패');
-        await loadEmailTemplates();
-        if (state.email.currentTemplateId === t._id) state.email.currentTemplateId = null;
-        renderB2BEmailManager();
-      } catch (err) {
-        alert('삭제 실패: ' + (err.message || 'unknown'));
-      }
-    });
-  });
+  // [삭제] 는 없다 — 1·2·3차 양식은 고치기만 한다 (2026-10-21). 서버도 지우기를 막는다.
 }
 
 /** 목록에서 하나를 열거나(id) 새로 쓴다(null). seed 는 복사본용 초기값. */
@@ -11739,6 +11747,7 @@ function openTemplateEditor(id, seed) {
     subject: t.subject || '',
     body: t.body || '',
     purpose: t.purpose || 'intro',
+    step: t.step || null,
     bodyIsHtml: true,
     isActive: t.isActive !== false,
     appendAccountSignature: t.appendAccountSignature !== false,
@@ -11826,6 +11835,15 @@ async function renderB2BEmailManager() {
                 style="width:100%;padding:10px 13px;border:1px solid #cbd5e1;border-radius:8px;
                        font-size:14px;font-weight:700;margin-top:4px;background:#ffffff;color:#0f172a">
             </label>
+            ${TEMPLATE_STEP_KO[ed.step] ? `
+            <div style="min-width:150px">
+              <span style="font-size:12px;color:var(--text-secondary);font-weight:700">차수</span>
+              <div title="${escapeAttr(TEMPLATE_STEP_KO[ed.step].when)}"
+                style="margin-top:4px;padding:10px 13px;border-radius:8px;font-size:13px;font-weight:800;
+                       background:${TEMPLATE_STEP_KO[ed.step].bg};color:${TEMPLATE_STEP_KO[ed.step].fg}">
+                ${TEMPLATE_STEP_KO[ed.step].label}
+              </div>
+            </div>` : `
             <label style="min-width:150px">
               <span style="font-size:12px;color:var(--text-secondary);font-weight:700">용도</span>
               <select id="templatePurposeSel"
@@ -11834,8 +11852,9 @@ async function renderB2BEmailManager() {
                 ${Object.entries(TEMPLATE_PURPOSE_KO).map(([k, v]) =>
                   `<option value="${k}" ${ (ed.purpose || 'intro') === k ? 'selected' : ''}>${v.label}</option>`).join('')}
               </select>
-            </label>
+            </label>`}
           </div>
+          ${TEMPLATE_STEP_KO[ed.step] ? `<div style="font-size:12px;color:${TEMPLATE_STEP_KO[ed.step].fg};margin-top:7px;font-weight:600">⏱ ${escapeHtml(TEMPLATE_STEP_KO[ed.step].when)}</div>` : ''}
           <div style="font-size:12px;color:var(--text-secondary);margin-top:7px">
             발송할 메일을 그대로 작성하세요. 회사명 자리엔 <code style="background:#eef2ff;padding:2px 8px;border-radius:4px;color:#4338ca;font-weight:700">[회사명]</code> · 서명은 자동.
           </div>
@@ -12377,6 +12396,15 @@ var UPDATE_LOG = [
     date: '2026-10-21',
     items: [
       {
+        kind: 'better', icon: '📝', title: '메일 양식 — 1차 · 2차 · 3차로 정리',
+        how: [
+          '양식이 <b>1차 첫 소개 · 2차 팔로우업 · 3차 마지막 팔로우업</b> 세 개로 정해졌습니다. 쓰시던 첫 소개·2차 문구는 그대로 옮겼고, 3차는 예시 문구를 넣어 두었습니다.',
+          '실제로도 <b>차수마다 다른 메일</b>이 나갑니다 — 처음엔 1차, 답이 없으면 정한 날 뒤 2차, 또 답이 없으면 3차. 답장이 오면 그 자리에서 멈춥니다.',
+          '양식은 <b>[✏ 수정]</b> 으로 문구만 고칩니다. 새로 만들기·삭제는 없앴습니다 — 2·3번째에 어느 문구가 나가는지 헷갈리지 않게.',
+        ],
+        go: 'tool-b2b-email', goLabel: '메일 양식',
+      },
+      {
         kind: 'better', icon: '🏢', title: '서명의 회사명·주소 — 골라서 넣기',
         how: [
           '<b>[📬 메일 계정 관리] → 수정 → ④ 발송자 프로필</b>의 회사명·주소·웹사이트 칸 아래 <b>고르기</b> 버튼을 누르면 그 값이 바로 들어갑니다.',
@@ -12447,7 +12475,7 @@ var UPDATE_LOG = [
           '[✉️ 보낼 메일]에서 <b>고친 제목·본문 그대로</b> 나갑니다 (저장된 양식은 그대로). 🧪 테스트 메일도 같은 문구로 갑니다.',
           '업체를 <b>[검증 실패] · 보관함 · [↩ 발송 취소]</b>로 옮기면 그 업체 예약도 함께 취소됩니다. 이유는 [📅 예약 발송] 맨 아래 <b>🚫 취소된 예약</b>에서 봅니다.',
           '<b>답장이 오면</b> 남은 재발송은 저절로 취소되고, 보내기 직전에도 한 번 더 확인합니다.',
-          '재발송은 같은 소개 메일을 또 보내지 않고, <b>\'팔로우업\' 양식</b>을 첫 메일의 답장(Re: 제목)으로 보내 상대 메일함에서 한 대화로 묶입니다.',
+          '재발송은 같은 소개 메일을 또 보내지 않고, 2번째는 <b>[2차 팔로우업]</b>·3번째는 <b>[3차 마지막 팔로우업]</b> 양식을 첫 메일의 답장(Re: 제목)으로 보내 상대 메일함에서 한 대화로 묶입니다.',
           '여러 곳에서 동시에 눌러도 <b>한 통만</b> 나갑니다. 나가는 중에는 "⏳ 보내는 중" 이 뜹니다.',
         ],
         go: 'pipeline-contacted', tab: 'scheduled', goLabel: '예약 발송',
@@ -12596,8 +12624,8 @@ var UPDATE_LOG = [
 var UPDATE_NEXT = [
   { state: 'next', title: '답장에 이전 대화(원문) 붙이기 · 전달 · 임시저장',
     desc: '아웃룩에서 쓰시던 방식 그대로 쓰실 수 있게 — 다음 작업 후보입니다.' },
-  { state: 'ask', title: '재발송(팔로우업) 문구',
-    desc: "답이 없을 때 '2차 팔로우업 — 답장 없을 때' 양식이 나갑니다. 문구를 확인해 주세요.",
+  { state: 'ask', title: '2차·3차 팔로우업 문구',
+    desc: '답이 없을 때 2번째는 [2차 팔로우업], 3번째는 [3차 마지막 팔로우업] 양식이 나갑니다. 3차는 예시 문구라 확인해 주세요.',
     go: 'tool-b2b-email', goLabel: '메일 양식' },
 ];
 
@@ -12843,7 +12871,8 @@ function renderUserGuidePage() {
 
       ${stepCard(7, '📝', '메일 양식 — 보낼 문구를 정합니다',
         '보낼 메일의 제목과 본문을 미리 만들어 두는 곳입니다. [발송 관리]에서 골라 씁니다.',
-        `<b>[+ 새 양식 작성]</b> 으로 만들고, <b>[✏ 수정]</b> 으로 고칩니다. 글꼴·크기·색도 바꿀 수 있습니다.<br>
+        `양식은 <b>1차 첫 소개 · 2차 팔로우업 · 3차 마지막 팔로우업</b> 세 개로 정해져 있고, <b>[✏ 수정]</b> 으로 문구만 고칩니다. 글꼴·크기·색도 바꿀 수 있습니다.<br>
+         처음 보낼 때는 1차, 답이 없어 다시 보낼 때는 2차·3차가 <b>각각 다른 문구로</b> 나갑니다.<br>
          <b>[회사명]</b> 처럼 대괄호로 적어두면 <b>회사마다 그 회사 이름으로 바뀌어</b> 나갑니다.<br>
          편집 화면 아래 <b>👁 실제 발송 미리보기</b>에서 회사를 바꿔 가며 받는 사람이 볼 모습을 확인합니다.`,
         '양식을 고쳐 저장하면 <b>아직 안 나간 예약에도</b> 고친 문구로 나갑니다. 발송 화면에서 이번만 고친 문구로 예약한 것은 그 문구 그대로 나갑니다.')}
@@ -12868,7 +12897,7 @@ function renderUserGuidePage() {
           ['48시간 간격', '같은 곳에 이틀 안에 두 번 나가지 않습니다.'],
           ['답장이 오면 멈춤', '답장이 온 곳에는 예약된 메일·재발송이 나가지 않습니다. 보내기 직전에 한 번 더 확인합니다.'],
           ['빼면 예약도 취소', '[검증 실패]·보관함으로 옮기거나 [↩ 발송 취소] 를 누르면 그 업체에 잡혀 있던 예약도 함께 취소됩니다.'],
-          ['재발송은 다른 문구로', '답이 없어 다시 보낼 때는 첫 메일을 그대로 또 보내지 않고, 용도가 \'팔로우업\' 인 양식을 앞서 보낸 메일의 답장(Re:)으로 보냅니다.'],
+          ['차수마다 다른 문구', '첫 메일은 [1차 첫 소개], 답이 없어 다시 보낼 때 2번째는 [2차 팔로우업], 3번째는 [3차 마지막 팔로우업] 양식을 앞서 보낸 메일의 답장(Re:)으로 보냅니다.'],
           ['지우지 않습니다', '검증 실패·보관함으로 보낸 것도 DB에서 지우지 않습니다. 언제든 되돌릴 수 있습니다.'],
         ].map(([t, d]) => `
           <div style="display:flex;gap:11px;padding:9px 0;border-top:1px solid var(--border-subtle)">
@@ -13643,7 +13672,7 @@ async function runOutboxCampaign(ready, lock) {
       ? '문구         이 화면에서 고친 제목·본문으로 나갑니다 (저장된 양식은 그대로)'
       : '문구         저장된 양식 그대로',
     _outboxCompose.followUp
-      ? `자동 재발송  답 없으면 ${_outboxCompose.followUpDays}일 뒤 '팔로우업' 양식으로 다시 (최대 3회 · 답장 오면 중단)`
+      ? `자동 재발송  답 없으면 ${_outboxCompose.followUpDays}일 뒤 [2차 팔로우업], 또 ${_outboxCompose.followUpDays}일 뒤 [3차 마지막 팔로우업] (답장 오면 중단)`
       : '자동 재발송  안 함',
   ];
   if (lock?.locked) {
@@ -13737,7 +13766,7 @@ function outboxSyncCompose(ready) {
   const tpls = state.email.templates || [];
   const cur = tpls.find((t) => t._id === _outboxCompose.templateId);
   if (!cur && tpls.length) {
-    const t = tpls.find((x) => x.purpose === 'intro' && x.language === 'en') || tpls[0];
+    const t = firstStepTemplate(tpls);
     _outboxCompose.templateId = t._id;
     _outboxCompose.subject = t.subject || '';
     _outboxCompose.body = t.body || '';
@@ -13850,7 +13879,7 @@ function outboxBindComposeInputs(ready) {
     if (plan) {
       const start = _outboxCompose.startNow ? '지금부터' : `${new Date(_outboxCompose.startAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}부터`;
       plan.textContent = `${start} ${on ? `${size}곳씩 ${gap}분 간격` : '한 번에'}`
-        + (_outboxCompose.followUp ? ` · 답 없으면 ${_outboxCompose.followUpDays}일 뒤 다시 (최대 3회)` : '');
+        + (_outboxCompose.followUp ? ` · 답 없으면 ${_outboxCompose.followUpDays}일 뒤 2차, 또 ${_outboxCompose.followUpDays}일 뒤 3차` : '');
     }
   };
   [split, bSize, bInt, fUp, fDays, sNow, sLater, sAt].forEach((el) =>
@@ -13981,8 +14010,7 @@ function outboxReadyHtml(ready, lock) {
                 background:var(--bg-surface);color:var(--text-primary)">
                 ${tpls.length
                   ? tpls.map((t) => {
-                      const p = (typeof TEMPLATE_PURPOSE_KO !== 'undefined' && TEMPLATE_PURPOSE_KO[t.purpose]) || null;
-                      return `<option value="${escapeAttr(t._id)}" ${t._id === (tpl && tpl._id) ? 'selected' : ''}>${escapeHtml(t.name)}${p ? ` · ${p.label}` : ''}</option>`;
+                      return `<option value="${escapeAttr(t._id)}" ${t._id === (tpl && tpl._id) ? 'selected' : ''}>${escapeHtml(templateOptionLabel(t))}</option>`;
                     }).join('')
                   : '<option value="">(등록된 양식 없음)</option>'}
               </select>
@@ -14086,7 +14114,8 @@ function outboxReadyHtml(ready, lock) {
                        border:1px solid var(--border-default);border-radius:6px;
                        background:var(--bg-surface);color:var(--text-primary)">일 뒤
               <span style="display:block;color:var(--text-tertiary);font-size:11.5px;margin-top:3px">
-                같은 곳에 최대 3회까지 · <b>답장이 오면 그 자리에서 멈춥니다</b>
+                두 번째는 <b>[2차 팔로우업]</b>, 세 번째는 <b>[3차 마지막 팔로우업]</b> 양식으로 — 차수마다 다른 문구가 나갑니다 ·
+                <b>답장이 오면 그 자리에서 멈춥니다</b>
               </span>
             </span>
           </label>
