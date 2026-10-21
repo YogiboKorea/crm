@@ -12343,13 +12343,15 @@ var _crawlState = {
 // 📬 메일 계정 관리 (다계정 SMTP 등록/관리)
 // ══════════════════════════════════════════════════════════════
 var _mailAccounts = null;   // 캐시 (컴포즈 모달도 공유)
+// 서명 칸 고르기 목록 { companies, addresses, websites } — 이미 등록된 값 + 예시 (api/mail-accounts)
+var _signaturePresets = null;
 
 async function loadMailAccounts(force) {
   if (!force && _mailAccounts) return _mailAccounts;
   try {
     const res = await fetch('/api/mail-accounts');
     const data = await res.json();
-    if (data.success) { _mailAccounts = data.accounts || []; return _mailAccounts; }
+    if (data.success) { _mailAccounts = data.accounts || []; _signaturePresets = data.signaturePresets || null; return _mailAccounts; }
   } catch {}
   _mailAccounts = [];
   return _mailAccounts;
@@ -12371,6 +12373,19 @@ async function loadMailAccounts(force) {
  * UPDATE_NEXT 는 진행 중·확인 필요 — 끝나면 거기서 지우고 UPDATE_LOG 에 날짜와 함께 옮긴다.
  */
 var UPDATE_LOG = [
+  {
+    date: '2026-10-21',
+    items: [
+      {
+        kind: 'better', icon: '🏢', title: '서명의 회사명·주소 — 골라서 넣기',
+        how: [
+          '<b>[📬 메일 계정 관리] → 수정 → ④ 발송자 프로필</b>의 회사명·주소·웹사이트 칸 아래 <b>고르기</b> 버튼을 누르면 그 값이 바로 들어갑니다.',
+          '칸에 몇 글자만 쳐도 이미 등록된 값이 목록으로 떠서 고를 수 있습니다. 서명이 사람마다 다르게 적히는 일을 줄입니다.',
+        ],
+        go: 'tool-mail-accounts', goLabel: '메일 계정 관리',
+      },
+    ],
+  },
   {
     date: '2026-10-20',
     items: [
@@ -15016,6 +15031,24 @@ async function deleteMailAccount(id) {
 }
 
 // 계정 추가/수정 모달
+/**
+ * 서명 칸 고르기 — 칸 아래 "고르기:" 칩 + 몇 글자 치면 뜨는 목록(datalist) (2026-10-21 요청).
+ * 회사명·주소를 매번 영문으로 다시 치다 오타가 나면 서명이 메일마다 달라 보였다.
+ */
+function sigPresetHtml(inputId, values) {
+  const list = [...new Set((values || []).map((v) => String(v || '').trim()).filter(Boolean))].slice(0, 6);
+  if (!list.length) return '';
+  return `
+    <datalist id="${inputId}List">${list.map((v) => `<option value="${escapeAttr(v)}"></option>`).join('')}</datalist>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:5px">
+      <span style="font-size:10.5px;color:var(--text-tertiary)">고르기</span>
+      ${list.map((v) => `<button type="button" class="mac-preset" data-target="${inputId}" data-value="${escapeAttr(v)}"
+        title="${escapeAttr(v)}"
+        style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 9px;font-size:11px;
+               border:1px solid #c7d2fe;border-radius:99px;background:#eef2ff;color:#3730a3;cursor:pointer">${escapeHtml(v)}</button>`).join('')}
+    </div>`;
+}
+
 function openMailAccountModal(editId) {
   const isEdit = !!editId;
   const acc = isEdit ? (_mailAccounts || []).find(a => a._id === editId) : null;
@@ -15222,17 +15255,23 @@ function openMailAccountModal(editId) {
           <div>
             <label style="font-size:11px;color:var(--text-secondary);font-weight:700">🏢 내 회사명</label>
             <input id="macSenderCompany" type="text" value="${escapeAttr(acc?.senderCompany || '')}" placeholder="예: Yogi Corporation Inc."
+              list="macSenderCompanyList" autocomplete="off"
               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            ${sigPresetHtml('macSenderCompany', (_signaturePresets && _signaturePresets.companies) || ['Yogi Corporation Inc.'])}
           </div>
           <div>
             <label style="font-size:11px;color:var(--text-secondary);font-weight:700">🏛 주소 (A:)</label>
             <input id="macSenderAddress" type="text" value="${escapeAttr(acc?.senderAddress || '')}" placeholder="예: 201, 125, Bongeunsa-ro, Gangnam-gu, Seoul, Korea"
+              list="macSenderAddressList" autocomplete="off"
               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            ${sigPresetHtml('macSenderAddress', (_signaturePresets && _signaturePresets.addresses) || ['201, 125, Bongeunsa-ro, Gangnam-gu, Seoul, Korea'])}
           </div>
           <div>
             <label style="font-size:11px;color:var(--text-secondary);font-weight:700">🌐 웹사이트</label>
             <input id="macSenderWebsite" type="text" value="${escapeAttr(acc?.senderWebsite || '')}" placeholder="예: www.yogico.kr"
+              list="macSenderWebsiteList" autocomplete="off"
               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:2px">
+            ${sigPresetHtml('macSenderWebsite', (_signaturePresets && _signaturePresets.websites) || ['www.yogico.kr'])}
           </div>
 
           <!-- 메일 하단에 붙을 서명 — 입력하는 대로 바뀐다 (서버 lib/template-vars.ts buildSignatureBlock 과 같은 모양) -->
@@ -15311,6 +15350,14 @@ function openMailAccountModal(editId) {
   };
   ['macFromName', 'macSenderTitle', 'macSenderCompany', 'macSenderAddress', 'macSenderPhone', 'macSenderWebsite', 'macFromAddress']
     .forEach((id) => document.getElementById(id)?.addEventListener('input', refreshSig));
+  // 회사명·주소·웹사이트 — 아래 칩을 누르면 그 값으로 채운다 (몇 글자 치면 목록에서도 고를 수 있다: datalist)
+  document.querySelectorAll('.mac-preset').forEach((b) => b.addEventListener('click', () => {
+    const el = document.getElementById(b.dataset.target);
+    if (!el) return;
+    el.value = b.dataset.value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+  }));
   // 최초 렌더 시 현재 프리셋에 대한 가이드도 즉시 표시
   applyPreset(currentPresetKey);
 

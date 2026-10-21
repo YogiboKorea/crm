@@ -27,10 +27,32 @@ export async function GET() {
   if (!user) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   await dbConnect();
   const list = await MailAccount.find(ownerFilter(user)).sort({ isDefault: -1, createdAt: 1 });
+
+  // 서명 칸(회사명·주소·웹사이트) 고르기 목록 — 이미 등록된 계정에 적힌 값 + 예시 (2026-10-21 요청
+  // "예제에 있는 걸 골라서 넣거나, 조금만 쓰면 채워지게"). 회사 정보라 모든 아이디가 같이 쓴다 —
+  // 어느 메일에나 서명으로 붙어 나가는 값이다. 전화번호·직함은 사람마다 달라 넣지 않는다.
+  const all: any[] = await MailAccount.find({}, { senderCompany: 1, senderAddress: 1, senderWebsite: 1 }).lean();
+  // 많이 쓰인 값부터. 서명은 해외로 나가는 영문이라, 한글이 섞인 값(시험용 "주소 123" 등)은 뺀다.
+  const distinct = (key: string, fallback: string[]) => {
+    const count = new Map<string, number>();
+    for (const a of all) {
+      const v = String(a[key] || '').trim();
+      if (v && !/[가-힣]/.test(v)) count.set(v, (count.get(v) || 0) + 1);
+    }
+    const ranked = [...count].sort((x, y) => y[1] - x[1]).map(([v]) => v);
+    return [...new Set([...ranked, ...fallback])].slice(0, 5);
+  };
+  const signaturePresets = {
+    companies: distinct('senderCompany', ['Yogi Corporation Inc.']),
+    addresses: distinct('senderAddress', ['201, 125, Bongeunsa-ro, Gangnam-gu, Seoul, Korea']),
+    websites: distinct('senderWebsite', ['www.yogico.kr']),
+  };
+
   return NextResponse.json({
     success: true,
     accounts: list.map(sanitizeMailAccount),
     master: isMasterUser(user),
+    signaturePresets,
   });
 }
 
