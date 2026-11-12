@@ -268,14 +268,15 @@ export async function fetchRecent(
  */
 export async function fetchSinceBatch(
   settings: ImapConfig,
-  { folder, since, afterUid = 0, limit = 40 }: { folder: string; since: Date; afterUid?: number; limit?: number },
+  { folder, since, before, afterUid = 0, limit = 40 }: { folder: string; since: Date; before?: Date; afterUid?: number; limit?: number },
 ): Promise<{ messages: FetchedMessage[]; total: number; remaining: number; lastUid: number; uidNext: number }> {
   return withClient(settings, async (client) => {
     const lock = await client.getMailboxLock(folder);
     try {
       const uidNext = (client.mailbox as any).uidNext || 0;
       if ((client.mailbox as any).exists === 0) return { messages: [], total: 0, remaining: 0, lastUid: afterUid, uidNext };
-      const found = ((await client.search({ since }, { uid: true })) || []) as number[];
+      // before — 이 날짜 전 메일만 (옛 메일 가져오기에서 이미 있는 기간을 다시 내려받지 않게, ingest.ts importOldMail)
+      const found = ((await client.search(before ? { since, before } : { since }, { uid: true })) || []) as number[];
       const all = [...found].sort((a, b) => a - b);
       const pending = all.filter((u) => u > afterUid);
       const pick = pending.slice(0, limit);

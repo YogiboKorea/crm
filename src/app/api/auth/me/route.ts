@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { isMasterUser } from '@/lib/masters';
+import { canUseAiChat } from '@/lib/ai/chat-access';
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret');
 
@@ -21,7 +22,9 @@ export async function GET() {
     return NextResponse.json({
       authenticated: true,
       username,
-      isMaster
+      isMaster,
+      // 🤖 AI 메일 비서 메뉴를 보여줄지 — 대표님 전용 (lib/ai/chat-access.ts)
+      aiChat: canUseAiChat(username),
     });
   } catch (err) {
     return NextResponse.json({ authenticated: false }, { status: 401 });

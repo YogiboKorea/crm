@@ -337,8 +337,8 @@ async function ingestFolder(
     limit: number; recent?: number; imapUser: string; settings: any;
     accountId: string; accountLabel: string;
     learned?: LearnedGroups | null; knownGroups?: string[];
-    /** 기간 가져오기 — 이 날짜 이후 메일을 afterUid 뒤부터 limit 통 (runBackfill) */
-    backfill?: { since: Date; afterUid: number };
+    /** 기간 가져오기 — 이 날짜 이후(before 가 있으면 그 전까지) 메일을 afterUid 뒤부터 limit 통 (runBackfill · importOldMail) */
+    backfill?: { since: Date; before?: Date; afterUid: number };
   },
 ): Promise<{ stat: FolderStat; pendingIds: string[]; replies: MatchedReply[]; window?: { total: number; remaining: number; lastUid: number } }> {
   const accountId = opts.accountId;
@@ -357,7 +357,7 @@ async function ingestFolder(
   const replies: MatchedReply[] = [];
 
   const since = opts.backfill
-    ? await fetchSinceBatch(scoped, { folder, since: opts.backfill.since, afterUid: opts.backfill.afterUid, limit: opts.limit })
+    ? await fetchSinceBatch(scoped, { folder, since: opts.backfill.since, before: opts.backfill.before, afterUid: opts.backfill.afterUid, limit: opts.limit })
     : null;
   const batch = since
     ? { messages: since.messages }
@@ -690,6 +690,73 @@ export async function runBackfill(opts: {
     out.errors.push(String(e?.message || e));
     out.done = true;
   }
+  return out;
+}
+
+/**
+ * 옛 메일 가져오기 — 수집 창(2달, KEEP_DAYS)보다 오래된 메일을 **한 메일함에만** 넣는다
+ * (2026-11-12, 대표님 메일함 6개월 치 — AI 메일 비서가 더 오래된 일도 찾게).
+ *
+ * 평소 수집과 똑같이 분류 · 거래처 폴더 · 로컬 분석을 하되, **업체(리드) 연결은 하지 않는다.**
+ * 몇 달 전 메일이 지금 진행 중인 업체의 마지막 답장일 · 회신 필요 · 단계를 옛 날짜로 덮고,
+ * 잡아 둔 자동 재발송까지 취소하기 때문이다 (linkToLead).
+ * before 를 주면 그 날짜 전 메일만 받는다 — 이미 있는 기간을 다시 내려받지 않게. 겹쳐도 중복은 건너뛴다.
+ * 수집 위치(lastUid)는 뒤로 돌아가지 않는다 (ingestFolder setSyncState).
+ */
+/** 옛 메일 가져오기가 도는 폴더 — 받은편지함 + 거래처 폴더(INBOX 아래). 휴지통·보낸편지함 등은 뺀다
+ *  (일부러 지운 폴더가 휴지통에 남아 있다 — Trash.Yogibo Japan). 세어 보는 스크립트도 이것을 쓴다. */
+export function importFolders(boxes: string[], imapFolders: string[] = []): string[] {
+  return [...new Set(['INBOX', ...imapFolders, ...boxes.filter((b) => isGroupFolder(b))])].filter(Boolean);
+}
+
+export async function importOldMail(opts: {
+  accountId: string;
+  user: string;
+  since: Date;
+  before?: Date;
+  batchSize?: number;
+  onProgress?: (line: string) => void;
+}): Promise<{ folders: string[]; fetched: number; inserted: number; duplicate: number; errors: string[] }> {
+  await dbConnect();
+  // 업체 연결을 끈 설정 — 이 가져오기에만 쓴다 (저장된 설정은 그대로)
+  const settings = { ...(await getMailSettings()), autoMatchLead: false, autoMoveToReplied: false };
+  const account: any = await resolveAccount(opts.accountId, opts.user);
+  if (!account) throw new Error('메일 계정을 찾을 수 없습니다');
+  const accountId = String(account._id);
+  const accountLabel = account.accountName || account.smtpUser;
+  const { learned, knownGroups } = await learnForOwner(String(account.owner || ''), new Map());
+  const batchSize = Math.max(5, Math.min(100, Number(opts.batchSize) || 40));
+  const out = { folders: [] as string[], fetched: 0, inserted: 0, duplicate: 0, errors: [] as string[] };
+
+  // 계정 연결은 한 번만 연다 (아래 runIngest 설명과 같은 이유)
+  await withOpenAccount(toImapConfig(account, 'INBOX'), async (scoped) => {
+    let boxes: string[] = [];
+    try { boxes = await listMailboxes(scoped); } catch { boxes = []; }
+    out.folders = importFolders(boxes, account.imapFolders || []);
+    for (const folder of out.folders) {
+      let afterUid = 0;
+      for (;;) {
+        try {
+          const r = await ingestFolder(scoped, folder, {
+            limit: batchSize, imapUser: account.smtpUser, settings, accountId, accountLabel, learned, knownGroups,
+            backfill: { since: opts.since, before: opts.before, afterUid },
+          });
+          out.fetched += r.stat.fetched;
+          out.inserted += r.stat.inserted;
+          out.duplicate += r.stat.duplicate;
+          for (const e of r.stat.errors) out.errors.push(`[${folder}] uid ${e.uid}: ${e.error}`);
+          const w = r.window || { total: 0, remaining: 0, lastUid: afterUid };
+          opts.onProgress?.(`${folder} — ${w.total - w.remaining}/${w.total} · 새로 ${out.inserted} · 중복 ${out.duplicate}`);
+          if (w.remaining <= 0 || r.stat.fetched === 0) break;
+          afterUid = w.lastUid;
+        } catch (e: any) {
+          // 폴더 하나가 실패해도 다음 폴더로 넘어간다
+          out.errors.push(`[${folder}] ${String(e?.message || e)}`);
+          break;
+        }
+      }
+    }
+  });
   return out;
 }
 

@@ -336,6 +336,17 @@ code {
   min-width: 20px;
   text-align: center;
 }
+/* 사이드바 아이콘 그림 (2026-11-12) — 이모지 대신 직접 만든 아이콘 세트 (public/icons/nav, 64px 를 줄여 쓴다) */
+.nav-icon img {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+}
+:root[data-sidebar-collapsed="true"] .nav-icon img {
+  width: 20px;
+  height: 20px;
+}
 .nav-label {
   transition: opacity 0.15s;
   flex: 1;
@@ -411,6 +422,12 @@ a.nav-item {
 }
 :root[data-sidebar-collapsed="true"] .nav-section-label {
   display: none;
+}
+.nav-section-icon {
+  width: 12px;
+  height: 12px;
+  margin-right: 5px;
+  vertical-align: -2px;
 }
 .nav-sub-divider {
   height: 1px;
@@ -530,6 +547,7 @@ a.nav-item {
 .nav-compose:focus-visible { outline: 2px solid var(--brand-text); outline-offset: 2px; }
 .nav-compose .nav-label { flex: none; }
 .nav-compose-icon { font-size: 15px; }
+.nav-compose-icon img { display: block; width: 18px; height: 18px; }   /* 파란 버튼 위라 흰색 그림 (compose.png) */
 :root[data-sidebar-collapsed="true"] .nav-compose { padding: 10px 0; }
 
 /* ── Topbar ─────────────────────────────────────────────────── */
@@ -1327,6 +1345,7 @@ th.sortable:hover { color: var(--text-primary); }
   :root[data-sidebar-collapsed="true"] .nav-external { display: revert; }
   :root[data-sidebar-collapsed="true"] .nav-item { justify-content: flex-start; padding: 9px 10px; }
   :root[data-sidebar-collapsed="true"] .nav-icon { margin-right: 8px; font-size: 14px; }
+  :root[data-sidebar-collapsed="true"] .nav-icon img { width: 18px; height: 18px; }
   :root[data-sidebar-collapsed="true"] .nav-badge { margin-left: auto; }
 }
 

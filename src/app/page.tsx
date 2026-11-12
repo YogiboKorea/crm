@@ -40,7 +40,7 @@ export default function Home() {
                 리드에 매칭되지 않은 메일까지 전부 여기서 본다
                 (외부 B2B 메일 관리 도구를 대체하는 자리). */}
             <div className="nav-section-label">
-              📬 메일함
+              <img className="nav-section-icon" src="/icons/nav/section-mail.png" alt="" />메일함
               <span style={{ fontWeight: 400, opacity: 0.75, marginLeft: 4, textTransform: 'none' }}>
                 · 최근 2개월
               </span>
@@ -50,24 +50,30 @@ export default function Home() {
                 nav-item 이 아니다 (누른다고 지금 보던 화면이 바뀌지 않는다). */}
             <button className="nav-compose" id="navComposeBtn" type="button"
               title="새 메일 쓰기 — 받는 사람 여러 명·참조·첨부파일을 넣을 수 있습니다. 보내면 보낸메일함에 자동으로 남습니다">
-              <span className="nav-compose-icon" aria-hidden="true">✏️</span><span className="nav-label">메일 쓰기</span>
+              <span className="nav-compose-icon" aria-hidden="true"><img src="/icons/nav/compose.png" alt="" /></span><span className="nav-label">메일 쓰기</span>
             </button>
             <button className="nav-item active" data-view="tool-inbox" type="button" title="받은 메일함 — 이카운트 메일함에서 수집한 수신 메일. 거래처 폴더별로 나눠 볼 수 있고, 광고·자동발송은 자동으로 접힙니다. 숫자는 최근 2개월 기준">
-              <span className="nav-icon">📥</span><span className="nav-label">받은 메일함</span>
+              <span className="nav-icon"><img src="/icons/nav/inbox.png" alt="" /></span><span className="nav-label">받은 메일함</span>
               <span className="nav-badge" data-nav-badge="inboxUnread"></span>
             </button>
             {/* 📤 보낸 메일함 — 받은 메일함과 따로 (대표님 요청 2026-10-20 "내가 보낸 것도 받은 메일함에 있으니 헷갈린다").
                 예전에는 받은 메일함 폴더 목록 맨 아래에 숨어 있었다. 이카운트 보낸메일함을 그대로 읽는다 (/api/mail/sent). */}
             <button className="nav-item" data-view="tool-sent" type="button" title="보낸 메일함 — 이카운트 보낸메일함을 그대로 보여줍니다. CRM·웹메일·아웃룩(IMAP)에서 보낸 메일이 모두 여기 모입니다">
-              <span className="nav-icon">📤</span><span className="nav-label">보낸 메일함</span>
+              <span className="nav-icon"><img src="/icons/nav/sent.png" alt="" /></span><span className="nav-label">보낸 메일함</span>
             </button>
             <button className="nav-item" data-view="tool-inbox-needsreply" type="button" title="회신 필요 — 상대가 질문·요청을 보냈고 아직 우리가 답하지 않은 메일 (최근 2개월)">
-              <span className="nav-icon">⚠️</span><span className="nav-label">회신 필요</span>
+              <span className="nav-icon"><img src="/icons/nav/needs-reply.png" alt="" /></span><span className="nav-label">회신 필요</span>
               <span className="nav-badge" data-nav-badge="inboxNeedsReply"></span>
             </button>
             <button className="nav-item" data-view="tool-deadlines" type="button" title="기한 관리 — 회신 기한이 잡힌 메일. 기한은 본문에서 자동 추출됩니다 (최근 2개월)">
-              <span className="nav-icon">⏰</span><span className="nav-label">기한 관리</span>
+              <span className="nav-icon"><img src="/icons/nav/deadlines.png" alt="" /></span><span className="nav-label">기한 관리</span>
               <span className="nav-badge" data-nav-badge="inboxDeadlines"></span>
+            </button>
+            {/* 🤖 AI 메일 비서 — 대표님 메일을 Claude 가 찾아 읽고 답·조언 (2026-11-12, 자리: 대표님이 짚어 주신 기한 관리 바로 아래).
+                대표님 전용이라 처음엔 숨겨 두고, 로그인 확인(/api/auth/me aiChat)이 되면 app.js 가 보이게 한다. */}
+            <button className="nav-item" id="navAiChat" data-view="tool-ai-chat" type="button" style={{ display: 'none' }}
+              title="AI 메일 비서 — 메일에 대해 물어보면 Claude 가 대표님 메일을 직접 찾아 읽고 답과 조언을 드립니다">
+              <span className="nav-icon"><img src="/icons/nav/ai-chat.png" alt="" /></span><span className="nav-label">AI 메일 비서</span>
             </button>
             {/* 브리핑·휴지통은 숨김 — 화면 수를 줄이기 위해서다.
                 기능과 데이터는 그대로 살아 있고 (renderBriefingPage / renderTrashPage),
@@ -87,7 +93,7 @@ export default function Home() {
                 회사가 어디까지 왔는지를 위에서 아래로 한 줄기로 읽히게 배치.
                 예전에는 '발송함' 뒤를 다른 그룹으로 잘라놨는데, 같은 깔때기의
                 뒷부분이라 끊을 이유가 없었다. */}
-            <div className="nav-section-label">📊 리드 파이프라인</div>
+            <div className="nav-section-label"><img className="nav-section-icon" src="/icons/nav/section-pipeline.png" alt="" />리드 파이프라인</div>
             {/* 가져오기(CSV 업로드)는 숨김 — 리드는 AI 서칭으로 들어오고,
                 클라이언트가 엑셀을 직접 올릴 일이 없다. 되살리려면 주석만 풀면 된다.
             <button className="nav-item" data-view="pipeline-import" type="button" title="가져오기 — CSV/엑셀 업로드로 리드 데이터를 신규 등록">
@@ -110,23 +116,23 @@ export default function Home() {
             */}
             {/* 첫 화면 = 검증 완료. 클라이언트가 매일 여는 곳이 여기다. */}
             <button className="nav-item" data-view="pipeline-verified" type="button" title="AI 검증 완료 — AI 판정을 통과해 메일을 보낼 수 있는 곳. 여기서 보낼 곳을 골라 발송 리스트로 옮깁니다">
-              <span className="nav-icon">✅</span><span className="nav-label">AI 검증 완료</span>
+              <span className="nav-icon"><img src="/icons/nav/verified.png" alt="" /></span><span className="nav-label">AI 검증 완료</span>
               <span className="nav-badge" data-nav-badge="verified"></span>
             </button>
             <button className="nav-item" data-view="pipeline-contacted" type="button" title="발송 관리 — 보낼 메일 · 예약된 메일 · 나간 메일을 단계별로 봅니다">
-              <span className="nav-icon">📨</span><span className="nav-label">발송 관리</span>
+              <span className="nav-icon"><img src="/icons/nav/outreach.png" alt="" /></span><span className="nav-label">발송 관리</span>
               <span className="nav-badge" data-nav-badge="contacted"></span>
             </button>
             <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드. 회사명 옆 💬 버튼으로 주고받은 메일 확인">
-              <span className="nav-icon">💬</span><span className="nav-label">답장 받음</span>
+              <span className="nav-icon"><img src="/icons/nav/replied.png" alt="" /></span><span className="nav-label">답장 받음</span>
               <span className="nav-badge" data-nav-badge="replied"></span>
             </button>
             <button className="nav-item" data-view="pipeline-negotiating" type="button" title="대화 진행 중 — 조건/일정/가격 등 실제 협상 오가는 상태">
-              <span className="nav-icon">🤝</span><span className="nav-label">대화 진행 중</span>
+              <span className="nav-icon"><img src="/icons/nav/negotiating.png" alt="" /></span><span className="nav-label">대화 진행 중</span>
               <span className="nav-badge" data-nav-badge="negotiating"></span>
             </button>
             <button className="nav-item" data-view="pipeline-partner" type="button" title="파트너십 확정 — 계약/합의 완료된 실 파트너 업체">
-              <span className="nav-icon">⭐</span><span className="nav-label">파트너십 확정</span>
+              <span className="nav-icon"><img src="/icons/nav/partner.png" alt="" /></span><span className="nav-label">파트너십 확정</span>
               <span className="nav-badge" data-nav-badge="partner"></span>
             </button>
 
@@ -137,15 +143,15 @@ export default function Home() {
                 출처가 다르고, 검증도 따로 돌려야 하고, "내가 올린 그 파일"을
                 다시 찾아보는 일이 잦다. 설정·도구 안에 묻어두면 도구 하나로
                 보여 "내가 올린 게 어디 갔지"가 된다. 그래서 자기 구역으로 뺐다. */}
-            <div className="nav-section-label">📥 직접 올린 업체</div>
+            <div className="nav-section-label"><img className="nav-section-icon" src="/icons/nav/section-upload.png" alt="" />직접 올린 업체</div>
             <button className="nav-item" data-view="tool-legacy" type="button" title="올린 업체 목록 — 엑셀로 올린 업체. 올린 날짜별 폴더로 나뉘어 있습니다. 여기서 AI 검증과 직접 검토를 돌려 보낼 곳을 고릅니다">
               {/* 배지를 달지 않는다. 여기 숫자는 stage 집계에 없는 값이라
                   늘 0 으로 떴다 — 실제로는 1,900곳이 들어 있는데 0 이 붙어
                   "비었나" 로 읽힌다. 숫자가 필요하면 화면 안에서 보여준다. */}
-              <span className="nav-icon">📚</span><span className="nav-label">올린 업체 목록</span>
+              <span className="nav-icon"><img src="/icons/nav/uploaded-list.png" alt="" /></span><span className="nav-label">올린 업체 목록</span>
             </button>
             <button className="nav-item" id="navImportCsv" data-view="tool-legacy-import" type="button" title="엑셀·CSV 올리기 — 업체 목록 파일을 올립니다. 올린 데이터는 위 [올린 업체 목록]에서 관리됩니다">
-              <span className="nav-icon">⬆</span><span className="nav-label">엑셀·CSV 올리기</span>
+              <span className="nav-icon"><img src="/icons/nav/upload-csv.png" alt="" /></span><span className="nav-label">엑셀·CSV 올리기</span>
             </button>
             {/* [📋 올린 기록] 은 뺐다.
                 "언제 무엇을 올렸나" 는 [올린 업체 목록] 이 이미 올린 날짜별 폴더로
@@ -159,7 +165,7 @@ export default function Home() {
             <div className="nav-divider"></div>
 
             {/* ══════════ 그룹 D · 설정 · 도구 ══════════ */}
-            <div className="nav-section-label">⚙ 설정 · 도구</div>
+            <div className="nav-section-label"><img className="nav-section-icon" src="/icons/nav/section-settings.png" alt="" />설정 · 도구</div>
             {/* 예약 발송 관리 · 메일 수신 설정은 숨김 — 둘 다 한 번 맞춰두면
                 다시 들어갈 일이 없는 화면이다 (IMAP 연결은 이미 설정 완료).
             <button className="nav-item" data-view="tool-scheduled-mails" type="button" title="예약 발송 관리 — 대기중 예약 목록·취소·즉시발송·발송 여부 확인">
@@ -173,10 +179,10 @@ export default function Home() {
                 보내는 주소·서명이 정해져야 양식이 의미를 갖고, 대표 계정을 바꾸면
                 받은 메일함이 통째로 그 계정 기준으로 바뀐다. 순서가 곧 설정 순서다. */}
             <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 보내는 주소와 서명을 등록합니다. 대표 계정을 바꾸면 받은 메일함도 그 계정 기준으로 바뀝니다">
-              <span className="nav-icon">📬</span><span className="nav-label">메일 계정 관리</span>
+              <span className="nav-icon"><img src="/icons/nav/mail-accounts.png" alt="" /></span><span className="nav-label">메일 계정 관리</span>
             </button>
             <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 양식 — 발송할 메일 제목/본문 작성 (회사명 자동 대체)">
-              <span className="nav-icon">📝</span><span className="nav-label">메일 양식</span>
+              <span className="nav-icon"><img src="/icons/nav/templates.png" alt="" /></span><span className="nav-label">메일 양식</span>
             </button>
             {/* 추천 리스트는 숨김 — 고정 시드 54개짜리 구버전 기능이라,
                 웹에서 실시간으로 발굴하는 [🤖 AI 서칭] 이 대체한다.
@@ -187,15 +193,15 @@ export default function Home() {
             */}
             {/* 로그인 아이디·비밀번호 — 사람마다 아이디가 따로 있다 (david 대표님 · hoon 전무님 …) */}
             <button className="nav-item" data-view="tool-crm-account" type="button" title="CRM 계정 관리 — 내 로그인 아이디 확인 · 비밀번호 변경">
-              <span className="nav-icon">👤</span><span className="nav-label">CRM 계정 관리</span>
+              <span className="nav-icon"><img src="/icons/nav/crm-account.png" alt="" /></span><span className="nav-label">CRM 계정 관리</span>
             </button>
             <button className="nav-item" data-view="tool-user-guide" type="button" title="사용 설명서 — 처음 쓰시는 분을 위한 단계별 가이드">
-              <span className="nav-icon">📖</span><span className="nav-label">사용 설명서</span>
+              <span className="nav-icon"><img src="/icons/nav/user-guide.png" alt="" /></span><span className="nav-label">사용 설명서</span>
             </button>
             {/* 🆕 최근 업데이트 — 날짜별로 무엇이 바뀌었고 어떻게 쓰는지 (2026-10-20, 미팅 전 요청).
                 새 항목이 있으면 NEW 표시 — 이 화면을 한 번 열면 사라진다 (브라우저마다 따로 기억) */}
             <button className="nav-item" data-view="tool-updates" type="button" title="최근 업데이트 — 날짜별로 무엇이 바뀌었고 어디서 어떻게 쓰는지">
-              <span className="nav-icon">🆕</span><span className="nav-label">최근 업데이트</span>
+              <span className="nav-icon"><img src="/icons/nav/updates.png" alt="" /></span><span className="nav-label">최근 업데이트</span>
               <span className="nav-badge nav-badge-new" data-nav-badge="updatesNew"></span>
             </button>
           </nav>
@@ -770,7 +776,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=1e8c6b56" strategy="afterInteractive" />
+      <Script src="/app.js?v=c2e45be0" strategy="afterInteractive" />
     </>
   );
 }
