@@ -305,6 +305,19 @@ export async function fetchSinceBatch(
   });
 }
 
+/** 기간 안 메일의 UID 목록만 (내용은 받지 않는다) — 옛 메일 가져오기에서 받을 수 없는 메일을 건너뛸 때 */
+export async function searchUids(settings: ImapConfig, folder: string, since: Date, before?: Date): Promise<number[]> {
+  return withClient(settings, async (client) => {
+    const lock = await client.getMailboxLock(folder);
+    try {
+      const found = ((await client.search(before ? { since, before } : { since }, { uid: true })) || []) as number[];
+      return [...found].sort((a, b) => a - b);
+    } finally {
+      lock.release();
+    }
+  });
+}
+
 /**
  * 첨부파일 1개를 메일 서버에서 그대로 받아온다.
  *

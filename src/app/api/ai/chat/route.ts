@@ -6,8 +6,11 @@ import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 import { AiChat, type IAiChat } from '@/models/AiChat';
 import { AiChatUsage } from '@/models/AiChatUsage';
 import { canUseAiChat, AI_CHAT_MAILBOX_OWNER } from '@/lib/ai/chat-access';
-import { runMailChat, AI_CHAT_MODEL, AI_CHAT_MONTHLY_KRW, MAX_CONTEXT_TOKENS, krwOf } from '@/lib/ai/mail-chat';
+import { runMailChat, pickModel, AI_CHAT_MODEL, AI_CHAT_MODELS, AI_CHAT_MONTHLY_KRW, MAX_CONTEXT_TOKENS, krwOf } from '@/lib/ai/mail-chat';
 import { KST_OFFSET_MS } from '@/lib/mail/period';
+import { InboundMail } from '@/models/InboundMail';
+import { accountIdsForOwner } from '@/lib/mail/scope';
+import { loadMailBody } from '@/lib/mail/body';
 
 export const runtime = 'nodejs';
 // 메일을 여러 통 찾아 읽으면 한 번 답하는 데 수십 초가 걸린다
@@ -16,8 +19,9 @@ export const maxDuration = 300;
 /**
  * 🤖 AI 메일 비서 (lib/ai/mail-chat.ts) — 대표님 전용 (lib/ai/chat-access.ts).
  *
- * GET    /api/ai/chat           → 내 대화 목록 · 이번 달 사용량
+ * GET    /api/ai/chat           → 내 대화 목록 · 이번 달 사용량 · 고를 수 있는 모델
  * GET    /api/ai/chat?id=…      → 대화 하나 (화면에 보일 질문·답·근거 메일)
+ * GET    /api/ai/chat?mail=…    → 근거 메일 한 통 (팝업용, 읽기만) — 읽는 메일함 안의 것만
  * POST   /api/ai/chat           → { conversationId?, message } — 답을 한 줄씩(JSON) 흘려 보낸다
  *                                  status(찾는 중) · text(답 글자) · sources(근거 메일) · done · error
  * DELETE /api/ai/chat?id=…      → 대화 지우기 (내 것만)
@@ -58,6 +62,31 @@ export async function GET(req: Request) {
   if (!user) return res!;
   await dbConnect();
   const id = new URL(req.url).searchParams.get('id');
+  const mailId = new URL(req.url).searchParams.get('mail');
+
+  // 근거 메일 팝업 — AI 가 읽는 메일함(대표님) 안의 메일만. 메일함 주인이 아닌 아이디(시험용 admin)도
+  // 답에 나온 메일을 열어 볼 수 있게 하는 읽기 전용 창이다 (메일 화면 API 는 자기 메일함만 연다).
+  if (mailId) {
+    if (!mongoose.isValidObjectId(mailId)) return NextResponse.json({ success: false, error: '메일을 찾을 수 없습니다' }, { status: 404 });
+    const ids = await accountIdsForOwner(AI_CHAT_MAILBOX_OWNER);
+    const m: any = await InboundMail.findOne({ _id: mailId, accountId: { $in: ids } }).lean();
+    if (!m) return NextResponse.json({ success: false, error: '메일을 찾을 수 없습니다' }, { status: 404 });
+    const body = await loadMailBody(m);   // 앞부분만 저장된 메일은 메일 서버에서 원문을 받아 온다
+    const addr = (a: any) => (a ? (a.name ? `${a.name} <${a.address}>` : String(a.address || '')) : '');
+    const text = body.text || String(body.html || '').replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<br\s*\/?>|<\/p>|<\/div>|<\/tr>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\n{3,}/g, '\n\n');
+    return NextResponse.json({
+      success: true,
+      mail: {
+        id: String(m._id), subject: m.subject || '', date: m.date, direction: m.direction,
+        from: addr(m.from), to: (m.to || []).map(addr), cc: (m.cc || []).map(addr),
+        group: m.group || '', attachments: (m.attachments || []).map((a: any) => a.filename).filter(Boolean),
+        text: text.slice(0, 40000), cut: !body.fromServer && (m.rawTruncated || text.length >= 4000),
+        bodyError: body.error || '',
+        translation: m.translation?.body || '', summary: m.analysis?.summary || '',
+      },
+    });
+  }
 
   if (id) {
     if (!mongoose.isValidObjectId(id)) return NextResponse.json({ success: false, error: '대화를 찾을 수 없습니다' }, { status: 404 });
@@ -77,6 +106,8 @@ export async function GET(req: Request) {
     success: true,
     user,
     model: AI_CHAT_MODEL,
+    defaultModel: AI_CHAT_MODEL,
+    models: AI_CHAT_MODELS,
     mailboxOwner: AI_CHAT_MAILBOX_OWNER,
     canOpenMails: user === AI_CHAT_MAILBOX_OWNER,   // 근거 메일 열기는 메일함 주인만 (다른 아이디는 메일 화면 범위 밖)
     keySet: !!process.env.ANTHROPIC_API_KEY,
@@ -142,12 +173,12 @@ export async function POST(req: Request) {
         try { controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n')); } catch { /* 화면이 닫혔다 */ }
       };
       try {
-        const r = await runMailChat({ history: conv?.messages || [], question, emit: send, signal: req.signal });
+        const r = await runMailChat({ history: conv?.messages || [], question, model: body.model, emit: send, signal: req.signal });
         const now = new Date();
         const turn = { at: now, model: r.model, ...r.usage };
         const shown: IAiChat['display'] = [
           { role: 'user', text: question, at: now },
-          { role: 'assistant', text: r.answer, sources: r.sources, at: now },
+          { role: 'assistant', text: r.answer, sources: r.sources, steps: r.steps, model: r.model, at: now },
         ];
         let id = conv ? String(conv._id) : '';
         if (conv) {
@@ -170,7 +201,7 @@ export async function POST(req: Request) {
       } catch (e: any) {
         // 답을 다 받기 전에 끊겨도(창을 닫았거나 오류) 그때까지 쓴 돈은 기록한다
         if (e?.usage?.usd > 0) {
-          await AiChatUsage.create({ user, at: new Date(), model: AI_CHAT_MODEL, conversationId: conv ? String(conv._id) : '', ...e.usage, failed: true })
+          await AiChatUsage.create({ user, at: new Date(), model: pickModel(body.model), conversationId: conv ? String(conv._id) : '', ...e.usage, failed: true })
             .catch((err: any) => console.error('[ai-chat] usage log', err?.message || err));
         }
         if (!(e instanceof Anthropic.APIUserAbortError)) {

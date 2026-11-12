@@ -16,6 +16,8 @@ export interface IAiChat extends Document {
     role: 'user' | 'assistant';
     text: string;
     sources?: Array<{ id: string; date: string; from: string; subject: string }>;
+    steps?: Array<{ kind: string; text: string }>;   // 메일을 찾고 읽은 단계 (화면에 접힌 한 줄로)
+    model?: string;                                   // 답한 모델
     at: Date;
   }>;
   turns: Array<{
@@ -44,6 +46,8 @@ const AiChatSchema = new Schema<IAiChat>({
       role: { type: String, enum: ['user', 'assistant'], required: true },
       text: { type: String, default: '' },
       sources: { type: Schema.Types.Mixed, default: undefined },
+      steps: { type: Schema.Types.Mixed, default: undefined },
+      model: { type: String, default: '' },
       at: { type: Date, default: Date.now },
     }],
     default: [],
@@ -65,6 +69,12 @@ const AiChatSchema = new Schema<IAiChat>({
 }, { timestamps: true });
 
 AiChatSchema.index({ user: 1, updatedAt: -1 });
+
+// 개발 서버는 처음 만든 mongoose 모델을 계속 쓴다 — 새로 넣은 칸(steps·model)이 조용히 버려지지 않게 예전 모델은 버린다
+const stale = mongoose.models.AiChat as any;
+if (stale && !stale.schema.path('display')?.schema?.path('steps')) {
+  mongoose.deleteModel('AiChat');
+}
 
 export const AiChat =
   (mongoose.models.AiChat as mongoose.Model<IAiChat>) ||

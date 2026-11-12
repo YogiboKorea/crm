@@ -26,6 +26,19 @@ import { countSince, replyWindowFilter, REPLY_WINDOW_DAYS, KST_OFFSET_MS } from 
 // ── 설정 ─────────────────────────────────────────────────────────────
 
 export const AI_CHAT_MODEL = process.env.AI_CHAT_MODEL || 'claude-opus-5-5';
+/**
+ * 화면에서 고를 수 있는 모델 — 실제 Claude 처럼 입력창에서 고른다, 기본은 Opus 5.5 (2026-11-12 요청).
+ * 사용액은 질문마다 실제로 쓴 모델 단가로 센다 (PRICE).
+ */
+export const AI_CHAT_MODELS = [
+  { id: 'claude-opus-5-5', label: 'Opus 5.5', desc: '가장 똑똑함 — 여러 메일을 엮어 판단하고 조언' },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', desc: '빠르고 비용은 절반 — 대부분의 질문에 충분' },
+  { id: 'claude-haiku-5-5', label: 'Haiku 5.5', desc: '가장 빠르고 저렴 — 간단한 찾기·요약' },
+];
+/** 화면이 보낸 모델이 목록에 없으면 기본 모델 */
+export function pickModel(id?: string | null): string {
+  return AI_CHAT_MODELS.some((m) => m.id === id) ? String(id) : AI_CHAT_MODEL;
+}
 const EFFORT = (process.env.AI_CHAT_EFFORT || 'medium') as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /**
  * 한 달 사용 한도 (원) — 넘으면 다음 달 1일까지 질문을 받지 않는다 (2026-11-12, Opus 5.5 · 월 10만 원으로 정함).
@@ -57,8 +70,11 @@ const PRICE: Record<string, { in: number; out: number; read: number; write: numb
 
 export interface ChatUsage { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; usd: number; lastInputTokens: number }
 export interface ChatSource { id: string; date: string; from: string; subject: string }
+/** 메일을 찾고 읽은 단계 — 화면이 Claude 채팅처럼 답 위에 보여 준다 */
+export interface ChatStep { kind: 'search' | 'read' | 'list'; text: string }
 export type ChatEvent =
   | { type: 'status'; text: string }
+  | { type: 'step'; kind: ChatStep['kind']; text: string }
   | { type: 'text'; text: string };
 
 export function usdOf(model: string, u: Pick<ChatUsage, 'inputTokens' | 'outputTokens' | 'cacheRead' | 'cacheWrite'>): number {
@@ -276,14 +292,33 @@ async function runTool(name: string, input: any, ctx: ToolCtx): Promise<any> {
   return { error: `모르는 도구: ${name}` };
 }
 
+/** 지금 하는 일 — 화면이 움직이는 표시와 함께 보여 준다 */
 function statusText(name: string, input: any): string {
   if (name === 'search_mails') {
     const what = [input.query, input.company, input.sender].filter(Boolean).join(' · ');
-    return `🔎 메일 찾는 중${what ? ` — ${what}` : ''}`;
+    return `메일 찾는 중${what ? ` — ${what}` : ''}`;
   }
-  if (name === 'read_mail') return '📖 메일 읽는 중';
-  if (name === 'list_open_items') return input.kind === 'deadlines' ? '⏰ 기한 목록 보는 중' : '⚠️ 회신 필요 목록 보는 중';
-  return '…';
+  if (name === 'read_mail') return '메일 읽는 중';
+  if (name === 'list_open_items') return input.kind === 'deadlines' ? '기한 목록 보는 중' : '회신 필요 목록 보는 중';
+  return '생각하는 중';
+}
+
+/** 끝난 단계 한 줄 — 무엇을 찾아 몇 통 나왔는지, 어느 메일을 읽었는지 */
+function stepOf(name: string, input: any, out: any): ChatStep {
+  if (name === 'read_mail') {
+    if (!out || out.error) return { kind: 'read', text: `메일 열기 실패 — ${out?.error || '알 수 없음'}` };
+    const who = String(out.from || '').replace(/\s*<[^>]*>\s*$/, '') || String(out.from || '');
+    return { kind: 'read', text: `${String(out.date || '').slice(5, 10).replace('-', '/')} ${who} — ${clip(out.subject, 70)}` };
+  }
+  if (name === 'list_open_items') {
+    return { kind: 'list', text: `${input.kind === 'deadlines' ? '기한 목록' : '회신 필요 목록'} — ${out?.total ?? 0}건` };
+  }
+  const what = [
+    input.query && `"${input.query}"`, input.company, input.sender,
+    (input.since || input.until) && `${input.since || ''}~${input.until || ''}`,
+    input.needs_reply_only && '회신 필요만',
+  ].filter(Boolean).join(' · ') || '최근 메일';
+  return { kind: 'search', text: `${what} — ${out?.total ?? 0}통` };
 }
 
 // ── 지시문 ───────────────────────────────────────────────────────────
@@ -298,6 +333,7 @@ const SYSTEM = `너는 요기보 코리아(Yogico)의 대표 박대진(David) �
 - 답장 문안을 원하시면 상대가 쓴 언어로 쓴다 (영어 메일이면 영어 문안 + 한국어 한두 줄 요약).
 
 찾는 요령
+- 메일함에는 2026년 1월부터의 메일이 있다 (그보다 오래된 것은 거래처 폴더에 있던 일부뿐). 그 전 일을 물으시면 메일이 남아 있지 않을 수 있다고 말씀드린다.
 - 영어 메일이 많으니 회사·제품·사람 이름은 영어로 찾아 보고, 안 나오면 철자·줄임말·도메인(sender)으로 다시 찾는다.
 - 오간 흐름이 궁금한 질문이면 그 업체 메일을 oldest 순으로 보고 마지막 몇 통은 read_mail 로 연다.
 - "답해야 할 것", "급한 것", "기한" 질문은 list_open_items 를 쓴다.
@@ -325,6 +361,7 @@ export interface ChatTurnResult {
   messages: any[];
   answer: string;
   sources: ChatSource[];
+  steps: ChatStep[];
   usage: ChatUsage;
   model: string;
   stop: string;
@@ -337,11 +374,14 @@ export interface ChatTurnResult {
 export async function runMailChat(opts: {
   history: any[];
   question: string;
+  /** 화면에서 고른 모델 (없거나 목록 밖이면 기본 — Opus 5.5) */
+  model?: string;
   emit: (ev: ChatEvent) => void;
   signal?: AbortSignal;
 }): Promise<ChatTurnResult> {
   const anthropic = client();
-  const model = AI_CHAT_MODEL;
+  const model = pickModel(opts.model);
+  const steps: ChatStep[] = [];
   const ids = await accountIdsForOwner(AI_CHAT_MAILBOX_OWNER);
   const ctx: ToolCtx = { ids, read: new Map(), lastHits: [] };
   const messages: any[] = [...opts.history, { role: 'user', content: opts.question }];
@@ -427,6 +467,9 @@ export async function runMailChat(opts: {
         opts.emit({ type: 'status', text: statusText(c.name, c.input) });
         try {
           const out = await runTool(c.name, c.input, ctx);
+          const step = stepOf(c.name, c.input, out);
+          steps.push(step);
+          opts.emit({ type: 'step', ...step });
           return { type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(out) };
         } catch (e: any) {
           return { type: 'tool_result', tool_use_id: c.id, is_error: true, content: `실행 실패: ${e?.message || e}` };
@@ -434,6 +477,7 @@ export async function runMailChat(opts: {
       }));
       // 도구 결과는 한 메시지에 모두 담아 보낸다
       messages.push({ role: 'user', content: results });
+      opts.emit({ type: 'status', text: '생각하는 중' });
     }
   } catch (e: any) {
     // 중간에 끊겨도 그때까지 쓴 만큼은 사용액에 넣어야 한다 — 부른 쪽이 기록한다 (app/api/ai/chat)
@@ -444,5 +488,5 @@ export async function runMailChat(opts: {
 
   usage.usd = usdOf(model, usage);
   const sources = ctx.read.size ? [...ctx.read.values()].slice(0, 8) : ctx.lastHits;
-  return { messages, answer: answer.trim(), sources, usage, model, stop };
+  return { messages, answer: answer.trim(), sources, steps, usage, model, stop };
 }

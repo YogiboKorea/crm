@@ -15,7 +15,7 @@ import { InboundMail } from '@/models/InboundMail';
 import { MailSyncState } from '@/models/MailSyncState';
 import { MailSettings } from '@/models/MailSettings';
 import { getMailSettings, foldersOf } from '@/lib/mail-settings';
-import { fetchNew, fetchRecent, fetchSinceBatch, listMailboxes, withOpenAccount, type ImapConfig } from './imap';
+import { fetchNew, fetchRecent, fetchSinceBatch, listMailboxes, searchUids, withOpenAccount, type ImapConfig } from './imap';
 import { parseMessage, type ParsedMail } from './parse';
 import { threadKey } from './thread';
 import { ruleClassify, shouldAnalyze, type RuleResult } from './classify';
@@ -693,6 +693,12 @@ export async function runBackfill(opts: {
   return out;
 }
 
+/** 옛 메일 가져오기가 도는 폴더 — 받은편지함 + 거래처 폴더(INBOX 아래). 휴지통·보낸편지함 등은 뺀다
+ *  (일부러 지운 폴더가 휴지통에 남아 있다 — Trash.Yogibo Japan). 세어 보는 스크립트도 이것을 쓴다. */
+export function importFolders(boxes: string[], imapFolders: string[] = []): string[] {
+  return [...new Set(['INBOX', ...imapFolders, ...boxes.filter((b) => isGroupFolder(b))])].filter(Boolean);
+}
+
 /**
  * 옛 메일 가져오기 — 수집 창(2달, KEEP_DAYS)보다 오래된 메일을 **한 메일함에만** 넣는다
  * (2026-11-12, 대표님 메일함 6개월 치 — AI 메일 비서가 더 오래된 일도 찾게).
@@ -702,21 +708,23 @@ export async function runBackfill(opts: {
  * 잡아 둔 자동 재발송까지 취소하기 때문이다 (linkToLead).
  * before 를 주면 그 날짜 전 메일만 받는다 — 이미 있는 기간을 다시 내려받지 않게. 겹쳐도 중복은 건너뛴다.
  * 수집 위치(lastUid)는 뒤로 돌아가지 않는다 (ingestFolder setSyncState).
+ *
+ * 큰 첨부가 몰린 묶음은 이카운트가 'Command failed' 로 끊는다 (실측 2026-11-12, 30MB 넘는 메일 여러 통).
+ * 묶음이 실패하면 그 자리부터 한 통씩 다시 받고, 한 통으로도 안 되는 메일은 건너뛰어 skipped 에 남긴다.
+ * 끊긴 자리부터 이어 받으려면 folders · startAfterUid 를 준다.
  */
-/** 옛 메일 가져오기가 도는 폴더 — 받은편지함 + 거래처 폴더(INBOX 아래). 휴지통·보낸편지함 등은 뺀다
- *  (일부러 지운 폴더가 휴지통에 남아 있다 — Trash.Yogibo Japan). 세어 보는 스크립트도 이것을 쓴다. */
-export function importFolders(boxes: string[], imapFolders: string[] = []): string[] {
-  return [...new Set(['INBOX', ...imapFolders, ...boxes.filter((b) => isGroupFolder(b))])].filter(Boolean);
-}
-
 export async function importOldMail(opts: {
   accountId: string;
   user: string;
   since: Date;
   before?: Date;
   batchSize?: number;
+  /** 이 폴더만 (없으면 받은편지함 + 거래처 폴더 전부) */
+  folders?: string[];
+  /** 폴더별로 이 UID 다음부터 (끊긴 자리에서 이어 받기) */
+  startAfterUid?: Record<string, number>;
   onProgress?: (line: string) => void;
-}): Promise<{ folders: string[]; fetched: number; inserted: number; duplicate: number; errors: string[] }> {
+}): Promise<{ folders: string[]; fetched: number; inserted: number; duplicate: number; errors: string[]; skipped: string[] }> {
   await dbConnect();
   // 업체 연결을 끈 설정 — 이 가져오기에만 쓴다 (저장된 설정은 그대로)
   const settings = { ...(await getMailSettings()), autoMatchLead: false, autoMoveToReplied: false };
@@ -726,33 +734,47 @@ export async function importOldMail(opts: {
   const accountLabel = account.accountName || account.smtpUser;
   const { learned, knownGroups } = await learnForOwner(String(account.owner || ''), new Map());
   const batchSize = Math.max(5, Math.min(100, Number(opts.batchSize) || 40));
-  const out = { folders: [] as string[], fetched: 0, inserted: 0, duplicate: 0, errors: [] as string[] };
+  const out = { folders: [] as string[], fetched: 0, inserted: 0, duplicate: 0, errors: [] as string[], skipped: [] as string[] };
 
   // 계정 연결은 한 번만 연다 (아래 runIngest 설명과 같은 이유)
   await withOpenAccount(toImapConfig(account, 'INBOX'), async (scoped) => {
     let boxes: string[] = [];
     try { boxes = await listMailboxes(scoped); } catch { boxes = []; }
-    out.folders = importFolders(boxes, account.imapFolders || []);
+    out.folders = opts.folders?.length ? opts.folders : importFolders(boxes, account.imapFolders || []);
     for (const folder of out.folders) {
-      let afterUid = 0;
+      let afterUid = opts.startAfterUid?.[folder] || 0;
+      let limit = batchSize;
+      let uids: number[] | null = null;   // 받을 수 없는 메일을 건너뛸 때만 읽는다
+      let failsInRow = 0;
       for (;;) {
         try {
           const r = await ingestFolder(scoped, folder, {
-            limit: batchSize, imapUser: account.smtpUser, settings, accountId, accountLabel, learned, knownGroups,
+            limit, imapUser: account.smtpUser, settings, accountId, accountLabel, learned, knownGroups,
             backfill: { since: opts.since, before: opts.before, afterUid },
           });
+          failsInRow = 0;
           out.fetched += r.stat.fetched;
           out.inserted += r.stat.inserted;
           out.duplicate += r.stat.duplicate;
           for (const e of r.stat.errors) out.errors.push(`[${folder}] uid ${e.uid}: ${e.error}`);
           const w = r.window || { total: 0, remaining: 0, lastUid: afterUid };
-          opts.onProgress?.(`${folder} — ${w.total - w.remaining}/${w.total} · 새로 ${out.inserted} · 중복 ${out.duplicate}`);
+          opts.onProgress?.(`${folder} — ${w.total - w.remaining}/${w.total} · 새로 ${out.inserted} · 중복 ${out.duplicate}${limit === 1 ? ' (한 통씩)' : ''}`);
           if (w.remaining <= 0 || r.stat.fetched === 0) break;
           afterUid = w.lastUid;
         } catch (e: any) {
-          // 폴더 하나가 실패해도 다음 폴더로 넘어간다
-          out.errors.push(`[${folder}] ${String(e?.message || e)}`);
-          break;
+          // 연달아 계속 실패하면 메일 하나 문제가 아니라 연결 문제다 — 이 폴더는 여기서 멈춘다
+          if (++failsInRow > 5) {
+            out.errors.push(`[${folder}] uid ${afterUid} 다음에서 계속 실패해 멈춤: ${String(e?.message || e)}`);
+            break;
+          }
+          if (limit > 1) { limit = 1; continue; }   // 큰 메일이 몰린 묶음 — 그 자리부터 한 통씩
+          // 한 통으로도 안 되는 메일은 건너뛴다 (아주 큰 첨부 등) — 다음 메일부터 다시 묶음으로
+          uids = uids || await searchUids(scoped, folder, opts.since, opts.before);
+          const bad = uids.find((u) => u > afterUid);
+          if (bad == null) break;
+          out.skipped.push(`${folder} uid ${bad}`);
+          afterUid = bad;
+          limit = batchSize;
         }
       }
     }

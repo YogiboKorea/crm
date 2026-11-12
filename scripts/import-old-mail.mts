@@ -9,6 +9,7 @@
  * 사용: npx tsx scripts/import-old-mail.mts                          (세어 보기만 — 넣지 않는다)
  *       npx tsx scripts/import-old-mail.mts --apply                  (실제로 넣기)
  *       옵션: --owner=david --since=2026-01-01 --before=2026-07-17
+ *       끊긴 자리부터 이어 받기: --folders=INBOX --after-uid=52999 --apply
  * 되돌리기: inboundmails 에서 tags 에 표시가 있는 것만 지우면 된다 (아래 TAG).
  */
 import mongoose from 'mongoose';
@@ -22,6 +23,8 @@ const SINCE_DAY = arg('since', '2026-01-01');
 const BEFORE_DAY = arg('before', '2026-07-17');
 const SINCE = new Date(`${SINCE_DAY}T00:00:00+09:00`);
 const BEFORE = new Date(`${BEFORE_DAY}T00:00:00+09:00`);
+const FOLDERS = arg('folders', '') ? arg('folders', '').split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+const AFTER_UID = Number(arg('after-uid', '0')) || 0;
 const TAG = `old-mail-import-${new Date().toISOString().slice(0, 10)}`;
 const MB = (n: number) => `${(n / 1024 / 1024).toFixed(1)}MB`;
 
@@ -41,11 +44,11 @@ let total = 0, bytes = 0;
 await withOpenAccount(toImapConfig(acc, 'INBOX'), async (sc: any) => {
   const client = sc.__client;
   const boxes = (await client.list()).filter((b: any) => !b.flags?.has?.('\\Noselect')).map((b: any) => b.path);
-  const folders = importFolders(boxes, acc.imapFolders || []);   // 넣을 때와 같은 폴더 (휴지통 등은 뺀다)
+  const folders = FOLDERS || importFolders(boxes, acc.imapFolders || []);   // 넣을 때와 같은 폴더 (휴지통 등은 뺀다)
   for (const f of folders) {
     const lock = await client.getMailboxLock(f);
     try {
-      const uids = ((await client.search({ since: SINCE, before: BEFORE }, { uid: true })) || []) as number[];
+      const uids = (((await client.search({ since: SINCE, before: BEFORE }, { uid: true })) || []) as number[]).filter((u) => u > AFTER_UID);
       let size = 0;
       if (uids.length) for await (const m of client.fetch(uids.join(','), { uid: true, size: true }, { uid: true })) size += m.size || 0;
       total += uids.length; bytes += size;
@@ -66,10 +69,13 @@ const r = await importOldMail({
   accountId: String(acc._id), user: OWNER, since: SINCE, before: BEFORE,
   // 첨부까지 통째로 받아 오므로 한 번에 적게 — 큰 첨부가 몰린 묶음에서 메모리가 터지지 않게
   batchSize: 10,
+  folders: FOLDERS,
+  startAfterUid: FOLDERS && AFTER_UID ? Object.fromEntries(FOLDERS.map((f) => [f, AFTER_UID])) : undefined,
   onProgress: (line) => { if (Date.now() - lastLog > 15_000) { lastLog = Date.now(); console.log(`  … ${line} (${Math.round((Date.now() - t0) / 1000)}초)`); } },
 });
 console.log(`넣기 끝 — 폴더 ${r.folders.length}개 · 받은 ${r.fetched}통 · 새로 넣은 ${r.inserted}통 · 이미 있던 ${r.duplicate}통 · 오류 ${r.errors.length}건 · ${Math.round((Date.now() - t0) / 1000)}초`);
 for (const e of r.errors.slice(0, 10)) console.log('  ! ' + e);
+if (r.skipped.length) console.log(`받지 못해 건너뛴 메일 ${r.skipped.length}통: ${r.skipped.join(' · ')}`);
 
 // 3) 표시 달기 — 이번에 넣은 것만 (나중에 골라 지울 수 있게)
 const ids = await accountIdsForOwner(OWNER);

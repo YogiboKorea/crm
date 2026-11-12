@@ -8306,6 +8306,7 @@ function syncBodyScrollLock() {
     document.getElementById('sendLogicModalRoot') ||
     document.getElementById('outboxPeekRoot') ||
     document.getElementById('aiChatGuideRoot') ||
+    document.getElementById('aiChatMailRoot') ||
     [...document.querySelectorAll('.modal-backdrop')].some((el) => el.style.display === 'flex'),
   );
   if (open) {
@@ -12409,8 +12410,18 @@ var UPDATE_LOG = [
           '사이드바 <b>[기한 관리]</b> 바로 아래 <b>[🤖 AI 메일 비서]</b>. 대표님 아이디에서만 보입니다.',
           '"Dangaard 와 어디까지 얘기됐어?", "이번 주에 꼭 답해야 할 거 정리해 줘" 처럼 물으면 Claude 가 대표님 메일함(david@yogico.kr)을 직접 찾아 읽고, <b>근거 메일</b>과 함께 답과 조언을 드립니다.',
           '영어 메일도 한국어로 정리하고, 원하시면 답장 문안도 써 드립니다. 메일을 보내거나 지우지는 않습니다.',
+          '실제 Claude 처럼 — 메일을 찾고 읽는 과정이 답 위에 보이고, 입력창 왼쪽 아래에서 <b>모델(Opus 5.5 기본 · Sonnet 5.5 · Haiku 5.5)</b>을 고릅니다. 답 아래 <b>근거 메일</b>을 누르면 그 메일이 팝업으로 열립니다.',
           '무엇까지 되는지는 채팅 창 위쪽 <b>[📘 사용 방법]</b> 버튼을 누르면 팝업으로 보입니다 (질문 예시를 누르면 입력칸에 들어갑니다).',
           '질문 한 번에 몇백 원 정도 Claude API 사용료가 나갑니다. 한 달 한도는 <b>10만 원</b> — 이번 달 사용액이 입력칸 아래에 보이고, 80%를 넘으면 미리 알려 드리고 다 쓰면 다음 달 1일까지 쉽니다.',
+        ],
+        go: 'tool-ai-chat', goLabel: 'AI 메일 비서',
+      },
+      {
+        kind: 'data', icon: '📥', title: '대표님 메일함 — 2026년 1월부터 메일 3,773통 더 넣음',
+        how: [
+          '그동안은 7월 중순 이후 메일만 있었는데, <b>1월~7월 중순 메일 3,773통</b>을 이카운트 메일 서버에서 가져와 넣었습니다 (대표님 메일함만).',
+          '<b>[🤖 AI 메일 비서]</b>가 올해 초 일까지 찾아 답할 수 있습니다. 받은 메일함·거래처 폴더에서도 보입니다.',
+          '옛 메일이라 업체 단계·회신 필요·자동 재발송에는 영향을 주지 않도록 넣었습니다.',
         ],
         go: 'tool-ai-chat', goLabel: 'AI 메일 비서',
       },
@@ -12788,7 +12799,7 @@ function renderUpdatesPage() {
 // 메일에 대해 물어보면 Claude 가 대표님 메일함을 직접 찾아 읽고 답·조언한다.
 // 서버: /api/ai/chat (lib/ai/mail-chat.ts) · 대표님 전용 (lib/ai/chat-access.ts)
 // ══════════════════════════════════════════════════════════════
-var _aiChat = { loaded: false, denied: '', info: null, list: [], convId: null, display: [], running: false, status: '', draft: '' };
+var _aiChat = { loaded: false, denied: '', info: null, list: [], convId: null, display: [], running: false, draft: '', model: '', abort: null };
 
 const AI_CHAT_EXAMPLES = [
   '이번 주에 꼭 답해야 할 메일 정리해 줘',
@@ -12796,7 +12807,17 @@ const AI_CHAT_EXAMPLES = [
   'Dangaard 와는 지금 어디까지 얘기됐어?',
   'Yogibo Japan 포켓몬 건 진행 상황 알려 줘',
 ];
-const AI_CHAT_MODEL_LABEL = { 'claude-opus-5-5': 'Opus 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-haiku-5-5': 'Haiku 5.5' };
+const AI_CHAT_MODEL_LABEL = { 'claude-opus-5-5': 'Opus 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-haiku-5-5': 'Haiku 5.5', 'claude-opus-4-8': 'Opus 4.8' };
+
+/** 고른 모델 — 실제 Claude 처럼 입력창에서 고른다 (2026-11-12). 이 브라우저에 기억해 두고, 없거나 목록 밖이면 서버 기본(Opus 5.5) */
+function aiChatModel() {
+  const info = _aiChat.info || {};
+  const models = info.models || [];
+  let saved = '';
+  try { saved = localStorage.getItem('aiChatModel') || ''; } catch { /* 저장소를 못 쓰는 브라우저 */ }
+  const want = _aiChat.model || saved;
+  return models.some((m) => m.id === want) ? want : (info.defaultModel || 'claude-opus-5-5');
+}
 
 /** 답 글을 화면용으로 — 굵게·목록·제목만 살린다 (나머지는 모두 이스케이프) */
 function aiChatMd(text) {
@@ -12811,14 +12832,14 @@ function aiChatMd(text) {
     let m;
     if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) {
       if (list !== 'ul') { close(); out.push('<ul style="margin:4px 0 4px 18px;padding:0">'); list = 'ul'; }
-      out.push(`<li style="margin:2px 0">${inline(m[1])}</li>`);
+      out.push(`<li style="margin:3px 0">${inline(m[1])}</li>`);
     } else if ((m = line.match(/^\s*(\d+)[.)]\s+(.*)$/))) {
       if (list !== 'ol') { close(); out.push('<ol style="margin:4px 0 4px 20px;padding:0">'); list = 'ol'; }
-      out.push(`<li style="margin:2px 0">${inline(m[2])}</li>`);
+      out.push(`<li style="margin:3px 0">${inline(m[2])}</li>`);
     } else if ((m = line.match(/^#{1,4}\s+(.*)$/))) {
-      close(); out.push(`<div style="font-weight:800;margin:10px 0 4px">${inline(m[1])}</div>`);
+      close(); out.push(`<div style="font-weight:800;font-size:15px;margin:14px 0 4px">${inline(m[1])}</div>`);
     } else if (!line.trim()) {
-      close(); out.push('<div style="height:8px"></div>');
+      close(); out.push('<div style="height:10px"></div>');
     } else {
       close(); out.push(`<div>${inline(line)}</div>`);
     }
@@ -12827,37 +12848,68 @@ function aiChatMd(text) {
   return out.join('');
 }
 
-function aiChatMsgHtml(m) {
-  if (m.role === 'user') {
-    return `<div style="display:flex;justify-content:flex-end;margin:14px 0">
-      <div style="max-width:78%;background:var(--brand,#4f46e5);color:#fff;padding:10px 14px;border-radius:14px 14px 4px 14px;
-                  font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.text)}</div>
+/**
+ * 메일을 찾고 읽은 단계 — Claude 채팅처럼 답 위에 보여 준다 (2026-11-12 요청 "찾는 중·읽는 중도 Claude 채팅 같은 디자인으로").
+ * 답하는 동안은 펼쳐 두고 지금 하는 일에 움직이는 표시, 끝나면 "메일 2번 찾음 · 5통 읽음" 한 줄로 접는다 (눌러서 펼침).
+ */
+function aiChatStepsHtml(m) {
+  const steps = m.steps || [];
+  const icon = { search: '🔎', read: '📖', list: '📋' };
+  const line = (s) => `<div style="display:flex;gap:8px;align-items:flex-start;padding:2px 0;font-size:12.5px;line-height:1.55;color:var(--text-tertiary)">
+      <span style="flex-shrink:0;width:16px;text-align:center">${icon[s.kind] || '•'}</span>
+      <span style="min-width:0;word-break:break-word">${escapeHtml(s.text)}</span></div>`;
+  if (m.pending) {
+    if (!steps.length && !m.status) return '';
+    return `<div style="margin:2px 0 12px;padding:3px 0 3px 12px;border-left:2px solid var(--border-default)">
+      ${steps.map(line).join('')}
+      ${m.status ? `<div style="display:flex;gap:8px;align-items:center;padding:3px 0;font-size:12.5px">
+        <span class="ai-spin" aria-hidden="true"></span><span class="ai-shimmer">${escapeHtml(m.status)}…</span></div>` : ''}
     </div>`;
   }
-  // 근거 메일 열기는 메일함 주인(대표님)만 — 다른 아이디는 메일 화면이 그 메일을 열어 주지 않는다
-  const canOpen = !!(_aiChat.info && _aiChat.info.canOpenMails);
-  const srcRow = (s) => {
-    const label = `${escapeHtml(s.date || '')} · ${escapeHtml(s.from || '')} · <b>${escapeHtml(s.subject || '(제목 없음)')}</b>`;
-    const st = 'display:block;width:100%;text-align:left;padding:5px 8px;margin:3px 0;border-radius:7px;font-size:12px;'
-      + 'border:1px solid var(--border-subtle);background:var(--bg-surface-alt);color:var(--text-secondary);'
-      + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-    return canOpen
-      ? `<button type="button" class="ai-chat-src" data-mail-id="${escapeAttr(s.id)}" title="이 메일 열기" style="${st};cursor:pointer">${label}</button>`
-      : `<div style="${st}">${label}</div>`;
-  };
+  if (!steps.length) return '';
+  const n = (k) => steps.filter((s) => s.kind === k).length;
+  const parts = [n('search') && `메일 ${n('search')}번 찾음`, n('read') && `${n('read')}통 읽음`, n('list') && `목록 ${n('list')}번 확인`].filter(Boolean);
+  return `<details class="ai-steps" style="margin:2px 0 12px">
+    <summary style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:99px;font-size:12px;
+                    color:var(--text-tertiary);border:1px solid var(--border-subtle);background:var(--bg-surface-alt)">
+      ✓ ${escapeHtml(parts.join(' · '))} <span class="ai-steps-chev">▾</span></summary>
+    <div style="margin-top:6px;padding:3px 0 3px 12px;border-left:2px solid var(--border-default)">${steps.map(line).join('')}</div>
+  </details>`;
+}
+
+function aiChatMsgHtml(m, i) {
+  if (m.role === 'user') {
+    return `<div style="display:flex;justify-content:flex-end;margin:22px 0 16px">
+      <div style="max-width:82%;background:var(--bg-surface-alt);border:1px solid var(--border-subtle);color:var(--text-primary);
+                  padding:10px 16px;border-radius:18px;font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.text)}</div>
+    </div>`;
+  }
   const src = m.sources || [];
-  return `<div style="display:flex;gap:10px;margin:14px 0;align-items:flex-start">
-    <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;
-                justify-content:center"><img src="/icons/nav/ai-chat.png" alt="" style="width:20px;height:20px"></div>
-    <div style="min-width:0;max-width:86%;background:var(--bg-surface);border:1px solid var(--border-default);padding:11px 15px;
-                border-radius:4px 14px 14px 14px;font-size:13.5px;line-height:1.7;color:var(--text-primary);word-break:break-word">
-      <div ${m.pending ? 'id="aiChatPending"' : ''}>${m.text ? aiChatMd(m.text) : (m.pending ? '<span style="color:var(--text-tertiary)">메일을 살펴보는 중…</span>' : '')}</div>
-      ${m.error ? `<div style="margin-top:8px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;font-size:12.5px">⚠ ${escapeHtml(m.error)}</div>` : ''}
-      ${src.length ? `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border-subtle)">
-        <div style="font-size:11px;font-weight:800;color:var(--text-tertiary);margin-bottom:3px">📎 근거 메일${canOpen ? ' — 누르면 열립니다' : ''}</div>
+  const srcRow = (s) => `<button type="button" class="ai-chat-src" data-mail-id="${escapeAttr(s.id)}" title="이 메일 열기"
+      style="display:flex;gap:9px;align-items:center;width:100%;text-align:left;padding:7px 11px;margin:4px 0;border-radius:10px;cursor:pointer;
+             border:1px solid var(--border-subtle);background:var(--bg-surface);color:var(--text-secondary);font-size:12.5px">
+      <img src="/icons/nav/section-mail.png" alt="" style="width:16px;height:16px;flex-shrink:0">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="color:var(--text-primary)">${escapeHtml(s.subject || '(제목 없음)')}</b>
+        <span style="color:var(--text-tertiary)"> · ${escapeHtml(s.date || '')} · ${escapeHtml(s.from || '')}</span></span>
+    </button>`;
+  const modelLabel = AI_CHAT_MODEL_LABEL[m.model] || '';
+  // 답은 말풍선 없이 넓게 — Claude 채팅처럼 (2026-11-12 요청)
+  return `<div style="display:flex;gap:12px;margin:16px 0 26px;align-items:flex-start">
+    <img src="/icons/nav/ai-chat.png" alt="" style="width:26px;height:26px;flex-shrink:0;margin-top:1px">
+    <div style="flex:1;min-width:0;font-size:14.5px;line-height:1.75;color:var(--text-primary);word-break:break-word">
+      <div ${m.pending ? 'id="aiChatPendingSteps"' : ''}>${aiChatStepsHtml(m)}</div>
+      <div ${m.pending ? 'id="aiChatPending"' : ''}>${m.text ? aiChatMd(m.text) : ''}</div>
+      ${m.error ? `<div style="margin-top:8px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;font-size:12.5px">⚠ ${escapeHtml(m.error)}</div>` : ''}
+      ${src.length ? `<div style="margin-top:12px">
+        <div style="font-size:11.5px;font-weight:700;color:var(--text-tertiary);margin-bottom:2px">근거 메일 ${src.length}통 — 누르면 열립니다</div>
         ${src.map(srcRow).join('')}
       </div>` : ''}
-      ${m.usage ? `<div style="margin-top:6px;font-size:10.5px;color:var(--text-quaternary)">이번 답 약 ₩${Number(m.usage.krw || 0).toLocaleString()}</div>` : ''}
+      ${!m.pending && m.text ? `<div style="display:flex;gap:10px;align-items:center;margin-top:8px;font-size:11.5px;color:var(--text-quaternary)">
+        <button type="button" class="ai-chat-copy" data-idx="${i}" title="답을 복사합니다"
+          style="border:1px solid var(--border-subtle);background:var(--bg-surface);color:var(--text-tertiary);border-radius:7px;padding:3px 9px;font-size:11.5px;cursor:pointer">📋 복사</button>
+        ${modelLabel ? `<span>${escapeHtml(modelLabel)}</span>` : ''}
+        ${m.usage ? `<span>· 약 ₩${Number(m.usage.krw || 0).toLocaleString()}</span>` : ''}
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -12865,7 +12917,8 @@ function aiChatMsgHtml(m) {
 /**
  * 📘 사용 방법 — 채팅 창 위쪽 [📘 사용 방법] 버튼을 누르면 팝업으로 뜬다 (2026-11-12 요청).
  * 처음에는 화면 맨 아래에 펼쳐 두었는데 "아래 있으면 불편하다 — 위에 두고 누르면 팝업으로" 해서 옮겼다.
- * 할 수 있는 것 · 하지 않는 것 · 요령과 비용 · 질문 예시. 예시는 눌러도 바로 보내지 않고 입력칸에만 넣는다 (질문마다 비용).
+ * 이번 달 사용액도 여기서 본다 (입력창 아래 안내 줄은 "빼 달라" 해서 없앴다).
+ * 예시는 눌러도 바로 보내지 않고 입력칸에만 넣는다 (질문마다 비용).
  */
 const AI_CHAT_GUIDE_EXAMPLES = [
   'Arencia 단가 협상 지금까지 내용 정리해 줘',
@@ -12877,7 +12930,8 @@ const AI_CHAT_GUIDE_EXAMPLES = [
 ];
 
 function aiChatGuideHtml(info) {
-  const cap = Number(info?.month?.capKrw || 0);
+  const month = info?.month || {};
+  const cap = Number(month.capKrw || 0);
   const card = (icon, title, color, items) => `
     <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-top:3px solid ${color};border-radius:12px;padding:14px 16px;min-width:0">
       <div style="font-size:13.5px;font-weight:800;color:var(--text-primary);margin-bottom:8px">${icon} ${title}</div>
@@ -12897,24 +12951,27 @@ function aiChatGuideHtml(info) {
         '<b>할 일 정리</b> — 회신 필요(최근 14일)·기한(최근 2개월)을 CRM 화면과 같은 기준으로 묶어 드립니다.',
         '<b>요약·번역</b> — 긴 영어 메일도 한국어로 핵심만 정리합니다.',
         '<b>조언</b> — 상황 → 상대가 원하는 것 → 선택지와 추천 → 다음 할 일 순서로 말씀드립니다.',
-        '<b>답장 문안</b> — 상대 언어로 써 드립니다 (영어 메일이면 영어 + 한국어 요약). 복사해서 <b>[✏️ 메일 쓰기]</b>에 붙여 넣으세요.',
+        '<b>답장 문안</b> — 상대 언어로 써 드립니다 (영어 메일이면 영어 + 한국어 요약). 답 아래 <b>📋 복사</b>로 옮겨 <b>[✏️ 메일 쓰기]</b>에 붙여 넣으세요.',
         '<b>이어서 묻기</b> — 같은 대화 안에서는 앞 내용을 기억합니다 ("그럼 2번은 어떻게 답하지?").',
-        '<b>근거 메일 열기</b> — 답 아래 📎 근거 메일을 누르면 원문이 열립니다 (대표님 아이디).',
+        '<b>근거 메일 열기</b> — 답 아래 근거 메일을 누르면 그 메일이 팝업으로 열립니다.',
       ])}
       ${card('⛔', '하지 않는 것 · 한계', '#ef4444', [
         '메일을 <b>보내거나 지우거나 옮기지 않습니다</b> — 읽기만 합니다.',
         '<b>대표님 메일함(david@yogico.kr)만</b> 봅니다. 전무님 메일이나 다른 계정은 보지 않습니다.',
+        '<b>2026년 1월부터 지금까지</b>의 메일을 봅니다. 그보다 오래된 메일은 거래처 폴더에 있던 일부만 있습니다.',
         '<b>첨부파일 내용</b>은 읽지 못합니다 (파일 이름만 압니다).',
-        '9월 15일 이후 긴 메일은 <b>앞부분(4,000자)만</b> 저장되어 있어 뒷부분은 모를 수 있습니다.',
+        '긴 메일은 <b>앞부분(4,000자)만</b> 저장되어 있어 뒷부분은 모를 수 있습니다.',
         '인터넷 검색은 하지 않습니다 — <b>메일에 적힌 내용</b> 기준으로 답합니다.',
         'AI 라 가끔 틀릴 수 있습니다. 중요한 숫자·날짜는 <b>근거 메일</b>로 한 번 확인해 주세요.',
       ])}
       ${card('💡', '잘 쓰는 요령 · 비용', '#4f46e5', [
+        '<b>모델 고르기</b> — 입력창 왼쪽 아래에서 고릅니다. <b>Opus 5.5</b>(기본 · 가장 똑똑함) · <b>Sonnet 5.5</b>(빠르고 비용 절반) · <b>Haiku 5.5</b>(가장 빠르고 저렴, 간단한 찾기용).',
         '업체·제품 이름은 <b>영어로</b> 쓰면 더 잘 찾습니다 (Dangaard, Yogibo Japan, Arencia).',
         '<b>기간</b>을 붙이면 더 정확합니다 ("지난주", "10월부터", "이번 달").',
         '주제가 바뀌면 <b>[+ 새 대화]</b> — 같은 대화가 길어지면 앞 내용을 계속 다시 읽어 느려지고 비용이 늡니다.',
-        `비용: 질문 1번에 약 <b>100~500원</b> (읽는 메일이 많을수록 큽니다).${cap ? ` 한 달 한도 <b>₩${cap.toLocaleString()}</b> — 80%에서 알려 드리고, 다 쓰면 다음 달 1일까지 쉽니다.` : ''}`,
-        '지난 대화는 왼쪽 <b>[지난 대화]</b>에서 다시 열 수 있고, ✕ 로 지울 수 있습니다 (메일은 그대로).',
+        '답하는 중에 <b>■</b> 를 누르면 멈춥니다 (멈춘 답은 대화 기록에 남지 않습니다).',
+        `비용: 질문 1번에 약 <b>100~500원</b> (Opus 기준 · 읽는 메일이 많을수록 큽니다). 이번 달 사용 약 <b>₩${Number(month.krw || 0).toLocaleString()}</b> (질문 ${Number(month.questions || 0)}번)${cap ? ` / 한도 <b>₩${cap.toLocaleString()}</b> — 80%에서 알려 드리고, 다 쓰면 다음 달 1일까지 쉽니다.` : ''}`,
+        '지난 대화는 왼쪽 <b>[지난 대화]</b>에서 다시 열 수 있고, ✕ 로 지울 수 있습니다 (메일과 이번 달 사용액은 그대로).',
       ])}
     </div>
     <div style="margin-top:12px;background:var(--bg-surface-alt);border:1px solid var(--border-subtle);border-radius:12px;padding:12px 14px">
@@ -12965,7 +13022,81 @@ function openAiChatGuide() {
     if (!input || input.disabled) return;
     input.value = b.dataset.q;
     _aiChat.draft = input.value;
+    input.dispatchEvent(new Event('input'));
     input.focus();
+  }));
+}
+
+/** 근거 메일 팝업 (2026-11-12 요청 "근거 메일 누르면 그 메일이 팝업으로") */
+function closeAiChatMail() {
+  const el = document.getElementById('aiChatMailRoot');
+  if (!el) return;
+  el.remove();
+  document.removeEventListener('keydown', aiChatMailKey);
+  unlockBodyScroll();
+}
+function aiChatMailKey(e) { if (e.key === 'Escape') closeAiChatMail(); }
+
+async function openAiChatMail(id) {
+  // 메일함 주인(대표님)은 받은 메일함의 원래 메일 팝업 — 답장·첨부 받기까지 그대로 된다
+  if (_aiChat.info && _aiChat.info.canOpenMails) { openMailDetailModal(id); return; }
+  // 다른 아이디(시험용 admin)는 메일 화면이 그 메일을 열어 주지 않으므로 읽기 전용 창으로 연다
+  closeAiChatMail();
+  const root = document.createElement('div');
+  root.id = 'aiChatMailRoot';
+  root.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  root.innerHTML = '<div style="background:var(--bg-surface);border-radius:16px;padding:40px;color:var(--text-tertiary);font-size:14px">메일 불러오는 중…</div>';
+  document.body.appendChild(root);
+  lockBodyScroll();
+  root.addEventListener('click', (e) => { if (e.target === root) closeAiChatMail(); });
+  document.addEventListener('keydown', aiChatMailKey);
+  let m;
+  try {
+    const data = await safeJsonFetch(`/api/ai/chat?mail=${encodeURIComponent(id)}`);
+    if (!data?.success) throw new Error(data?.error || '메일을 열지 못했습니다');
+    m = data.mail;
+  } catch (e) {
+    if (!document.getElementById('aiChatMailRoot')) return;
+    root.innerHTML = `<div style="background:var(--bg-surface);border-radius:16px;padding:28px 32px;color:#991b1b;font-size:14px">
+      ⚠ ${escapeHtml(String(e.message || e))}
+      <div style="margin-top:14px;text-align:right"><button type="button" id="aiChatMailClose" style="padding:6px 14px;border-radius:8px;border:1px solid var(--border-default);background:var(--bg-surface);cursor:pointer">닫기</button></div></div>`;
+    root.querySelector('#aiChatMailClose')?.addEventListener('click', closeAiChatMail);
+    return;
+  }
+  if (!document.getElementById('aiChatMailRoot')) return;   // 기다리는 사이 닫았다
+  const fmt = (d) => (d ? new Date(d).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
+  const row = (k, v) => (v ? `<div style="display:flex;gap:10px;font-size:12.5px;line-height:1.6">
+      <span style="flex-shrink:0;width:58px;color:var(--text-tertiary)">${k}</span>
+      <span style="min-width:0;word-break:break-word;color:var(--text-secondary)">${escapeHtml(v)}</span></div>` : '');
+  const tab = (key, label, on) => `<button type="button" class="ai-mail-tab" data-tab="${key}"
+      style="padding:5px 12px;border-radius:99px;font-size:12px;cursor:pointer;border:1px solid ${on ? 'var(--brand,#4f46e5)' : 'var(--border-default)'};
+             background:${on ? 'var(--brand-soft,#eef2ff)' : 'var(--bg-surface)'};color:${on ? 'var(--brand-text,#4338ca)' : 'var(--text-secondary)'}">${label}</button>`;
+  root.innerHTML = `
+    <div role="dialog" aria-modal="true" style="background:var(--bg-surface);border-radius:16px;max-width:860px;width:100%;max-height:88vh;
+         display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(15,23,42,.3);overflow:hidden">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border-default)">
+        <div style="min-width:0">
+          <div style="font-size:16px;font-weight:800;color:var(--text-primary);word-break:break-word">${escapeHtml(m.subject || '(제목 없음)')}</div>
+          <div style="margin-top:8px">${row('보낸 사람', m.from)}${row('받는 사람', (m.to || []).join(', '))}${row('참조', (m.cc || []).join(', '))}${row('날짜', fmt(m.date))}${row('거래처', m.group)}</div>
+          ${(m.attachments || []).length ? `<div style="margin-top:7px;display:flex;flex-wrap:wrap;gap:6px">${m.attachments.map((a) => `<span style="padding:2px 9px;border-radius:99px;font-size:11.5px;background:#fffbeb;color:#92400e;border:1px solid #fde68a">📎 ${escapeHtml(a)}</span>`).join('')}</div>` : ''}
+        </div>
+        <button type="button" id="aiChatMailClose" aria-label="닫기"
+          style="flex-shrink:0;border:none;background:none;font-size:20px;line-height:1;cursor:pointer;color:var(--text-tertiary);padding:4px 6px">✕</button>
+      </div>
+      ${m.translation ? `<div style="display:flex;gap:6px;padding:10px 20px 0">${tab('text', '원문', true)}${tab('ko', '한국어 번역', false)}</div>` : ''}
+      <div id="aiChatMailBody" style="padding:14px 20px 20px;overflow:auto;font-size:13.5px;line-height:1.75;color:var(--text-primary);white-space:pre-wrap;word-break:break-word">${escapeHtml(m.text || '(본문 없음)')}</div>
+      ${m.cut || m.bodyError ? `<div style="padding:8px 20px;border-top:1px solid var(--border-subtle);font-size:11.5px;color:var(--text-tertiary)">${escapeHtml(m.bodyError || '앞부분만 저장된 메일입니다 — 전문은 이카운트 웹메일에서 볼 수 있습니다.')}</div>` : ''}
+    </div>`;
+  root.querySelector('#aiChatMailClose')?.addEventListener('click', closeAiChatMail);
+  root.querySelectorAll('.ai-mail-tab').forEach((b) => b.addEventListener('click', () => {
+    const ko = b.dataset.tab === 'ko';
+    root.querySelector('#aiChatMailBody').textContent = ko ? m.translation : (m.text || '(본문 없음)');
+    root.querySelectorAll('.ai-mail-tab').forEach((x) => {
+      const on = x === b;
+      x.style.borderColor = on ? 'var(--brand,#4f46e5)' : 'var(--border-default)';
+      x.style.background = on ? 'var(--brand-soft,#eef2ff)' : 'var(--bg-surface)';
+      x.style.color = on ? 'var(--brand-text,#4338ca)' : 'var(--text-secondary)';
+    });
   }));
 }
 
@@ -13004,24 +13135,48 @@ async function renderAiChatPage() {
   }
   const info = _aiChat.info || {};
   const month = info.month || { krw: 0, questions: 0 };
-  const modelLabel = AI_CHAT_MODEL_LABEL[info.model] || info.model || '';
   const empty = !_aiChat.display.length;
   // 한 달 한도 (서버가 정한다: AI_CHAT_MONTHLY_KRW) — 80% 에서 미리 알리고, 다 쓰면 다음 달 1일까지 막는다
   const cap = Number(month.capKrw || 0);
   const used = Number(month.krw || 0);
   const overCap = cap > 0 && used >= cap;
   const nearCap = cap > 0 && !overCap && used >= cap * 0.8;
-  const locked = _aiChat.running || overCap;
+  const models = info.models || [];
+  const model = aiChatModel();
 
   if (!document.getElementById('aiChatStyle')) {
     const st = document.createElement('style');
     st.id = 'aiChatStyle';
-    st.textContent = '@media (max-width: 900px) { .ai-chat-wrap { grid-template-columns: 1fr !important } .ai-chat-side { order: 2 } }';
+    st.textContent = [
+      '@media (max-width: 900px) { .ai-chat-wrap { grid-template-columns: 1fr !important } .ai-chat-side { order: 2 } }',
+      '@keyframes aiChatSpin { to { transform: rotate(360deg) } }',
+      '@keyframes aiChatShimmer { 0% { background-position: 100% 0 } 100% { background-position: -100% 0 } }',
+      '.ai-spin { display:inline-block; width:12px; height:12px; flex-shrink:0; border-radius:50%; border:2px solid var(--border-default); border-top-color: var(--brand, #4f46e5); animation: aiChatSpin .8s linear infinite }',
+      '.ai-shimmer { background: linear-gradient(90deg, var(--text-tertiary) 0%, var(--text-tertiary) 35%, var(--text-primary) 50%, var(--text-tertiary) 65%, var(--text-tertiary) 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: aiChatShimmer 1.8s linear infinite }',
+      '.ai-steps > summary { list-style: none } .ai-steps > summary::-webkit-details-marker { display: none }',
+      '.ai-steps[open] .ai-steps-chev { display:inline-block; transform: rotate(180deg) }',
+      '.ai-chat-inputbox:focus-within { border-color: var(--brand, #4f46e5) !important; box-shadow: 0 0 0 3px rgba(79, 70, 229, .12) !important }',
+      '@media (prefers-reduced-motion: reduce) { .ai-spin, .ai-shimmer { animation: none } .ai-shimmer { -webkit-text-fill-color: currentColor } }',
+    ].join('\n');
     document.head.appendChild(st);
   }
 
+  const emptyHtml = `
+    <div style="max-width:600px;margin:56px auto 10px;text-align:center">
+      <img src="/icons/nav/ai-chat.png" alt="" style="width:52px;height:52px">
+      <div style="font-size:22px;font-weight:800;color:var(--text-primary);margin-top:10px;letter-spacing:-.01em">무엇을 도와드릴까요?</div>
+      <div style="font-size:13.5px;color:var(--text-secondary);line-height:1.7;margin-top:6px">
+        대표님 메일함에서 직접 찾아 읽고, 근거 메일과 함께 답과 조언을 드립니다.
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px">
+        ${AI_CHAT_EXAMPLES.map((q) => `<button type="button" class="ai-chat-ex" data-q="${escapeAttr(q)}"
+          style="padding:8px 14px;border-radius:12px;font-size:13px;cursor:pointer;border:1px solid var(--border-default);
+                 background:var(--bg-surface);color:var(--text-secondary)">${escapeHtml(q)}</button>`).join('')}
+      </div>
+    </div>`;
+
   els.content.innerHTML = `
-    <div class="ai-chat-wrap" style="display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;max-width:1180px;margin:0 auto">
+    <div class="ai-chat-wrap" style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;max-width:1240px;margin:0 auto">
       <aside class="ai-chat-side" style="min-width:0">
         <button id="aiChatNew" type="button" ${_aiChat.running ? 'disabled' : ''}
           style="width:100%;padding:10px;font-size:13px;font-weight:700;border-radius:10px;border:1px solid var(--brand,#4f46e5);
@@ -13039,14 +13194,11 @@ async function renderAiChatPage() {
           </div>`).join('') : '<div style="font-size:12px;color:var(--text-quaternary);padding:4px 2px">아직 없습니다</div>'}
       </aside>
 
-      <section style="display:flex;flex-direction:column;min-width:0;height:calc(100vh - 200px);min-height:460px;background:var(--bg-surface);
-                      border:1px solid var(--border-default);border-radius:14px;overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px 9px 18px;
-                    border-bottom:1px solid var(--border-subtle);background:var(--bg-surface-alt)">
-          <div style="font-size:12px;color:var(--text-tertiary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-            💬 대표님 메일함(david@yogico.kr)에 대해 물어보세요 · Claude ${escapeHtml(modelLabel)}
-          </div>
-          <button type="button" id="aiChatGuideBtn" title="AI 메일 비서로 할 수 있는 것 · 하지 않는 것 · 질문 예시"
+      <section style="display:flex;flex-direction:column;min-width:0;height:calc(100vh - 190px);min-height:480px;background:var(--bg-surface);
+                      border:1px solid var(--border-default);border-radius:16px;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px 10px 18px;border-bottom:1px solid var(--border-subtle)">
+          <div style="font-size:12.5px;color:var(--text-tertiary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">대표님 메일함 · david@yogico.kr</div>
+          <button type="button" id="aiChatGuideBtn" title="AI 메일 비서로 할 수 있는 것 · 하지 않는 것 · 질문 예시 · 이번 달 사용액"
             style="flex-shrink:0;padding:6px 12px;font-size:12.5px;font-weight:700;border-radius:8px;cursor:pointer;
                    border:1px solid var(--brand,#4f46e5);background:var(--bg-surface);color:var(--brand-text,#4338ca)">📘 사용 방법</button>
         </div>
@@ -13056,43 +13208,39 @@ async function renderAiChatPage() {
           🔒 이번 달 한도(₩${cap.toLocaleString()})를 다 썼습니다 — 다음 달 1일에 다시 열립니다. 한도를 올리려면 관리자에게 말씀해 주세요.</div>`
         : nearCap ? `<div id="aiChatCap" style="padding:9px 16px;background:#fffbeb;border-bottom:1px solid #fde68a;color:#92400e;font-size:12.5px">
           ⚠ 이번 달 한도의 ${Math.floor((used / cap) * 100)}%를 썼습니다 (₩${used.toLocaleString()} / ₩${cap.toLocaleString()}).</div>` : ''}
-        <div id="aiChatScroll" style="flex:1;overflow:auto;padding:6px 18px 12px">
-          ${empty ? `
-            <div style="max-width:560px;margin:34px auto 10px;text-align:center">
-              <img src="/icons/nav/ai-chat.png" alt="" style="width:48px;height:48px">
-              <div style="font-size:16px;font-weight:800;color:var(--text-primary);margin-top:6px">메일에 대해 물어보세요</div>
-              <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;margin-top:6px">
-                대표님 메일함(david@yogico.kr)에서 직접 찾아 읽고, 근거 메일과 함께 답과 조언을 드립니다.<br>
-                영어 메일도 한국어로 정리해 드리고, 답장 문안도 써 드립니다.
-              </div>
-              <div style="display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:16px">
-                ${AI_CHAT_EXAMPLES.map((q) => `<button type="button" class="ai-chat-ex" data-q="${escapeAttr(q)}"
-                  style="padding:7px 12px;border-radius:99px;font-size:12.5px;cursor:pointer;border:1px solid var(--border-default);
-                         background:var(--bg-surface-alt);color:var(--text-secondary)">${escapeHtml(q)}</button>`).join('')}
-              </div>
-            </div>` : _aiChat.display.map(aiChatMsgHtml).join('')}
-        </div>
-        <div id="aiChatStatus" style="padding:0 18px;min-height:20px;font-size:12px;color:var(--brand-text,#4338ca);font-weight:600">${_aiChat.running ? escapeHtml(_aiChat.status || '⏳ 생각하는 중…') : ''}</div>
-        <div style="padding:10px 14px 12px;border-top:1px solid var(--border-default)">
-          <div style="display:flex;gap:8px;align-items:flex-end">
-            <textarea id="aiChatInput" rows="3" ${locked ? 'disabled' : ''}
-              placeholder="예: Dangaard 에 보낼 답장 방향 조언해 줘 — Enter 보내기 · Shift+Enter 줄바꿈"
-              style="flex:1;min-width:0;resize:vertical;padding:10px 12px;font-size:13.5px;line-height:1.55;font-family:inherit;
-                     border:1px solid var(--border-default);border-radius:10px;background:var(--bg-surface);color:var(--text-primary)">${escapeHtml(_aiChat.draft || '')}</textarea>
-            <button id="aiChatSend" type="button" ${locked ? 'disabled' : ''}
-              style="padding:11px 18px;font-size:13.5px;font-weight:700;border:none;border-radius:10px;cursor:pointer;
-                     background:${locked ? '#94a3b8' : 'var(--brand,#4f46e5)'};color:#fff;white-space:nowrap">${_aiChat.running ? '답하는 중' : overCap ? '한도 도달' : '보내기'}</button>
+        <div id="aiChatScroll" style="flex:1;overflow:auto">
+          <div style="max-width:780px;margin:0 auto;padding:8px 22px 16px">
+            ${empty ? emptyHtml : _aiChat.display.map((m, i) => aiChatMsgHtml(m, i)).join('')}
           </div>
-          <div style="font-size:11px;color:var(--text-quaternary);margin-top:6px;line-height:1.6">
-            Claude ${escapeHtml(modelLabel)} · 대표님 메일함 기준 · 이번 달 약 ₩${used.toLocaleString()}${cap ? ` / 한도 ₩${cap.toLocaleString()}` : ''} (질문 ${Number(month.questions || 0)}번)
-            · 메일 내용이 Claude API 로 전달되어 답을 만듭니다 · 메일을 보내거나 지우지는 않습니다
+        </div>
+        <!-- 입력창 — Claude 채팅처럼 둥근 상자 안에 모델 고르기와 보내기 (답하는 중에는 ■ 멈추기) -->
+        <div style="padding:6px 18px 16px">
+          <div class="ai-chat-inputbox" style="max-width:780px;margin:0 auto;border:1px solid var(--border-default);border-radius:20px;
+                      background:var(--bg-surface);box-shadow:0 2px 12px rgba(15,23,42,.07);padding:12px 12px 10px 16px">
+            <textarea id="aiChatInput" rows="1" ${overCap ? 'disabled' : ''}
+              placeholder="메일에 대해 물어보세요 — 예: Dangaard 에 보낼 답장 방향 조언해 줘"
+              style="display:block;width:100%;border:none;outline:none;resize:none;min-height:26px;max-height:200px;padding:4px 0;
+                     font-size:14.5px;line-height:1.6;font-family:inherit;background:transparent;color:var(--text-primary)">${escapeHtml(_aiChat.draft || '')}</textarea>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
+              <select id="aiChatModelSel" title="답할 Claude 모델 — 기본 Opus 5.5" ${_aiChat.running ? 'disabled' : ''}
+                style="border:1px solid transparent;background:var(--bg-surface-alt);color:var(--text-secondary);border-radius:8px;
+                       padding:5px 8px;font-size:12.5px;cursor:pointer">
+                ${models.map((x) => `<option value="${escapeAttr(x.id)}" ${x.id === model ? 'selected' : ''} title="${escapeAttr(x.desc || '')}">${escapeHtml(x.label)}${x.id === info.defaultModel ? ' (기본)' : ''}</option>`).join('')}
+              </select>
+              <button id="aiChatSend" type="button" aria-label="${_aiChat.running ? '답 멈추기' : '보내기'}"
+                title="${_aiChat.running ? '답 멈추기' : '보내기 (Enter) · 줄바꿈은 Shift+Enter'}" ${overCap ? 'disabled' : ''}
+                style="width:34px;height:34px;border-radius:50%;border:none;cursor:${overCap ? 'not-allowed' : 'pointer'};font-size:15px;font-weight:800;line-height:1;
+                       background:${overCap ? '#94a3b8' : (_aiChat.running ? '#334155' : 'var(--brand,#4f46e5)')};color:#fff">${_aiChat.running ? '■' : '↑'}</button>
+            </div>
           </div>
         </div>
       </section>
     </div>`;
 
   const input = document.getElementById('aiChatInput');
-  input?.addEventListener('input', () => { _aiChat.draft = input.value; });
+  const grow = () => { if (!input) return; input.style.height = 'auto'; input.style.height = `${Math.min(200, input.scrollHeight)}px`; };
+  grow();
+  input?.addEventListener('input', () => { _aiChat.draft = input.value; grow(); });
   input?.addEventListener('keydown', (e) => {
     // 한글 입력 중(조합 중) Enter 는 글자 확정이다 — 그때 보내면 마지막 글자가 두 번 들어간다
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
@@ -13100,15 +13248,22 @@ async function renderAiChatPage() {
       aiChatSend(input.value);
     }
   });
-  document.getElementById('aiChatSend')?.addEventListener('click', () => aiChatSend(input ? input.value : ''));
+  document.getElementById('aiChatSend')?.addEventListener('click', () => {
+    if (_aiChat.running) { _aiChat.abort?.abort(); return; }   // 답하는 중에는 멈추기
+    aiChatSend(input ? input.value : '');
+  });
+  document.getElementById('aiChatModelSel')?.addEventListener('change', (e) => {
+    _aiChat.model = e.target.value;
+    try { localStorage.setItem('aiChatModel', _aiChat.model); } catch { /* 기억 못 해도 이번 화면에서는 쓴다 */ }
+  });
   document.getElementById('aiChatNew')?.addEventListener('click', () => {
     if (_aiChat.running) return;
     _aiChat.convId = null;
     _aiChat.display = [];
     renderAiChatPage();
   });
-  els.content.querySelectorAll('.ai-chat-ex').forEach((b) => b.addEventListener('click', () => aiChatSend(b.dataset.q)));
   document.getElementById('aiChatGuideBtn')?.addEventListener('click', openAiChatGuide);
+  els.content.querySelectorAll('.ai-chat-ex').forEach((b) => b.addEventListener('click', () => aiChatSend(b.dataset.q)));
   els.content.querySelectorAll('.ai-chat-conv').forEach((b) => b.addEventListener('click', async () => {
     if (_aiChat.running) return;
     try {
@@ -13133,37 +13288,58 @@ async function renderAiChatPage() {
       alert('지우지 못했습니다: ' + (e.message || e));
     }
   }));
-  els.content.querySelectorAll('.ai-chat-src').forEach((b) => b.addEventListener('click', () => openMailDetailModal(b.dataset.mailId)));
+  els.content.querySelectorAll('.ai-chat-src').forEach((b) => b.addEventListener('click', () => openAiChatMail(b.dataset.mailId)));
+  els.content.querySelectorAll('.ai-chat-copy').forEach((b) => b.addEventListener('click', async () => {
+    const m = _aiChat.display[Number(b.dataset.idx)];
+    if (!m) return;
+    try {
+      await navigator.clipboard.writeText(m.text || '');
+      b.textContent = '✓ 복사됨';
+      setTimeout(() => { b.textContent = '📋 복사'; }, 1500);
+    } catch {
+      alert('복사하지 못했습니다 — 글을 직접 선택해서 복사해 주세요.');
+    }
+  }));
   aiChatScrollBottom();
-  if (!locked) input?.focus();
+  if (!_aiChat.running && !overCap) input?.focus();
 }
 
-/** 질문 보내기 — 답은 한 줄씩(JSON) 흘러온다: status · text · sources · done · error */
+/** 질문 보내기 — 답은 한 줄씩(JSON) 흘러온다: status(지금 하는 일) · step(끝난 단계) · text · sources · done · error */
 async function aiChatSend(text) {
   const q = String(text || '').trim();
   if (!q || _aiChat.running) return;
+  const model = aiChatModel();
+  const ctrl = new AbortController();
   _aiChat.running = true;
-  _aiChat.status = '⏳ 질문을 읽는 중…';
+  _aiChat.abort = ctrl;
   _aiChat.draft = '';
   _aiChat.display.push({ role: 'user', text: q });
-  const pending = { role: 'assistant', text: '', sources: [], pending: true };
+  const pending = { role: 'assistant', text: '', sources: [], steps: [], status: '생각하는 중', pending: true, model };
   _aiChat.display.push(pending);
   if (state.view === 'tool-ai-chat') renderAiChatPage();
 
+  const paintSteps = () => {
+    const el = document.getElementById('aiChatPendingSteps');
+    if (el) { el.innerHTML = aiChatStepsHtml(pending); aiChatScrollBottom(); }
+  };
   const onEvent = (ev) => {
     if (ev.type === 'text') {
+      if (pending.status) { pending.status = ''; paintSteps(); }
       pending.text += ev.text;
       const el = document.getElementById('aiChatPending');
       if (el) { el.innerHTML = aiChatMd(pending.text); aiChatScrollBottom(); }
     } else if (ev.type === 'status') {
-      _aiChat.status = ev.text;
-      const s = document.getElementById('aiChatStatus');
-      if (s) s.textContent = ev.text;
+      pending.status = ev.text;
+      paintSteps();
+    } else if (ev.type === 'step') {
+      pending.steps.push({ kind: ev.kind, text: ev.text });
+      paintSteps();
     } else if (ev.type === 'sources') {
       pending.sources = ev.items || [];
     } else if (ev.type === 'done') {
       _aiChat.convId = ev.conversationId || _aiChat.convId;
       pending.usage = ev.usage || null;
+      pending.model = ev.model || pending.model;
     } else if (ev.type === 'error') {
       pending.error = ev.message || '오류가 났습니다';
     }
@@ -13173,7 +13349,8 @@ async function aiChatSend(text) {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId: _aiChat.convId, message: q }),
+      body: JSON.stringify({ conversationId: _aiChat.convId, message: q, model }),
+      signal: ctrl.signal,
     });
     if (!res.ok || !res.body) {
       let j = {};
@@ -13195,11 +13372,14 @@ async function aiChatSend(text) {
       }
     }
   } catch (e) {
-    pending.error = e.message || String(e);
+    pending.error = e && e.name === 'AbortError'
+      ? '답을 멈췄습니다. 멈춘 답은 대화 기록에 남지 않습니다.'
+      : (e.message || String(e));
   } finally {
     pending.pending = false;
+    pending.status = '';
     _aiChat.running = false;
-    _aiChat.status = '';
+    _aiChat.abort = null;
     if (!pending.text && !pending.error) pending.error = '답을 받지 못했습니다. 다시 물어봐 주세요.';
     // 답을 못 받았으면 질문을 입력칸에 돌려놓는다 — 다시 치지 않아도 되게
     if (pending.error && !pending.text) _aiChat.draft = q;
