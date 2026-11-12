@@ -12405,6 +12405,15 @@ var UPDATE_LOG = [
     date: '2026-11-12',
     items: [
       {
+        kind: 'new', icon: '📎', title: 'AI 메일 비서 — 첨부파일·올린 파일도 읽고 분석',
+        how: [
+          '<b>메일 첨부</b> — "Barulab 메일에 온 CI 첨부 확인해 줘" 처럼 물으면 메일에 붙은 PDF·엑셀·워드·이미지를 메일 서버에서 꺼내 읽고 답합니다 (30MB까지). 견적서·PI·PL 숫자를 메일 본문과 대조하기 좋습니다.',
+          '<b>파일 올리기</b> — 입력창 <b>📎</b> 로 올리거나 끌어다 놓거나, 캡처를 붙여넣고(Ctrl+V) 함께 물어보세요 (합계 10MB · 5개까지).',
+          '한글(HWP)·압축파일은 읽지 못합니다 — PDF 로 저장해서 올려 주세요.',
+        ],
+        go: 'tool-ai-chat', goLabel: 'AI 메일 비서',
+      },
+      {
         kind: 'new', icon: '🤖', title: 'AI 메일 비서 — 메일에 대해 물어보면 찾아서 답·조언 (대표님 전용)',
         how: [
           '사이드바 <b>[기한 관리]</b> 바로 아래 <b>[🤖 AI 메일 비서]</b>. 대표님 아이디에서만 보입니다.',
@@ -12799,7 +12808,7 @@ function renderUpdatesPage() {
 // 메일에 대해 물어보면 Claude 가 대표님 메일함을 직접 찾아 읽고 답·조언한다.
 // 서버: /api/ai/chat (lib/ai/mail-chat.ts) · 대표님 전용 (lib/ai/chat-access.ts)
 // ══════════════════════════════════════════════════════════════
-var _aiChat = { loaded: false, denied: '', info: null, list: [], convId: null, display: [], running: false, draft: '', model: '', abort: null };
+var _aiChat = { loaded: false, denied: '', info: null, list: [], convId: null, display: [], running: false, draft: '', model: '', abort: null, files: [] };
 
 const AI_CHAT_EXAMPLES = [
   '이번 주에 꼭 답해야 할 메일 정리해 줘',
@@ -12817,6 +12826,89 @@ function aiChatModel() {
   try { saved = localStorage.getItem('aiChatModel') || ''; } catch { /* 저장소를 못 쓰는 브라우저 */ }
   const want = _aiChat.model || saved;
   return models.some((m) => m.id === want) ? want : (info.defaultModel || 'claude-opus-5-5');
+}
+
+/**
+ * 📎 채팅에 파일 올리기 (2026-11-12 요청 "파일을 넣으면 분석되게") — 메일 쓰기 첨부와 같은 조각 올리기(/api/mail/upload).
+ * 서버가 질문을 받을 때 조각을 이어 붙여 Claude 가 읽게 한다 (lib/ai/attachments.ts). PDF·이미지·엑셀·워드·CSV·텍스트.
+ * 버튼 · 끌어다 놓기 · 캡처 붙여넣기(Ctrl+V) 로 올린다.
+ */
+const AI_CHAT_FILE_MAX = 10 * 1024 * 1024;   // 합계 — 서버(lib/mail/uploads.ts)와 같은 한도
+const AI_CHAT_FILE_COUNT = 5;
+const AI_CHAT_FILE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.xlsm,.csv,.docx,.txt';
+
+function aiChatFilesHtml() {
+  return _aiChat.files.map((f) => {
+    const pct = f.total ? Math.round((f.done / f.total) * 100) : 0;
+    const state = f.status === 'done' ? '' : f.status === 'error'
+      ? `<span style="color:#b91c1c">✕ ${escapeHtml(f.error || '실패')}</span>`
+      : `<span style="color:var(--brand-text,#4338ca)">${pct}%</span>`;
+    return `<span style="display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 6px 4px 10px;border-radius:9px;font-size:12px;
+        border:1px solid ${f.status === 'error' ? '#fecaca' : 'var(--border-default)'};background:var(--bg-surface-alt);color:var(--text-secondary)">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📎 ${escapeHtml(f.name)}</span>
+      <span style="color:var(--text-quaternary);white-space:nowrap">${fmtAttachmentSize(f.size)}</span>${state}
+      <button type="button" class="ai-file-x" data-key="${escapeAttr(f.key)}" title="빼기"
+        style="border:none;background:none;color:var(--text-tertiary);font-size:14px;line-height:1;cursor:pointer;padding:0 2px">×</button></span>`;
+  }).join('');
+}
+
+function aiChatPaintFiles() {
+  const box = document.getElementById('aiChatFilesBox');
+  if (!box) return;
+  box.innerHTML = aiChatFilesHtml();
+  box.style.display = _aiChat.files.length ? 'flex' : 'none';
+  box.querySelectorAll('.ai-file-x').forEach((b) => b.addEventListener('click', () => {
+    const i = _aiChat.files.findIndex((f) => f.key === b.dataset.key);
+    if (i < 0) return;
+    const [f] = _aiChat.files.splice(i, 1);
+    f.cancelled = true;
+    if (f.uploadId) fetch(`/api/mail/upload?id=${encodeURIComponent(f.uploadId)}`, { method: 'DELETE' }).catch(() => {});
+    aiChatPaintFiles();
+  }));
+}
+
+/** 조각을 하나씩 올린다 — 끊기면 한 번 더 (메일 쓰기 createAttachmentBox 와 같은 방식) */
+async function aiChatUploadFile(f, file) {
+  for (let i = 0; i < f.total; i++) {
+    if (f.cancelled) return;
+    const part = file.slice(i * ATTACH_CHUNK, Math.min(file.size, (i + 1) * ATTACH_CHUNK));
+    const qs = new URLSearchParams({ id: f.uploadId, i: String(i), n: String(f.total), size: String(f.size), name: f.name, type: f.type });
+    let r = null;
+    for (let tryNo = 0; tryNo < 2 && !(r && r.success); tryNo++) {
+      try {
+        const res = await fetch(`/api/mail/upload?${qs}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: part });
+        r = await res.json().catch(() => ({ success: false, error: `서버 응답 ${res.status}` }));
+        if (!res.ok && res.status < 500) break;
+      } catch { r = { success: false, error: '연결이 끊겼습니다' }; }
+    }
+    if (!r || !r.success) { f.status = 'error'; f.error = r?.error || '올리지 못했습니다'; aiChatPaintFiles(); return; }
+    f.done = i + 1;
+    aiChatPaintFiles();
+  }
+  if (!f.cancelled) { f.status = 'done'; aiChatPaintFiles(); }
+}
+
+function aiChatAddFiles(list) {
+  const problems = [];
+  const total = () => _aiChat.files.reduce((n, f) => n + (f.status === 'error' ? 0 : f.size), 0);
+  for (const file of Array.from(list || [])) {
+    if (_aiChat.files.length >= AI_CHAT_FILE_COUNT) { problems.push(`파일은 한 번에 ${AI_CHAT_FILE_COUNT}개까지 올릴 수 있습니다`); break; }
+    if (!file.size) { problems.push(`"${file.name}" 은 빈 파일입니다`); continue; }
+    if (ATTACH_BLOCKED.test(file.name)) { problems.push(`"${file.name}" 은 실행 파일이라 올릴 수 없습니다`); continue; }
+    if (total() + file.size > AI_CHAT_FILE_MAX) {
+      problems.push(`"${file.name}" (${fmtAttachmentSize(file.size)}) — 올리는 파일은 합계 10MB까지입니다. 메일에 붙은 큰 첨부는 "이 메일 첨부 확인해 줘" 처럼 물어보시면 메일 서버에서 직접 읽습니다 (30MB까지).`);
+      continue;
+    }
+    const id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
+    // 붙여넣은 캡처는 이름이 image.png 하나라 겹친다 — 시각을 붙여 구분한다
+    const name = /^image\.(png|jpe?g)$/i.test(file.name) ? `캡처-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.${file.name.split('.').pop()}` : file.name;
+    const f = { key: id, uploadId: id.slice(0, 40), name, size: file.size, type: file.type || 'application/octet-stream',
+      done: 0, total: Math.ceil(file.size / ATTACH_CHUNK), status: 'uploading' };
+    _aiChat.files.push(f);
+    aiChatUploadFile(f, file);
+  }
+  aiChatPaintFiles();
+  if (problems.length) alert(problems.join('\n'));
 }
 
 /** 답 글을 화면용으로 — 굵게·목록·제목만 살린다 (나머지는 모두 이스케이프) */
@@ -12854,7 +12946,7 @@ function aiChatMd(text) {
  */
 function aiChatStepsHtml(m) {
   const steps = m.steps || [];
-  const icon = { search: '🔎', read: '📖', list: '📋' };
+  const icon = { search: '🔎', read: '📖', list: '📋', file: '📎' };
   const line = (s) => `<div style="display:flex;gap:8px;align-items:flex-start;padding:2px 0;font-size:12.5px;line-height:1.55;color:var(--text-tertiary)">
       <span style="flex-shrink:0;width:16px;text-align:center">${icon[s.kind] || '•'}</span>
       <span style="min-width:0;word-break:break-word">${escapeHtml(s.text)}</span></div>`;
@@ -12868,7 +12960,7 @@ function aiChatStepsHtml(m) {
   }
   if (!steps.length) return '';
   const n = (k) => steps.filter((s) => s.kind === k).length;
-  const parts = [n('search') && `메일 ${n('search')}번 찾음`, n('read') && `${n('read')}통 읽음`, n('list') && `목록 ${n('list')}번 확인`].filter(Boolean);
+  const parts = [n('file') && `파일 ${n('file')}개 읽음`, n('search') && `메일 ${n('search')}번 찾음`, n('read') && `${n('read')}통 읽음`, n('list') && `목록 ${n('list')}번 확인`].filter(Boolean);
   return `<details class="ai-steps" style="margin:2px 0 12px">
     <summary style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:99px;font-size:12px;
                     color:var(--text-tertiary);border:1px solid var(--border-subtle);background:var(--bg-surface-alt)">
@@ -12881,7 +12973,10 @@ function aiChatMsgHtml(m, i) {
   if (m.role === 'user') {
     return `<div style="display:flex;justify-content:flex-end;margin:22px 0 16px">
       <div style="max-width:82%;background:var(--bg-surface-alt);border:1px solid var(--border-subtle);color:var(--text-primary);
-                  padding:10px 16px;border-radius:18px;font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.text)}</div>
+                  padding:10px 16px;border-radius:18px;font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word">${escapeHtml(m.text)}${(m.files || []).length
+        ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;white-space:normal">${m.files.map((f) => `<span title="${escapeAttr(f.note || '')}"
+            style="padding:2px 9px;border-radius:8px;font-size:11.5px;background:var(--bg-surface);border:1px solid var(--border-subtle);color:${f.kind === 'unsupported' ? '#b91c1c' : 'var(--text-secondary)'}">📎 ${escapeHtml(f.name)}${f.kind === 'unsupported' ? ' — 못 읽음' : ''}</span>`).join('')}</div>`
+        : ''}</div>
     </div>`;
   }
   const src = m.sources || [];
@@ -12954,12 +13049,14 @@ function aiChatGuideHtml(info) {
         '<b>답장 문안</b> — 상대 언어로 써 드립니다 (영어 메일이면 영어 + 한국어 요약). 답 아래 <b>📋 복사</b>로 옮겨 <b>[✏️ 메일 쓰기]</b>에 붙여 넣으세요.',
         '<b>이어서 묻기</b> — 같은 대화 안에서는 앞 내용을 기억합니다 ("그럼 2번은 어떻게 답하지?").',
         '<b>근거 메일 열기</b> — 답 아래 근거 메일을 누르면 그 메일이 팝업으로 열립니다.',
+        '<b>메일 첨부 읽기</b> — "Barulab 메일에 온 CI 첨부 확인해 줘" 처럼 물으면 메일에 붙은 PDF·엑셀·워드·이미지를 메일 서버에서 꺼내 읽습니다 (30MB까지).',
+        '<b>파일 올려서 묻기</b> — 입력창 <b>📎</b> 로 파일을 올리거나, 끌어다 놓거나, 캡처를 붙여넣고(Ctrl+V) 함께 물어보세요 (합계 10MB · 5개까지).',
       ])}
       ${card('⛔', '하지 않는 것 · 한계', '#ef4444', [
         '메일을 <b>보내거나 지우거나 옮기지 않습니다</b> — 읽기만 합니다.',
         '<b>대표님 메일함(david@yogico.kr)만</b> 봅니다. 전무님 메일이나 다른 계정은 보지 않습니다.',
         '<b>2026년 1월부터 지금까지</b>의 메일을 봅니다. 그보다 오래된 메일은 거래처 폴더에 있던 일부만 있습니다.',
-        '<b>첨부파일 내용</b>은 읽지 못합니다 (파일 이름만 압니다).',
+        '<b>한글(HWP)·압축파일·파워포인트</b>는 읽지 못합니다 — PDF 로 저장해서 올려 주세요.',
         '긴 메일은 <b>앞부분(4,000자)만</b> 저장되어 있어 뒷부분은 모를 수 있습니다.',
         '인터넷 검색은 하지 않습니다 — <b>메일에 적힌 내용</b> 기준으로 답합니다.',
         'AI 라 가끔 틀릴 수 있습니다. 중요한 숫자·날짜는 <b>근거 메일</b>로 한 번 확인해 주세요.',
@@ -12970,6 +13067,7 @@ function aiChatGuideHtml(info) {
         '<b>기간</b>을 붙이면 더 정확합니다 ("지난주", "10월부터", "이번 달").',
         '주제가 바뀌면 <b>[+ 새 대화]</b> — 같은 대화가 길어지면 앞 내용을 계속 다시 읽어 느려지고 비용이 늡니다.',
         '답하는 중에 <b>■</b> 를 누르면 멈춥니다 (멈춘 답은 대화 기록에 남지 않습니다).',
+        '파일은 클수록 비용이 늡니다 — PDF 10쪽에 약 100~300원 (Opus 기준). 올린 파일은 대화를 지우면 함께 지워집니다.',
         `비용: 질문 1번에 약 <b>100~500원</b> (Opus 기준 · 읽는 메일이 많을수록 큽니다). 이번 달 사용 약 <b>₩${Number(month.krw || 0).toLocaleString()}</b> (질문 ${Number(month.questions || 0)}번)${cap ? ` / 한도 <b>₩${cap.toLocaleString()}</b> — 80%에서 알려 드리고, 다 쓰면 다음 달 1일까지 쉽니다.` : ''}`,
         '지난 대화는 왼쪽 <b>[지난 대화]</b>에서 다시 열 수 있고, ✕ 로 지울 수 있습니다 (메일과 이번 달 사용액은 그대로).',
       ])}
@@ -13194,7 +13292,7 @@ async function renderAiChatPage() {
           </div>`).join('') : '<div style="font-size:12px;color:var(--text-quaternary);padding:4px 2px">아직 없습니다</div>'}
       </aside>
 
-      <section style="display:flex;flex-direction:column;min-width:0;height:calc(100vh - 190px);min-height:480px;background:var(--bg-surface);
+      <section id="aiChatSection" style="display:flex;flex-direction:column;min-width:0;height:calc(100vh - 190px);min-height:480px;background:var(--bg-surface);
                       border:1px solid var(--border-default);border-radius:16px;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px 10px 18px;border-bottom:1px solid var(--border-subtle)">
           <div style="font-size:12.5px;color:var(--text-tertiary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">대표님 메일함 · david@yogico.kr</div>
@@ -13217,16 +13315,22 @@ async function renderAiChatPage() {
         <div style="padding:6px 18px 16px">
           <div class="ai-chat-inputbox" style="max-width:780px;margin:0 auto;border:1px solid var(--border-default);border-radius:20px;
                       background:var(--bg-surface);box-shadow:0 2px 12px rgba(15,23,42,.07);padding:12px 12px 10px 16px">
+            <div id="aiChatFilesBox" style="display:${_aiChat.files.length ? 'flex' : 'none'};flex-wrap:wrap;gap:6px;margin-bottom:8px">${aiChatFilesHtml()}</div>
             <textarea id="aiChatInput" rows="1" ${overCap ? 'disabled' : ''}
               placeholder="메일에 대해 물어보세요 — 예: Dangaard 에 보낼 답장 방향 조언해 줘"
               style="display:block;width:100%;border:none;outline:none;resize:none;min-height:26px;max-height:200px;padding:4px 0;
                      font-size:14.5px;line-height:1.6;font-family:inherit;background:transparent;color:var(--text-primary)">${escapeHtml(_aiChat.draft || '')}</textarea>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px">
+              <div style="display:flex;align-items:center;gap:6px">
+              <button type="button" id="aiChatAttach" title="파일 올리기 — PDF·이미지·엑셀·워드·CSV (합계 10MB) · 끌어다 놓거나 캡처를 붙여넣어도 됩니다" ${overCap ? 'disabled' : ''}
+                style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border-subtle);background:var(--bg-surface);color:var(--text-secondary);font-size:15px;cursor:pointer">📎</button>
+              <input type="file" id="aiChatFileInput" multiple accept="${AI_CHAT_FILE_ACCEPT}" hidden>
               <select id="aiChatModelSel" title="답할 Claude 모델 — 기본 Opus 5.5" ${_aiChat.running ? 'disabled' : ''}
                 style="border:1px solid transparent;background:var(--bg-surface-alt);color:var(--text-secondary);border-radius:8px;
                        padding:5px 8px;font-size:12.5px;cursor:pointer">
                 ${models.map((x) => `<option value="${escapeAttr(x.id)}" ${x.id === model ? 'selected' : ''} title="${escapeAttr(x.desc || '')}">${escapeHtml(x.label)}${x.id === info.defaultModel ? ' (기본)' : ''}</option>`).join('')}
               </select>
+              </div>
               <button id="aiChatSend" type="button" aria-label="${_aiChat.running ? '답 멈추기' : '보내기'}"
                 title="${_aiChat.running ? '답 멈추기' : '보내기 (Enter) · 줄바꿈은 Shift+Enter'}" ${overCap ? 'disabled' : ''}
                 style="width:34px;height:34px;border-radius:50%;border:none;cursor:${overCap ? 'not-allowed' : 'pointer'};font-size:15px;font-weight:800;line-height:1;
@@ -13251,6 +13355,21 @@ async function renderAiChatPage() {
   document.getElementById('aiChatSend')?.addEventListener('click', () => {
     if (_aiChat.running) { _aiChat.abort?.abort(); return; }   // 답하는 중에는 멈추기
     aiChatSend(input ? input.value : '');
+  });
+  document.getElementById('aiChatAttach')?.addEventListener('click', () => document.getElementById('aiChatFileInput')?.click());
+  document.getElementById('aiChatFileInput')?.addEventListener('change', (e) => { aiChatAddFiles(e.target.files); e.target.value = ''; });
+  const sec = document.getElementById('aiChatSection');
+  sec?.addEventListener('dragover', (e) => { if (overCap) return; e.preventDefault(); sec.style.borderColor = 'var(--brand,#4f46e5)'; });
+  sec?.addEventListener('dragleave', () => { sec.style.borderColor = ''; });
+  sec?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    sec.style.borderColor = '';
+    if (!overCap && e.dataTransfer?.files?.length) aiChatAddFiles(e.dataTransfer.files);
+  });
+  // 캡처한 화면을 바로 붙여넣기 (Ctrl+V) — 글을 붙여넣을 때는 그대로 둔다
+  input?.addEventListener('paste', (e) => {
+    const fl = e.clipboardData?.files;
+    if (fl && fl.length) { e.preventDefault(); aiChatAddFiles(fl); }
   });
   document.getElementById('aiChatModelSel')?.addEventListener('change', (e) => {
     _aiChat.model = e.target.value;
@@ -13300,6 +13419,7 @@ async function renderAiChatPage() {
       alert('복사하지 못했습니다 — 글을 직접 선택해서 복사해 주세요.');
     }
   }));
+  aiChatPaintFiles();
   aiChatScrollBottom();
   if (!_aiChat.running && !overCap) input?.focus();
 }
@@ -13307,14 +13427,19 @@ async function renderAiChatPage() {
 /** 질문 보내기 — 답은 한 줄씩(JSON) 흘러온다: status(지금 하는 일) · step(끝난 단계) · text · sources · done · error */
 async function aiChatSend(text) {
   const q = String(text || '').trim();
-  if (!q || _aiChat.running) return;
+  if (_aiChat.running) return;
+  if (_aiChat.files.some((f) => f.status === 'uploading')) { alert('파일을 올리는 중입니다 — 다 올라간 뒤 보내 주세요.'); return; }
+  if (_aiChat.files.some((f) => f.status === 'error')) { alert('올리지 못한 파일이 있습니다 — 빼거나 다시 올려 주세요.'); return; }
+  const files = _aiChat.files.filter((f) => f.status === 'done');
+  if (!q && !files.length) return;
   const model = aiChatModel();
   const ctrl = new AbortController();
   _aiChat.running = true;
   _aiChat.abort = ctrl;
   _aiChat.draft = '';
-  _aiChat.display.push({ role: 'user', text: q });
-  const pending = { role: 'assistant', text: '', sources: [], steps: [], status: '생각하는 중', pending: true, model };
+  _aiChat.display.push({ role: 'user', text: q || '올린 파일을 확인하고 핵심을 정리해 주세요.', files: files.map((f) => ({ name: f.name, kind: '' })) });
+  _aiChat.files = [];   // 서버가 조각을 이어 붙인 뒤 지운다
+  const pending = { role: 'assistant', text: '', sources: [], steps: [], status: files.length ? '올린 파일 읽는 중' : '생각하는 중', pending: true, model };
   _aiChat.display.push(pending);
   if (state.view === 'tool-ai-chat') renderAiChatPage();
 
@@ -13349,7 +13474,7 @@ async function aiChatSend(text) {
     const res = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId: _aiChat.convId, message: q, model }),
+      body: JSON.stringify({ conversationId: _aiChat.convId, message: q, model, uploads: files.map((f) => f.uploadId) }),
       signal: ctrl.signal,
     });
     if (!res.ok || !res.body) {

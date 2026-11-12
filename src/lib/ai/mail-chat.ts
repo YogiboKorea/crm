@@ -18,6 +18,9 @@ import mongoose from 'mongoose';
 import { client } from './client';
 import { USD_KRW } from './estimate';
 import { AI_CHAT_MAILBOX_OWNER } from './chat-access';
+import { prepareFile, blocksFor, fileKind, MAX_READ_BYTES, type PreparedFile } from './attachments';
+import { resolveAccount, toImapConfig } from '@/lib/mail/accounts';
+import { fetchAttachment } from '@/lib/mail/imap';
 import { InboundMail } from '@/models/InboundMail';
 import { accountIdsForOwner } from '@/lib/mail/scope';
 import { NOISE_CLASSES } from '@/lib/mail/classify';
@@ -71,7 +74,7 @@ const PRICE: Record<string, { in: number; out: number; read: number; write: numb
 export interface ChatUsage { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; usd: number; lastInputTokens: number }
 export interface ChatSource { id: string; date: string; from: string; subject: string }
 /** 메일을 찾고 읽은 단계 — 화면이 Claude 채팅처럼 답 위에 보여 준다 */
-export interface ChatStep { kind: 'search' | 'read' | 'list'; text: string }
+export interface ChatStep { kind: 'search' | 'read' | 'list' | 'file'; text: string }
 export type ChatEvent =
   | { type: 'status'; text: string }
   | { type: 'step'; kind: ChatStep['kind']; text: string }
@@ -137,6 +140,23 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
     eager_input_streaming: true,
   },
   {
+    name: 'read_attachment',
+    description:
+      '메일에 붙은 첨부파일 하나를 메일 서버에서 꺼내 읽는다 — PDF·이미지는 그대로, 엑셀·CSV·워드·텍스트는 글(표)로. ' +
+      '견적서·PI·PL·계약서처럼 첨부 내용을 확인해야 할 때만 쓴다 (파일이 클수록 비용이 든다). ' +
+      'read_mail 결과의 attachments 에서 이름을 골라 file 에 적는다. HWP·압축파일은 읽지 못한다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '메일 id (search_mails · read_mail 결과의 id)' },
+        file: { type: 'string', description: '첨부 이름 (일부만 적어도 된다) 또는 순번(1부터). 첨부가 하나면 비워도 된다' },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    eager_input_streaming: true,
+  },
+  {
     name: 'list_open_items',
     description:
       `할 일 목록 — CRM 화면과 같은 기준. needs_reply = 최근 ${REPLY_WINDOW_DAYS}일 안에 받은, 아직 답하지 않은 회신 필요 메일. ` +
@@ -177,7 +197,17 @@ function row(m: any) {
   };
 }
 
-interface ToolCtx { ids: string[]; read: Map<string, ChatSource>; lastHits: ChatSource[] }
+interface ToolCtx {
+  ids: string[];
+  read: Map<string, ChatSource>;
+  lastHits: ChatSource[];
+  /** 이번 질문에서 첨부를 읽느라 Anthropic 에 올린 파일 — 대화를 지울 때 함께 지운다 */
+  fileIds: string[];
+  /** 같은 질문 안에서 같은 첨부를 두 번 올리지 않게 (메일 id:파트 번호 → 올린 파일) */
+  attCache: Map<string, PreparedFile>;
+}
+const newCtx = (ids: string[]): ToolCtx => ({ ids, read: new Map(), lastHits: [], fileIds: [], attCache: new Map() });
+const sizeText = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round((n || 0) / 1024))}KB`);
 
 async function searchMails(input: any, ctx: ToolCtx) {
   const filter: any = { accountId: { $in: ctx.ids }, trashedAt: null };
@@ -231,7 +261,10 @@ async function readMail(input: any, ctx: ToolCtx) {
     from: addr(m.from),
     to: (m.to || []).map(addr), cc: (m.cc || []).map(addr),
     subject: m.subject, company: m.group || '', type: m.classification, status: m.status,
-    attachments: (m.attachments || []).map((x: any) => x.filename).filter(Boolean),
+    // 첨부 내용이 필요하면 read_attachment 로 연다 — 고를 수 있게 순번·크기·종류를 함께
+    attachments: (m.attachments || []).filter((x: any) => x.filename).map((x: any, i: number) => ({
+      no: i + 1, name: x.filename, size: sizeText(x.size), kind: fileKind(x.filename, x.contentType),
+    })),
     body: clip(body, 8000),
     bodyNote: m.rawTruncated || body.length >= 4000 ? '본문은 앞부분만 저장되어 있어 뒷부분이 빠졌을 수 있다' : '',
     analysis: {
@@ -243,6 +276,44 @@ async function readMail(input: any, ctx: ToolCtx) {
     koreanTranslation: clip(m.translation?.body, 4000),
     repliesFromWebmail: (m.outsideReplies || []).slice(-3).map((r: any) => ({ at: kst(r.at), body: clip(r.body, 1500) })),
   };
+}
+
+/**
+ * 메일 첨부 하나를 메일 서버에서 꺼내 Claude 가 읽을 수 있게 (lib/ai/attachments.ts).
+ * 돌려주는 __blocks 는 도구 결과에 그대로 붙는 문서·그림 블록이다.
+ */
+async function readAttachment(input: any, ctx: ToolCtx) {
+  const id = String(input.id || '').trim();
+  if (!mongoose.isValidObjectId(id)) return { error: 'id 가 올바르지 않습니다 — search_mails 결과의 id 를 쓰세요.' };
+  const m: any = await InboundMail.findOne(
+    { _id: id, accountId: { $in: ctx.ids } },
+    { subject: 1, date: 1, from: 1, folder: 1, uid: 1, accountId: 1, attachments: 1 },
+  ).lean();
+  if (!m) return { error: '이 메일함에 없는 메일입니다.' };
+  const list: any[] = (m.attachments || []).filter((a: any) => a.filename);
+  if (!list.length) return { error: '이 메일에는 첨부파일이 없습니다.' };
+  const want = String(input.file || '').trim().toLowerCase();
+  const att = !want && list.length === 1 ? list[0]
+    : list.find((a) => String(a.filename).toLowerCase() === want)
+      || (want ? list.find((a) => String(a.filename).toLowerCase().includes(want)) : null)
+      || (/^\d+$/.test(want) ? list[Number(want) - 1] : null);
+  if (!att) return { error: `어느 첨부인지 file 에 이름을 적어 주세요 — 이 메일의 첨부: ${list.map((a) => a.filename).join(', ')}` };
+  if ((att.size || 0) > MAX_READ_BYTES) return { error: `"${att.filename}" 는 ${sizeText(att.size)} 라 너무 큽니다 (${MAX_READ_BYTES / 1048576}MB 까지).` };
+
+  const key = `${id}:${att.partId}`;
+  let f = ctx.attCache.get(key);
+  if (!f) {
+    if (!m.uid || !m.folder || !att.partId) return { error: `"${att.filename}" 는 위치 정보가 없어 메일 서버에서 받을 수 없습니다.` };
+    // 메일 본문 원문을 받아 오는 곳(lib/mail/body.ts)과 같이 — 그 메일을 받은 계정으로 연다
+    const account: any = await resolveAccount(String(m.accountId || ''), 'system');
+    if (!account) return { error: '이 메일을 받은 메일 계정을 찾을 수 없어 첨부를 받지 못했습니다.' };
+    const { buffer } = await fetchAttachment(toImapConfig(account, m.folder), { folder: m.folder, uid: Number(m.uid), partId: String(att.partId) });
+    f = await prepareFile(buffer, att.filename, att.contentType);
+    if (f.fileId) ctx.fileIds.push(f.fileId);
+    ctx.attCache.set(key, f);
+  }
+  ctx.read.set(id, { id, date: day(m.date), from: addr(m.from), subject: clip(m.subject, 160) });
+  return { mail: m.subject, file: f.name, kind: f.kind, note: f.note || '', __blocks: blocksFor(f) };
 }
 
 async function listOpenItems(input: any, ctx: ToolCtx) {
@@ -270,7 +341,7 @@ async function listOpenItems(input: any, ctx: ToolCtx) {
 /** 도구 입력은 API 가 검사하지 않고 그대로 흘려 보낸다(eager_input_streaming) — 여기서 모양을 확인한다 */
 function checkInput(name: string, input: any): string {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return '입력이 객체가 아닙니다';
-  if (name === 'read_mail' && typeof input.id !== 'string') return 'id(문자열)가 필요합니다';
+  if ((name === 'read_mail' || name === 'read_attachment') && typeof input.id !== 'string') return 'id(문자열)가 필요합니다';
   if (name === 'list_open_items' && !['needs_reply', 'deadlines'].includes(input.kind)) return "kind 는 'needs_reply' 또는 'deadlines'";
   for (const k of ['query', 'sender', 'company', 'since', 'until']) {
     if (input[k] != null && typeof input[k] !== 'string') return `${k} 는 문자열이어야 합니다`;
@@ -280,7 +351,7 @@ function checkInput(name: string, input: any): string {
 
 /** 대표님 메일함 도구를 바로 부른다 — 화면 밖에서 도구만 시험하거나, 나중에 다른 연결(커넥터)에 붙일 때 */
 export async function runMailTool(name: string, input: any): Promise<any> {
-  const ctx: ToolCtx = { ids: await accountIdsForOwner(AI_CHAT_MAILBOX_OWNER), read: new Map(), lastHits: [] };
+  const ctx = newCtx(await accountIdsForOwner(AI_CHAT_MAILBOX_OWNER));
   const bad = checkInput(name, input);
   return bad ? { error: bad } : runTool(name, input, ctx);
 }
@@ -288,6 +359,7 @@ export async function runMailTool(name: string, input: any): Promise<any> {
 async function runTool(name: string, input: any, ctx: ToolCtx): Promise<any> {
   if (name === 'search_mails') return searchMails(input, ctx);
   if (name === 'read_mail') return readMail(input, ctx);
+  if (name === 'read_attachment') return readAttachment(input, ctx);
   if (name === 'list_open_items') return listOpenItems(input, ctx);
   return { error: `모르는 도구: ${name}` };
 }
@@ -299,12 +371,17 @@ function statusText(name: string, input: any): string {
     return `메일 찾는 중${what ? ` — ${what}` : ''}`;
   }
   if (name === 'read_mail') return '메일 읽는 중';
+  if (name === 'read_attachment') return `첨부 읽는 중${input.file ? ` — ${input.file}` : ''}`;
   if (name === 'list_open_items') return input.kind === 'deadlines' ? '기한 목록 보는 중' : '회신 필요 목록 보는 중';
   return '생각하는 중';
 }
 
 /** 끝난 단계 한 줄 — 무엇을 찾아 몇 통 나왔는지, 어느 메일을 읽었는지 */
 function stepOf(name: string, input: any, out: any): ChatStep {
+  if (name === 'read_attachment') {
+    if (!out || out.error) return { kind: 'file', text: `첨부 읽기 실패 — ${out?.error || '알 수 없음'}` };
+    return { kind: 'file', text: `${out.file}${out.note ? ` — ${out.note}` : ''}` };
+  }
   if (name === 'read_mail') {
     if (!out || out.error) return { kind: 'read', text: `메일 열기 실패 — ${out?.error || '알 수 없음'}` };
     const who = String(out.from || '').replace(/\s*<[^>]*>\s*$/, '') || String(out.from || '');
@@ -338,6 +415,8 @@ const SYSTEM = `너는 요기보 코리아(Yogico)의 대표 박대진(David) �
 - 오간 흐름이 궁금한 질문이면 그 업체 메일을 oldest 순으로 보고 마지막 몇 통은 read_mail 로 연다.
 - "답해야 할 것", "급한 것", "기한" 질문은 list_open_items 를 쓴다.
 - 요약만으로 판단이 어려우면 read_mail 로 본문을 연다. 필요한 만큼만 연다.
+- 견적서·PI·PL·계약서처럼 첨부 내용을 확인해야 하거나 대표님이 첨부를 봐 달라고 하시면 read_attachment 로 연다. 숫자는 첨부 원문 기준으로 말하고, 메일 본문과 다르면 다르다고 짚는다.
+- 대표님이 입력창에 파일을 올리면 질문 앞에 [파일: 이름] 으로 들어온다. 그 파일을 먼저 읽고 답한다. 필요하면 메일 내용과 대조한다.
 
 답하는 방식
 - 한국어로, 핵심부터. 길게 늘이지 않는다.
@@ -362,6 +441,8 @@ export interface ChatTurnResult {
   answer: string;
   sources: ChatSource[];
   steps: ChatStep[];
+  /** 이번 질문에서 Anthropic 에 올린 파일 (첨부 읽기) — 대화를 지울 때 함께 지운다 */
+  fileIds: string[];
   usage: ChatUsage;
   model: string;
   stop: string;
@@ -378,13 +459,19 @@ export async function runMailChat(opts: {
   model?: string;
   emit: (ev: ChatEvent) => void;
   signal?: AbortSignal;
+  /** 입력창에 올린 파일 — 질문 앞에 붙여 넘긴다 (lib/ai/attachments.ts) */
+  files?: PreparedFile[];
 }): Promise<ChatTurnResult> {
   const anthropic = client();
   const model = pickModel(opts.model);
   const steps: ChatStep[] = [];
   const ids = await accountIdsForOwner(AI_CHAT_MAILBOX_OWNER);
-  const ctx: ToolCtx = { ids, read: new Map(), lastHits: [] };
-  const messages: any[] = [...opts.history, { role: 'user', content: opts.question }];
+  const ctx = newCtx(ids);
+  // 올린 파일이 있으면 파일 블록 뒤에 질문 — Claude 는 문서를 먼저 받고 질문을 읽는 편이 낫다
+  const userContent = opts.files?.length
+    ? [...opts.files.flatMap(blocksFor), { type: 'text', text: opts.question }]
+    : opts.question;
+  const messages: any[] = [...opts.history, { role: 'user', content: userContent }];
   const usage: ChatUsage = { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, usd: 0, lastInputTokens: 0 };
   let answer = '';
   let stop = '';
@@ -470,6 +557,11 @@ export async function runMailChat(opts: {
           const step = stepOf(c.name, c.input, out);
           steps.push(step);
           opts.emit({ type: 'step', ...step });
+          // 첨부 읽기는 문서·그림 블록을 결과에 그대로 붙인다
+          if (out && Array.isArray(out.__blocks)) {
+            const { __blocks, ...summary } = out;
+            return { type: 'tool_result', tool_use_id: c.id, content: [{ type: 'text', text: JSON.stringify(summary) }, ...__blocks] };
+          }
           return { type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(out) };
         } catch (e: any) {
           return { type: 'tool_result', tool_use_id: c.id, is_error: true, content: `실행 실패: ${e?.message || e}` };
@@ -482,11 +574,11 @@ export async function runMailChat(opts: {
   } catch (e: any) {
     // 중간에 끊겨도 그때까지 쓴 만큼은 사용액에 넣어야 한다 — 부른 쪽이 기록한다 (app/api/ai/chat)
     usage.usd = usdOf(model, usage);
-    if (e && typeof e === 'object') e.usage = { ...usage };
+    if (e && typeof e === 'object') { e.usage = { ...usage }; e.fileIds = [...ctx.fileIds]; }
     throw e;
   }
 
   usage.usd = usdOf(model, usage);
   const sources = ctx.read.size ? [...ctx.read.values()].slice(0, 8) : ctx.lastHits;
-  return { messages, answer: answer.trim(), sources, steps, usage, model, stop };
+  return { messages, answer: answer.trim(), sources, steps, fileIds: ctx.fileIds, usage, model, stop };
 }

@@ -6,6 +6,7 @@
  *   3) [📘 사용 방법] 팝업 — 할 수 있는 것 / 하지 않는 것 / 요령·비용 · 이번 달 사용액 · 예시는 입력칸에만
  *   4) 질문을 보내면 — 찾고 읽은 단계가 답 위에 보이고 끝나면 한 줄로 접힘 · 답 글자 · 근거 메일 · 📋 복사 · 사용료
  *   5) 고른 모델이 서버로 가는가 (Sonnet 으로 바꾸면 다음 질문은 Sonnet)
+ *   5') 📎 로 파일을 올리면 조각 올리기를 거쳐 질문과 함께 uploads 로 가고, 내 질문에 파일 이름이 붙는가 (조각 올리기도 가짜)
  *   6) 근거 메일을 누르면 팝업 — 대표님은 받은 메일함의 메일 창, admin 은 읽기 전용 창(원문/번역)
  *   7) hoon 이 주소로 들어오면 막히는가 · 한 달 한도(10만 원) 80% 경고 · 100% 잠김
  *
@@ -13,6 +14,9 @@
  */
 import puppeteer from 'puppeteer';
 import { SignJWT } from 'jose';
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { config } from 'dotenv';
 config({ path: '.env.local', quiet: true });
 
@@ -59,6 +63,8 @@ const open = async (user, usedKrw = null) => {
       }) });
     }
     if (/\/api\/ai\/chat\?mail=/.test(u)) return r.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_MAIL) });
+    // 파일 조각 올리기 — DB 에 남지 않게 가짜로
+    if (/\/api\/mail\/upload/.test(u)) { p.uploaded = (p.uploaded || 0) + 1; return r.respond({ status: 200, contentType: 'application/json', body: '{"success":true}' }); }
     if (/\/api\/ai\/chat/.test(u) && r.method() === 'POST') {
       const body = JSON.parse(r.postData() || '{}');
       p.posted.push(body);
@@ -159,6 +165,21 @@ try {
   ok(await ask(p, '그럼 답장 방향은?'), '두 번째 질문 답 받음');
   const saved = await p.evaluate(() => { try { return localStorage.getItem('aiChatModel'); } catch { return ''; } });
   ok(p.posted[1]?.model === 'claude-sonnet-5-5' && saved === 'claude-sonnet-5-5', `모델 바꾸면 다음 질문은 ${p.posted[1]?.model} · 기억 ${saved}`);
+
+  // 5') 📎 파일 올리기
+  const tmp = join(tmpdir(), 'ai-chat-test-견적.txt');
+  writeFileSync(tmp, 'PI-7731 PDRN Serum 2,400 pcs USD 4.85');
+  await (await p.$('#aiChatFileInput')).uploadFile(tmp);
+  ok(await waitFor(p, () => /ai-chat-test-견적\.txt/.test(document.getElementById('aiChatFilesBox')?.innerText || '')
+    && !/%/.test(document.getElementById('aiChatFilesBox')?.innerText || '')), `📎 올리면 입력창 위에 파일 칸 (조각 ${p.uploaded || 0}번 올림)`);
+  await p.click('#aiChatInput');
+  await p.keyboard.type('이 파일 확인해 줘');
+  await p.keyboard.press('Enter');
+  ok(await waitFor(p, () => true) && await (async () => { for (let k = 0; k < 40 && p.posted.length < 3; k++) await w(250); return p.posted.length === 3; })(), '파일과 함께 보냄');
+  ok(Array.isArray(p.posted[2]?.uploads) && p.posted[2].uploads.length === 1, `질문과 함께 uploads ${JSON.stringify(p.posted[2]?.uploads?.length)}개`);
+  ok(await waitFor(p, () => /📎 ai-chat-test-견적\.txt/.test(document.getElementById('aiChatScroll')?.innerText || '')
+    && document.getElementById('aiChatFilesBox')?.style.display === 'none'), '내 질문에 파일 이름이 붙고, 입력창 파일 칸은 비워짐');
+  await waitFor(p, () => !_aiChat.running);
 
   // 6) 근거 메일 → 대표님은 받은 메일함의 메일 창
   await p.evaluate(() => document.querySelector('.ai-chat-src').click());

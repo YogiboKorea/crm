@@ -17,9 +17,12 @@ export interface IAiChat extends Document {
     text: string;
     sources?: Array<{ id: string; date: string; from: string; subject: string }>;
     steps?: Array<{ kind: string; text: string }>;   // 메일을 찾고 읽은 단계 (화면에 접힌 한 줄로)
+    files?: Array<{ name: string; kind: string; note?: string }>;   // 질문과 함께 올린 파일
     model?: string;                                   // 답한 모델
     at: Date;
   }>;
+  /** 이 대화에서 Anthropic Files API 에 올린 파일 (첨부 읽기 · 올린 파일) — 대화를 지울 때 함께 지운다 */
+  fileIds: string[];
   turns: Array<{
     at: Date;
     model: string;
@@ -47,11 +50,13 @@ const AiChatSchema = new Schema<IAiChat>({
       text: { type: String, default: '' },
       sources: { type: Schema.Types.Mixed, default: undefined },
       steps: { type: Schema.Types.Mixed, default: undefined },
+      files: { type: Schema.Types.Mixed, default: undefined },
       model: { type: String, default: '' },
       at: { type: Date, default: Date.now },
     }],
     default: [],
   },
+  fileIds: { type: [String], default: [] },
   turns: {
     type: [{
       _id: false,
@@ -70,9 +75,9 @@ const AiChatSchema = new Schema<IAiChat>({
 
 AiChatSchema.index({ user: 1, updatedAt: -1 });
 
-// 개발 서버는 처음 만든 mongoose 모델을 계속 쓴다 — 새로 넣은 칸(steps·model)이 조용히 버려지지 않게 예전 모델은 버린다
+// 개발 서버는 처음 만든 mongoose 모델을 계속 쓴다 — 새로 넣은 칸(steps·model·files·fileIds)이 조용히 버려지지 않게 예전 모델은 버린다
 const stale = mongoose.models.AiChat as any;
-if (stale && !stale.schema.path('display')?.schema?.path('steps')) {
+if (stale && (!stale.schema.path('display')?.schema?.path('files') || !stale.schema.path('fileIds'))) {
   mongoose.deleteModel('AiChat');
 }
 
