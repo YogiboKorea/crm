@@ -127,6 +127,14 @@ export default function Home() {
               <span className="nav-icon"><img src="/icons/nav/outreach.png" alt="" /></span><span className="nav-label">발송 관리</span>
               <span className="nav-badge" data-nav-badge="contacted"></span>
             </button>
+            {/* 메일 계정 관리 · 메일 양식 — 발송 관리 바로 아래 (2026-11-23 대표님 요청). 보내기 전에 손보는 곳이라 발송 옆에 둔다.
+                계정이 먼저다 — 보내는 주소·서명이 정해져야 양식이 의미를 갖고, 대표 계정을 바꾸면 받은 메일함도 그 계정 기준으로 바뀐다. */}
+            <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 보내는 주소와 서명을 등록합니다. 대표 계정을 바꾸면 받은 메일함도 그 계정 기준으로 바뀝니다">
+              <span className="nav-icon"><img src="/icons/nav/mail-accounts.png" alt="" /></span><span className="nav-label">메일 계정 관리</span>
+            </button>
+            <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 양식 — 발송할 메일 제목/본문 작성 (회사명 자동 대체)">
+              <span className="nav-icon"><img src="/icons/nav/templates.png" alt="" /></span><span className="nav-label">메일 양식</span>
+            </button>
             <button className="nav-item" data-view="pipeline-replied" type="button" title="답장 받음 — 상대방이 답장을 보내온 리드. 회사명 옆 💬 버튼으로 주고받은 메일 확인">
               <span className="nav-icon"><img src="/icons/nav/replied.png" alt="" /></span><span className="nav-label">답장 받음</span>
               <span className="nav-badge" data-nav-badge="replied"></span>
@@ -179,15 +187,6 @@ export default function Home() {
               <span className="nav-icon">🔌</span><span className="nav-label">메일 수신 설정</span>
             </button>
             */}
-            {/* 계정이 먼저다.
-                보내는 주소·서명이 정해져야 양식이 의미를 갖고, 대표 계정을 바꾸면
-                받은 메일함이 통째로 그 계정 기준으로 바뀐다. 순서가 곧 설정 순서다. */}
-            <button className="nav-item" data-view="tool-mail-accounts" type="button" title="메일 계정 관리 — 보내는 주소와 서명을 등록합니다. 대표 계정을 바꾸면 받은 메일함도 그 계정 기준으로 바뀝니다">
-              <span className="nav-icon"><img src="/icons/nav/mail-accounts.png" alt="" /></span><span className="nav-label">메일 계정 관리</span>
-            </button>
-            <button className="nav-item" data-view="tool-b2b-email" type="button" title="메일 양식 — 발송할 메일 제목/본문 작성 (회사명 자동 대체)">
-              <span className="nav-icon"><img src="/icons/nav/templates.png" alt="" /></span><span className="nav-label">메일 양식</span>
-            </button>
             {/* 추천 리스트는 숨김 — 고정 시드 54개짜리 구버전 기능이라,
                 웹에서 실시간으로 발굴하는 [🤖 AI 서칭] 이 대체한다.
                 되살리려면 이 주석을 풀면 된다.
@@ -780,7 +779,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=41618a1f" strategy="afterInteractive" />
+      <Script src="/app.js?v=715df581" strategy="afterInteractive" />
     </>
   );
 }

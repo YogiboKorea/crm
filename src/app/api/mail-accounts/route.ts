@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isMasterUser } from '@/lib/masters';
-import { getSessionUser, ownerFilter, UNAUTHORIZED } from '@/lib/mail/scope';
+import { getSessionUser, getMailScope, mailboxIds, ownerFilter, UNAUTHORIZED } from '@/lib/mail/scope';
+import { lastInboxSync, isSyncStale } from '@/lib/mail/sync-status';
 import dbConnect from '@/lib/mongodb';
 import { MailAccount } from '@/models/MailAccount';
 import { encryptSecret, sanitizeMailAccount } from '@/lib/crypto';
@@ -48,9 +49,13 @@ export async function GET() {
     websites: distinct('senderWebsite', ['www.yogico.kr']),
   };
 
+  // 받은편지함을 언제까지 받아 왔나 — 계정 카드에 "마지막으로 받아 온 시각" · 멈췄으면 빨간 안내 (lib/mail/sync-status.ts)
+  const scope = await getMailScope();
+  const syncs = await Promise.all(list.map((a: any) => lastInboxSync(scope ? mailboxIds(scope, String(a._id)) : [String(a._id)])));
+
   return NextResponse.json({
     success: true,
-    accounts: list.map(sanitizeMailAccount),
+    accounts: list.map((a: any, i: number) => ({ ...sanitizeMailAccount(a), lastSyncAt: syncs[i], syncStale: isSyncStale(syncs[i]) })),
     master: isMasterUser(user),
     signaturePresets,
   });

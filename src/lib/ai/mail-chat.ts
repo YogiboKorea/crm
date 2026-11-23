@@ -22,7 +22,7 @@ import { prepareFile, blocksFor, fileKind, MAX_READ_BYTES, type PreparedFile } f
 import { resolveAccount, toImapConfig } from '@/lib/mail/accounts';
 import { fetchAttachment } from '@/lib/mail/imap';
 import { InboundMail } from '@/models/InboundMail';
-import { MailSyncState } from '@/models/MailSyncState';
+import { lastInboxSync, isSyncStale } from '@/lib/mail/sync-status';
 import { MailAccount } from '@/models/MailAccount';
 import { accountIdsForOwner } from '@/lib/mail/scope';
 import { NOISE_CLASSES } from '@/lib/mail/classify';
@@ -440,20 +440,18 @@ ${since}- 영어 메일이 많으니 회사·제품·사람 이름은 영어로 
 
 /** 메일함이 언제까지 받아 온 상태인가 — 메일 서버 로그인이 깨지면(비밀번호 변경 등) 조용히 멈추므로 화면과 비서가 알게 한다 */
 export interface MailboxFreshness { lastSyncAt: Date | null; latestMail: Date | null; stale: boolean }
-/** 매일 아침 수집(크론)이 모든 계정을 도므로, 하루 반 넘게 못 받아 왔으면 멈춘 것으로 본다 */
-const STALE_MS = 36 * 3600_000;
+/** 멈춤 기준은 계정 카드·받은 메일함과 같다 — 하루 반 (lib/mail/sync-status.ts) */
 
 export async function mailboxFreshness(ids: string[]): Promise<MailboxFreshness> {
   if (!ids.length) return { lastSyncAt: null, latestMail: null, stale: false };
-  const [st, last]: any[] = await Promise.all([
-    MailSyncState.findOne({ accountId: { $in: ids }, folder: 'INBOX', lastSyncAt: { $ne: null } }).sort({ lastSyncAt: -1 }).select('lastSyncAt').lean(),
+  const [lastSyncAt, last]: any[] = await Promise.all([
+    lastInboxSync(ids),
     InboundMail.findOne({ accountId: { $in: ids } }).sort({ date: -1 }).select('date').lean(),
   ]);
-  const lastSyncAt = st?.lastSyncAt ? new Date(st.lastSyncAt) : null;
   return {
     lastSyncAt,
     latestMail: last?.date ? new Date(last.date) : null,
-    stale: !!lastSyncAt && Date.now() - lastSyncAt.getTime() > STALE_MS,
+    stale: isSyncStale(lastSyncAt),
   };
 }
 

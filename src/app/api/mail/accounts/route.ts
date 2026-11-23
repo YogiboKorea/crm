@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { listMailAccounts, summarize } from '@/lib/mail/accounts';
 import { InboundMail } from '@/models/InboundMail';
 import { mailboxIds, getMailScope, mailFilter, UNAUTHORIZED } from '@/lib/mail/scope';
+import { lastInboxSync, isSyncStale } from '@/lib/mail/sync-status';
 
 export const runtime = 'nodejs';
 
@@ -28,11 +29,15 @@ export async function GET() {
       { $group: { _id: '$accountId', n: { $sum: 1 } } },
     ]);
     const countMap = new Map<string, number>(counts.map((c: any) => [String(c._id), c.n]));
+    // 받은편지함을 언제까지 받아 왔나 — 이카운트가 로그인을 거절하면 조용히 멈춘다 (lib/mail/sync-status.ts)
+    const syncs = await Promise.all(accounts.map((a: any) => lastInboxSync(mailboxIds(scope, String(a._id)))));
 
     return NextResponse.json({
       success: true,
-      accounts: accounts.map((a: any) => ({
+      accounts: accounts.map((a: any, i: number) => ({
         ...summarize(a),
+        lastSyncAt: syncs[i],
+        syncStale: isSyncStale(syncs[i]),
         // 같은 메일함인 계정 id 에 모인 메일까지 합쳐 센다
         mailCount: mailboxIds(scope, String(a._id)).reduce((n, id) => n + (countMap.get(id) || 0), 0),
       })),

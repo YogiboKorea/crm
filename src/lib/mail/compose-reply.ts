@@ -160,7 +160,8 @@ export async function composeReply(scope: MailScope, input: ReplyInput): Promise
   // 반대로 평문을 그냥 넣으면 줄바꿈이 사라지므로 pre-wrap 으로 감싼다.
   const bodyIsHtml = input?.bodyIsHtml === true;
   const inner = bodyIsHtml ? source : `<div style="white-space:pre-wrap">${escapeHtml(source)}</div>`;
-  const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">${inner}</div>${sigHtml}`;
+  // 서명도 본문 칸 안에 — 본문과 같은 글꼴·크기(14px)로 나간다 (2026-11-23)
+  const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">${inner}${sigHtml}</div>`;
   // 평문 대체본 — HTML 을 못 읽는 클라이언트용. 태그를 걷어내고 줄바꿈만 남긴다.
   const plain = bodyIsHtml
     ? source.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n').replace(/<[^>]+>/g, '').trim()

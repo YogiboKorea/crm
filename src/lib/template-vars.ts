@@ -160,8 +160,10 @@ export function buildSignatureBlock(
   if (website) rows.push({ text: website, html: `<a href="${escapeHtml(normalizeUrl(website))}" style="color:#2563eb;text-decoration:none">${escapeHtml(website)}</a>` });
 
   if (opts.html) {
+    // 글꼴·크기는 정하지 않는다 — 본문을 감싼 칸(양식 15px · 직접 쓰기 14px)을 그대로 따라 본문과 같은 크기로 나간다.
+    // 예전에는 13px 로 고정해서 서명만 작게 보였다 (2026-11-23 요청 "본문과 서명 글자 크기를 같게").
     return `
-<div style="margin-top:24px;font-family:inherit;font-size:13px;line-height:1.5;color:#111827">
+<div style="margin-top:24px;color:#111827">
   ${rows.map((r) => `<div style="margin:0 0 12px">${r.html}</div>`).join('\n  ')}
 </div>`.trim();
   }

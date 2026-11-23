@@ -5360,7 +5360,18 @@ async function renderInboxPage(opts) {
   if (!_inboxState.group && !_inboxState.today && !_inboxState.trashed && !_inboxState.q && !needsReplyOnly) _inboxState.allTotal = total;
   const folderPanel = inboxFolderPanelHtml(groupInfo, { total, todayOn });
 
+  // 받아 오기가 멈춘 메일함 — 그 뒤에 온 메일이 여기 없다는 것을 먼저 알린다 (전무님 11/13~, 2026-11-23)
+  const syncCur = currentMailboxAccountId();
+  const syncStaleAccs = ((accInfo && accInfo.accounts) || []).filter((a) => a.syncStale && (syncCur === 'all' || a.accountId === syncCur));
+  const syncBanner = syncStaleAccs.length ? `
+    <div id="inboxSyncStale" style="margin-bottom:12px;padding:11px 14px;border-radius:10px;background:var(--danger-soft);color:var(--danger-text);font-size:12.5px;line-height:1.65">
+      <b>⚠ ${syncStaleAccs.map((a) => `${escapeHtml(a.address || a.label)} 메일을 ${escapeHtml(mailSyncTimeText(a.lastSyncAt))}`).join(' · ')} 이후 받아 오지 못하고 있습니다</b> — 그 뒤에 온 메일은 아직 여기 없습니다.
+      이카운트 웹메일 → 개인기능설정 → 외부연동설정에서 <b>메일 클라이언트 사용 = 사용 · 해외 로그인 차단 = 사용안함</b>인지 확인하고,
+      웹메일 비밀번호를 바꾸셨다면 <a href="#" class="inbox-fix-account" style="color:inherit;font-weight:700">[메일 계정 관리]</a>에서 새 비밀번호를 넣어 주세요.
+    </div>` : '';
+
   els.content.innerHTML = `
+    ${syncBanner}
     ${viewingBanner}
     ${todayStrip}
     ${accountTabs}
@@ -5824,6 +5835,11 @@ function bindInboxActions() {
       render();
     });
   });
+  // 받아 오기 멈춤 안내의 [메일 계정 관리] — 비밀번호를 다시 넣는 곳으로
+  els.content.querySelectorAll('.inbox-fix-account').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelector('.nav-item[data-view="tool-mail-accounts"]')?.click();
+  }));
   const search = els.content.querySelector('#inboxSearch');
   if (search) {
     search.addEventListener('change', (e) => {
@@ -9428,7 +9444,7 @@ function replyBoxHtml(lastInbound) {
                  background:#2563eb;color:#fff;cursor:pointer">보내기</button>
         <!-- [서명 붙이기] 는 본문 위로 올렸다 — 다 쓰고 나서가 아니라 쓰기 전에 정하는 것이라서. -->
         <span id="convReplySigNote" style="font-size:11.5px;color:#64748b">
-          서명이 함께 나갑니다 · 내용은 <b>설정 · 도구 → 📬 메일 계정 관리</b>에서 바꿉니다
+          서명이 함께 나갑니다 · 내용은 <b>왼쪽 [발송 관리] 아래 📬 메일 계정 관리</b>에서 바꿉니다
         </span>
         <span id="convReplyMsg" style="font-size:12px;margin-left:auto"></span>
       </div>
@@ -9561,7 +9577,7 @@ function bindConversationReply(leadId, rootId) {
     if (sigBox) sigBox.hidden = !on;
     if (sigNote) {
       sigNote.innerHTML = on
-        ? '서명이 함께 나갑니다 · 내용은 <b>설정 · 도구 → 📬 메일 계정 관리</b>에서 바꿉니다'
+        ? '서명이 함께 나갑니다 · 내용은 <b>왼쪽 [발송 관리] 아래 📬 메일 계정 관리</b>에서 바꿉니다'
         : '<span style="color:#b45309">서명 없이 나갑니다</span> — 본문에 직접 적으셔야 합니다';
     }
   };
@@ -10213,7 +10229,7 @@ async function openComposeMailModal(preset = {}) {
           <div id="cmSigPreview" contenteditable="false"
                style="margin:0 13px;padding:0 0 8px;border-top:1px dashed #e2e8f0;user-select:none">
             <div id="cmSigLabel" style="font-size:10.5px;font-weight:700;color:#94a3b8;margin-top:7px">서명 불러오는 중…</div>
-            <div id="cmSigBody"></div>
+            <div id="cmSigBody" style="font-size:15px;line-height:1.8;color:#0f172a"></div>
           </div>
         </div>
 
@@ -12410,6 +12426,30 @@ var UPDATE_LOG = [
   {
     date: '2026-11-23',
     items: [
+      {
+        kind: 'better', icon: '🚨', title: '메일을 못 받아 오면 바로 보이게 — 받은 메일함 · 메일 계정 관리',
+        how: [
+          '이카운트가 로그인을 거절하면(웹메일 비밀번호 변경 · 외부연동설정) 그동안은 메일 받아 오기가 <b>아무 표시 없이</b> 멈춰 있었습니다 (전무님 메일함 11/13~).',
+          '이제 하루 반 넘게 못 받아 오면 <b>받은 메일함 맨 위</b>와 <b>[메일 계정 관리] 계정 카드</b>에 빨간 안내가 뜹니다 — 언제부터 멈췄는지, 무엇을 확인할지(메일 클라이언트 사용 = 사용 · 해외 로그인 차단 = 사용안함 · 바뀐 비밀번호)까지.',
+          '정상인 계정은 카드에 <b>📥 메일 받아 온 시각</b>이 작게 보입니다.',
+        ],
+        go: 'tool-mail-accounts', goLabel: '메일 계정 관리',
+      },
+      {
+        kind: 'better', icon: '✍️', title: '서명 글자 크기를 본문과 같게',
+        how: [
+          '메일 끝에 붙는 서명이 본문보다 작게(13px) 나가던 것을 <b>본문과 같은 크기</b>로 맞췄습니다 — 양식으로 보내는 메일 · 직접 쓰는 메일 · 답장 모두.',
+          '메일 쓰기 화면과 [메일 계정 관리]의 서명 미리보기도 같은 크기로 보입니다.',
+        ],
+        go: 'tool-mail-accounts', goLabel: '메일 계정 관리',
+      },
+      {
+        kind: 'better', icon: '🧭', title: '[메일 계정 관리] · [메일 양식] — [발송 관리] 바로 아래로',
+        how: [
+          '왼쪽 메뉴에서 <b>[메일 계정 관리]</b>와 <b>[메일 양식]</b>을 설정·도구에서 <b>[발송 관리] 바로 아래</b>로 옮겼습니다. 보내기 전에 손보는 곳이라 발송 옆에 두었습니다.',
+        ],
+        go: 'tool-b2b-email', goLabel: '메일 양식',
+      },
       {
         kind: 'data', icon: '📥', title: '대표님 아이디에 rnd@yogico.kr 메일함 추가',
         how: [
@@ -16352,6 +16392,29 @@ function mailAccountPrimaryPanelHtml(list) {
     </div>`;
 }
 
+/**
+ * 이 메일함을 언제까지 받아 왔나 — 계정 카드 (2026-11-23).
+ * 이카운트가 로그인을 거절하면(웹메일 비밀번호 변경 · 외부연동설정) 수집이 조용히 멈춘다.
+ * 전무님 메일함이 11/13 부터 멈췄는데 카드는 "✅ 검증됨" 초록색이라 아무도 몰랐다 → 하루 반 넘게 멈추면 빨간 안내.
+ */
+function mailSyncTimeText(at) {
+  return new Date(at).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function mailAccountSyncHtml(acc) {
+  if (!acc || !acc.lastSyncAt) return '';
+  const when = mailSyncTimeText(acc.lastSyncAt);
+  if (!acc.syncStale) {
+    return `<div style="font-size:11px;margin-top:4px;color:var(--text-tertiary)">📥 메일 받아 온 시각 ${escapeHtml(when)}</div>`;
+  }
+  return `
+    <div style="margin-top:8px;padding:10px 12px;border-radius:9px;background:var(--danger-soft);color:var(--danger-text);font-size:12px;line-height:1.65">
+      <b>⚠ ${escapeHtml(when)} 이후 이 메일함의 새 메일을 받아 오지 못하고 있습니다.</b><br>
+      메일 서버(이카운트)가 로그인을 거절하는 경우입니다. 이카운트 웹메일 → 개인기능설정 → 외부연동설정에서
+      <b>메일 클라이언트 사용 = 사용 · 해외 로그인 차단 = 사용안함</b>인지 확인하고,
+      웹메일 비밀번호를 바꾸셨다면 오른쪽 <b>[✏ 수정]</b>에서 새 비밀번호를 넣어 주세요. 고치면 다음 수집 때 밀린 메일이 들어옵니다.
+    </div>`;
+}
+
 function mailAccountCardHtml(acc) {
   const verifiedAgo = acc.lastVerifiedAt ? formatRelativeKo(acc.lastVerifiedAt) : null;
   const hasError = !!acc.lastVerifyError;
@@ -16375,6 +16438,7 @@ function mailAccountCardHtml(acc) {
               ${hasError ? '⚠ 마지막 검증 실패: ' + escapeHtml(acc.lastVerifyError.slice(0, 100)) : '✅ 검증됨 ' + verifiedAgo}
             </div>
           ` : ''}
+          ${mailAccountSyncHtml(acc)}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
           <button class="acc-backfill-btn button ghost" data-acc-id="${escapeAttr(acc._id)}" data-acc-label="${escapeAttr(acc.accountName || acc.smtpUser)}" type="button" style="font-size:11px;padding:5px 10px" title="이 메일함의 최근 2달 메일을 전부 가져와 분류합니다">📥 2달 가져오기</button>
@@ -16713,7 +16777,7 @@ function openMailAccountModal(editId) {
           <!-- 메일 하단에 붙을 서명 — 입력하는 대로 바뀐다 (서버 lib/template-vars.ts buildSignatureBlock 과 같은 모양) -->
           <div style="padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px">
             <div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:8px">✍ 메일 하단에 이렇게 붙습니다</div>
-            <div id="macSigPreview" style="padding:12px 14px;background:#fff;border:1px solid #bbf7d0;border-radius:8px">${signaturePreviewHtml(acc || {})}</div>
+            <div id="macSigPreview" style="padding:12px 14px;background:#fff;border:1px solid #bbf7d0;border-radius:8px;font-size:14px;line-height:1.6;color:#111827">${signaturePreviewHtml(acc || {})}</div>
           </div>
 
           <!-- 대표 지정은 계정 관리 화면 맨 위 한 곳에서만 한다.
@@ -18046,7 +18110,8 @@ function accountSignatureHtml(acc) {
     rows.push(`E: <a href="mailto:${escapeAttr(email)}" style="color:#2563eb;text-decoration:none">${escapeHtml(email)}</a>`);
   }
   if (website) rows.push(`<a href="${escapeAttr(normalizeUrl(website))}" style="color:#2563eb;text-decoration:none">${escapeHtml(website)}</a>`);
-  return `<div style="margin-top:24px;font-size:13px;line-height:1.5;color:#111827">${rows.map((r) => `<div style="margin:0 0 12px">${r}</div>`).join('')}</div>`;
+  // 글꼴·크기는 정하지 않는다 — 본문 칸을 따라 본문과 같은 크기로 보이고 나간다 (예전 13px 고정, 2026-11-23)
+  return `<div style="margin-top:24px;color:#111827">${rows.map((r) => `<div style="margin:0 0 12px">${r}</div>`).join('')}</div>`;
 }
 
 /** 서명 미리보기 — 비어 있으면 무엇을 채워야 하는지 알려 준다 (메일 계정 관리 화면용) */

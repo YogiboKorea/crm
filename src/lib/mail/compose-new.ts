@@ -155,7 +155,8 @@ export async function composeNewMail(scope: MailScope, input: NewMailInput): Pro
   // 서식 편집기로 쓴 본문은 이미 HTML 이다. 평문이면 줄바꿈이 살아 있도록 감싼다 (답장과 같은 규칙).
   const bodyIsHtml = input?.bodyIsHtml === true;
   const inner = bodyIsHtml ? source : `<div style="white-space:pre-wrap">${escapeHtml(source)}</div>`;
-  const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">${inner}</div>${sigHtml}`;
+  // 서명도 본문 칸 안에 — 본문과 같은 글꼴·크기(14px)로 나간다 (2026-11-23)
+  const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">${inner}${sigHtml}</div>`;
   const plain = bodyIsHtml
     ? source.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n').replace(/<[^>]+>/g, '').trim()
     : source;
