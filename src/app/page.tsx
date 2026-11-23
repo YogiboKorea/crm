@@ -69,11 +69,15 @@ export default function Home() {
               <span className="nav-icon"><img src="/icons/nav/deadlines.png" alt="" /></span><span className="nav-label">기한 관리</span>
               <span className="nav-badge" data-nav-badge="inboxDeadlines"></span>
             </button>
-            {/* 🤖 AI 메일 비서 — 대표님 메일을 Claude 가 찾아 읽고 답·조언 (2026-11-12, 자리: 대표님이 짚어 주신 기한 관리 바로 아래).
-                대표님 전용이라 처음엔 숨겨 두고, 로그인 확인(/api/auth/me aiChat)이 되면 app.js 가 보이게 한다. */}
+            {/* 🤖 AI 메일 비서 — 내 메일을 Claude 가 찾아 읽고 답·조언 (2026-11-12, 자리: 대표님이 짚어 주신 기한 관리 바로 아래).
+                대표님·전무님(2026-11-23) 아이디에만 보이므로 처음엔 숨겨 두고, 로그인 확인(/api/auth/me aiChat)이 되면 app.js 가 보이게 한다. */}
             <button className="nav-item" id="navAiChat" data-view="tool-ai-chat" type="button" style={{ display: 'none' }}
-              title="AI 메일 비서 — 메일에 대해 물어보면 Claude 가 대표님 메일을 직접 찾아 읽고 답과 조언을 드립니다">
+              title="AI 메일 비서 — 메일에 대해 물어보면 Claude 가 내 메일함을 직접 찾아 읽고 답과 조언을 드립니다">
               <span className="nav-icon"><img src="/icons/nav/ai-chat.png" alt="" /></span><span className="nav-label">AI 메일 비서</span>
+            </button>
+            {/* 🌏 시차·환율 — 클라이언트가 받은 World Desk 를 CRM 화면으로 옮겼다 (2026-11-23). 모든 아이디에서 보인다. */}
+            <button className="nav-item" data-view="tool-world-desk" type="button" title="시차·환율 — 도시 간 시차(서머타임 자동 반영) · 통화 환산 · 세계 시계">
+              <span className="nav-icon"><img src="/icons/nav/world-desk.svg" alt="" /></span><span className="nav-label">시차·환율</span>
             </button>
             {/* 브리핑·휴지통은 숨김 — 화면 수를 줄이기 위해서다.
                 기능과 데이터는 그대로 살아 있고 (renderBriefingPage / renderTrashPage),
@@ -776,7 +780,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=966ad304" strategy="afterInteractive" />
+      <Script src="/app.js?v=c253974e" strategy="afterInteractive" />
     </>
   );
 }

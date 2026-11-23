@@ -1839,8 +1839,14 @@ async function _renderInner(seq) {
   if (state.view === "tool-ai-chat") {
     // 이모지 대신 사이드바와 같은 아이콘 그림 (public/icons/nav/ai-chat.png)
     els.viewTitle.innerHTML = '<img src="/icons/nav/ai-chat.png" alt="" style="width:1.05em;height:1.05em;vertical-align:-0.15em;margin-right:6px">AI 메일 비서';
-    els.viewSubtitle.textContent = "메일에 대해 물어보면 Claude 가 대표님 메일을 직접 찾아 읽고 답과 조언을 드립니다.";
+    els.viewSubtitle.textContent = "메일에 대해 물어보면 Claude 가 내 메일함을 직접 찾아 읽고 답과 조언을 드립니다.";
     renderAiChatPage();
+    return;
+  }
+  if (state.view === "tool-world-desk") {
+    els.viewTitle.innerHTML = '<img src="/icons/nav/world-desk.svg" alt="" style="width:1.05em;height:1.05em;vertical-align:-0.15em;margin-right:6px">시차·환율';
+    els.viewSubtitle.textContent = "해외 업체와 일정 잡고 견적 낼 때 — 도시 간 시차(서머타임 자동 반영) · 통화 환산 · 세계 시계.";
+    renderWorldDeskPage();
     return;
   }
   if (state.view === "tool-updates") {
@@ -12402,6 +12408,33 @@ async function loadMailAccounts(force) {
  */
 var UPDATE_LOG = [
   {
+    date: '2026-11-23',
+    items: [
+      {
+        kind: 'new', icon: '🤖', title: 'AI 메일 비서 — 전무님 아이디에도 (전무님 메일함 기준)',
+        how: [
+          '전무님 아이디(hoon)에도 사이드바 <b>[기한 관리]</b> 아래 <b>[AI 메일 비서]</b>가 생겼습니다. 쓰는 법·모델 고르기·파일 올리기·근거 메일 열기 모두 대표님 것과 같습니다.',
+          '<b>각자 자기 메일함만</b> 읽습니다 — 전무님 비서는 전무님 메일(hoon@yogico.kr)만, 대표님 비서는 대표님 메일(david@yogico.kr)만 봅니다. 대화 기록도 아이디마다 따로입니다.',
+          '전무님 메일함에는 <b>2026년 8월 21일부터</b>의 메일이 있습니다. 질문 예시도 전무님 거래처(Dangaard · My K Romania · TOUN28 등)로 바꿨습니다.',
+          '메일 서버에서 새 메일을 하루 넘게 못 받아 오면(비밀번호를 바꾼 경우 등) 채팅 창 위에 노란 안내가 뜹니다 — <b>[메일 계정 관리]</b>에서 새 비밀번호를 넣으면 다시 받아 옵니다.',
+          '한 달 한도 <b>10만 원</b>은 대표님·전무님 <b>합계</b>입니다 (같은 API 키).',
+        ],
+        go: 'tool-ai-chat', goLabel: 'AI 메일 비서',
+      },
+      {
+        kind: 'new', icon: '🌏', title: '시차·환율 — 해외 업체 일정·견적 계산을 CRM 안에서',
+        how: [
+          '사이드바 <b>[AI 메일 비서]</b> 아래 <b>[시차·환율]</b>. 모든 아이디에서 보입니다.',
+          '<b>시차 계산</b> — 기준 도시·비교 도시를 고르고 날짜와 시간을 넣으면 그 도시의 시각과 시차가 나옵니다. 서머타임은 <b>그 날짜 기준</b>으로 자동 반영되고 (미국·유럽은 3월·10~11월에 바뀝니다), 전환 때문에 없는 시간·두 번 오는 시간도 알려 줍니다.',
+          '아래 막대로 두 도시의 <b>업무 시간(09–18시)</b>이 언제 겹치는지 한눈에 보고, <b>[📋 변환 결과 복사]</b>로 메일에 그대로 붙여 넣을 수 있습니다.',
+          '<b>환율 계산</b> — 금액과 통화를 고르면 바로 환산합니다 (33개 통화). Coinbase 참고 환율을 60초마다 새로 조회하며, 은행의 실제 환전·송금 환율과 수수료와는 다릅니다.',
+          '<b>세계 시계</b> — 자주 보는 도시를 8개까지 올려 두면 지금 시각·밤낮·서머타임 여부가 보입니다. 고른 도시·통화는 이 브라우저에 기억됩니다.',
+        ],
+        go: 'tool-world-desk', goLabel: '시차·환율',
+      },
+    ],
+  },
+  {
     date: '2026-11-12',
     items: [
       {
@@ -12804,18 +12837,29 @@ function renderUpdatesPage() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 🤖 AI 메일 비서 (2026-11-12 대표님 요청)
-// 메일에 대해 물어보면 Claude 가 대표님 메일함을 직접 찾아 읽고 답·조언한다.
-// 서버: /api/ai/chat (lib/ai/mail-chat.ts) · 대표님 전용 (lib/ai/chat-access.ts)
+// 🤖 AI 메일 비서 (2026-11-12 대표님 요청 · 2026-11-23 전무님도)
+// 메일에 대해 물어보면 Claude 가 내 메일함을 직접 찾아 읽고 답·조언한다 — 대표님은 대표님 메일함, 전무님은 전무님 메일함.
+// 서버: /api/ai/chat (lib/ai/mail-chat.ts) · 누가 어느 메일함을 읽는지는 lib/ai/chat-access.ts
 // ══════════════════════════════════════════════════════════════
 var _aiChat = { loaded: false, denied: '', info: null, list: [], convId: null, display: [], running: false, draft: '', model: '', abort: null, files: [] };
 
+// 질문 예시는 메일함마다 다르다 — 그 메일함에 실제로 있는 거래처로 서버가 준다 (lib/ai/chat-access.ts).
+// 여기 것은 못 받았을 때만 쓴다 (거래처 이름이 없는 것).
 const AI_CHAT_EXAMPLES = [
   '이번 주에 꼭 답해야 할 메일 정리해 줘',
   '기한이 지났거나 곧 다가오는 건 뭐가 있어?',
-  'Dangaard 와는 지금 어디까지 얘기됐어?',
-  'Yogibo Japan 포켓몬 건 진행 상황 알려 줘',
 ];
+function aiChatExamples(kind) {
+  const info = _aiChat.info || {};
+  const list = kind === 'guide' ? info.guideExamples : info.examples;
+  if (Array.isArray(list)) return list;
+  return kind === 'guide' ? AI_CHAT_GUIDE_EXAMPLES : AI_CHAT_EXAMPLES;
+}
+/** 지금 비서가 읽는 메일함 — 누구 메일함인지 · 주소 · 언제부터 · 언제까지 받아 왔는지 (서버가 준다) */
+function aiChatBox() {
+  const m = (_aiChat.info && _aiChat.info.mailbox) || {};
+  return { title: m.title || '내', address: m.address || '', since: m.since || '', sinceNote: m.sinceNote || '', lastSyncAt: m.lastSyncAt || null, stale: !!m.stale };
+}
 const AI_CHAT_MODEL_LABEL = { 'claude-opus-5-5': 'Opus 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-haiku-5-5': 'Haiku 5.5', 'claude-opus-4-8': 'Opus 4.8' };
 
 /** 고른 모델 — 실제 Claude 처럼 입력창에서 고른다 (2026-11-12). 이 브라우저에 기억해 두고, 없거나 목록 밖이면 서버 기본(Opus 5.5) */
@@ -13016,16 +13060,13 @@ function aiChatMsgHtml(m, i) {
  * 예시는 눌러도 바로 보내지 않고 입력칸에만 넣는다 (질문마다 비용).
  */
 const AI_CHAT_GUIDE_EXAMPLES = [
-  'Arencia 단가 협상 지금까지 내용 정리해 줘',
-  'My K Romania 에 보낼 답장 영어로 써 줘',
   '이번 달에 새로 연락 온 해외 바이어 있어?',
-  'Yogibo Japan 에서 요청한 것 중 아직 안 끝난 거 뭐야?',
-  '오스템파마 계약 건 쟁점이 뭐였지?',
   '피싱 같아 보이는 메일 있었어?',
 ];
 
 function aiChatGuideHtml(info) {
   const month = info?.month || {};
+  const box = aiChatBox();
   const cap = Number(month.capKrw || 0);
   const card = (icon, title, color, items) => `
     <div style="background:var(--bg-surface);border:1px solid var(--border-default);border-top:3px solid ${color};border-radius:12px;padding:14px 16px;min-width:0">
@@ -13049,13 +13090,13 @@ function aiChatGuideHtml(info) {
         '<b>답장 문안</b> — 상대 언어로 써 드립니다 (영어 메일이면 영어 + 한국어 요약). 답 아래 <b>📋 복사</b>로 옮겨 <b>[✏️ 메일 쓰기]</b>에 붙여 넣으세요.',
         '<b>이어서 묻기</b> — 같은 대화 안에서는 앞 내용을 기억합니다 ("그럼 2번은 어떻게 답하지?").',
         '<b>근거 메일 열기</b> — 답 아래 근거 메일을 누르면 그 메일이 팝업으로 열립니다.',
-        '<b>메일 첨부 읽기</b> — "Barulab 메일에 온 CI 첨부 확인해 줘" 처럼 물으면 메일에 붙은 PDF·엑셀·워드·이미지를 메일 서버에서 꺼내 읽습니다 (30MB까지).',
+        '<b>메일 첨부 읽기</b> — "OO 메일에 온 견적서 첨부 확인해 줘" 처럼 물으면 메일에 붙은 PDF·엑셀·워드·이미지를 메일 서버에서 꺼내 읽습니다 (30MB까지).',
         '<b>파일 올려서 묻기</b> — 입력창 <b>📎</b> 로 파일을 올리거나, 끌어다 놓거나, 캡처를 붙여넣고(Ctrl+V) 함께 물어보세요 (합계 10MB · 5개까지).',
       ])}
       ${card('⛔', '하지 않는 것 · 한계', '#ef4444', [
         '메일을 <b>보내거나 지우거나 옮기지 않습니다</b> — 읽기만 합니다.',
-        '<b>대표님 메일함(david@yogico.kr)만</b> 봅니다. 전무님 메일이나 다른 계정은 보지 않습니다.',
-        '<b>2026년 1월부터 지금까지</b>의 메일을 봅니다. 그보다 오래된 메일은 거래처 폴더에 있던 일부만 있습니다.',
+        `<b>${escapeHtml(box.title)} 메일함${box.address ? `(${escapeHtml(box.address)})` : ''}만</b> 봅니다. 다른 분의 메일이나 다른 계정은 보지 않습니다.`,
+        ...(box.since ? [`<b>${escapeHtml(box.since)}부터 지금까지</b>의 메일을 봅니다${box.sinceNote ? ` (${escapeHtml(box.sinceNote)})` : ''}.`] : []),
         '<b>한글(HWP)·압축파일·파워포인트</b>는 읽지 못합니다 — PDF 로 저장해서 올려 주세요.',
         '긴 메일은 <b>앞부분(4,000자)만</b> 저장되어 있어 뒷부분은 모를 수 있습니다.',
         '인터넷 검색은 하지 않습니다 — <b>메일에 적힌 내용</b> 기준으로 답합니다.',
@@ -13063,7 +13104,7 @@ function aiChatGuideHtml(info) {
       ])}
       ${card('💡', '잘 쓰는 요령 · 비용', '#4f46e5', [
         '<b>모델 고르기</b> — 입력창 왼쪽 아래에서 고릅니다. <b>Opus 5.5</b>(기본 · 가장 똑똑함) · <b>Sonnet 5.5</b>(빠르고 비용 절반) · <b>Haiku 5.5</b>(가장 빠르고 저렴, 간단한 찾기용).',
-        '업체·제품 이름은 <b>영어로</b> 쓰면 더 잘 찾습니다 (Dangaard, Yogibo Japan, Arencia).',
+        '업체·제품 이름은 <b>영어로</b> 쓰면 더 잘 찾습니다 (예: Dangaard, My K Romania).',
         '<b>기간</b>을 붙이면 더 정확합니다 ("지난주", "10월부터", "이번 달").',
         '주제가 바뀌면 <b>[+ 새 대화]</b> — 같은 대화가 길어지면 앞 내용을 계속 다시 읽어 느려지고 비용이 늡니다.',
         '답하는 중에 <b>■</b> 를 누르면 멈춥니다 (멈춘 답은 대화 기록에 남지 않습니다).',
@@ -13075,7 +13116,7 @@ function aiChatGuideHtml(info) {
     <div style="margin-top:12px;background:var(--bg-surface-alt);border:1px solid var(--border-subtle);border-radius:12px;padding:12px 14px">
       <div style="font-size:12px;font-weight:800;color:var(--text-tertiary);margin-bottom:7px">이렇게 물어보세요 — 누르면 입력칸에 들어갑니다</div>
       <div style="display:flex;flex-wrap:wrap;gap:7px">
-        ${[...AI_CHAT_EXAMPLES, ...AI_CHAT_GUIDE_EXAMPLES].map((q) => `<button type="button" class="ai-chat-guide-ex" data-q="${escapeAttr(q)}"
+        ${[...aiChatExamples(), ...aiChatExamples('guide')].map((q) => `<button type="button" class="ai-chat-guide-ex" data-q="${escapeAttr(q)}"
           style="padding:6px 11px;border-radius:99px;font-size:12px;cursor:pointer;border:1px solid var(--border-default);
                  background:var(--bg-surface);color:var(--text-secondary)">${escapeHtml(q)}</button>`).join('')}
       </div>
@@ -13136,7 +13177,7 @@ function closeAiChatMail() {
 function aiChatMailKey(e) { if (e.key === 'Escape') closeAiChatMail(); }
 
 async function openAiChatMail(id) {
-  // 메일함 주인(대표님)은 받은 메일함의 원래 메일 팝업 — 답장·첨부 받기까지 그대로 된다
+  // 메일함 주인(대표님·전무님 각자)은 받은 메일함의 원래 메일 팝업 — 답장·첨부 받기까지 그대로 된다
   if (_aiChat.info && _aiChat.info.canOpenMails) { openMailDetailModal(id); return; }
   // 다른 아이디(시험용 admin)는 메일 화면이 그 메일을 열어 주지 않으므로 읽기 전용 창으로 연다
   closeAiChatMail();
@@ -13202,7 +13243,7 @@ async function aiChatLoadList() {
   try {
     const res = await fetch('/api/ai/chat');
     const data = await res.json().catch(() => ({}));
-    if (res.status === 403 || res.status === 401) { _aiChat.denied = data.error || '이 화면은 대표님 아이디에서만 쓸 수 있습니다.'; return; }
+    if (res.status === 403 || res.status === 401) { _aiChat.denied = data.error || '이 아이디에서는 AI 메일 비서를 쓸 수 없습니다.'; return; }
     if (!data.success) throw new Error(data.error || '불러오기 실패');
     _aiChat.denied = '';
     _aiChat.info = data;
@@ -13241,6 +13282,8 @@ async function renderAiChatPage() {
   const nearCap = cap > 0 && !overCap && used >= cap * 0.8;
   const models = info.models || [];
   const model = aiChatModel();
+  const box = aiChatBox();
+  const syncAt = box.lastSyncAt ? new Date(box.lastSyncAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
   if (!document.getElementById('aiChatStyle')) {
     const st = document.createElement('style');
@@ -13264,10 +13307,10 @@ async function renderAiChatPage() {
       <img src="/icons/nav/ai-chat.png" alt="" style="width:52px;height:52px">
       <div style="font-size:22px;font-weight:800;color:var(--text-primary);margin-top:10px;letter-spacing:-.01em">무엇을 도와드릴까요?</div>
       <div style="font-size:13.5px;color:var(--text-secondary);line-height:1.7;margin-top:6px">
-        대표님 메일함에서 직접 찾아 읽고, 근거 메일과 함께 답과 조언을 드립니다.
+        ${escapeHtml(box.title)} 메일함에서 직접 찾아 읽고, 근거 메일과 함께 답과 조언을 드립니다.
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px">
-        ${AI_CHAT_EXAMPLES.map((q) => `<button type="button" class="ai-chat-ex" data-q="${escapeAttr(q)}"
+        ${aiChatExamples().map((q) => `<button type="button" class="ai-chat-ex" data-q="${escapeAttr(q)}"
           style="padding:8px 14px;border-radius:12px;font-size:13px;cursor:pointer;border:1px solid var(--border-default);
                  background:var(--bg-surface);color:var(--text-secondary)">${escapeHtml(q)}</button>`).join('')}
       </div>
@@ -13295,11 +13338,14 @@ async function renderAiChatPage() {
       <section id="aiChatSection" style="display:flex;flex-direction:column;min-width:0;height:calc(100vh - 190px);min-height:480px;background:var(--bg-surface);
                       border:1px solid var(--border-default);border-radius:16px;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px 10px 18px;border-bottom:1px solid var(--border-subtle)">
-          <div style="font-size:12.5px;color:var(--text-tertiary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">대표님 메일함 · david@yogico.kr</div>
+          <div style="font-size:12.5px;color:var(--text-tertiary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(box.title)} 메일함${box.address ? ` · ${escapeHtml(box.address)}` : ''}</div>
           <button type="button" id="aiChatGuideBtn" title="AI 메일 비서로 할 수 있는 것 · 하지 않는 것 · 질문 예시 · 이번 달 사용액"
             style="flex-shrink:0;padding:6px 12px;font-size:12.5px;font-weight:700;border-radius:8px;cursor:pointer;
                    border:1px solid var(--brand,#4f46e5);background:var(--bg-surface);color:var(--brand-text,#4338ca)">📘 사용 방법</button>
         </div>
+        ${box.stale ? `<div id="aiChatStale" style="padding:9px 16px;background:var(--warning-soft);border-bottom:1px solid var(--border-subtle);color:var(--warning-text);font-size:12.5px;line-height:1.6">
+          ⚠ 이 메일함은 <b>${escapeHtml(syncAt)}</b> 이후로 새 메일을 받아 오지 못하고 있습니다 — 그 뒤에 온 메일은 AI 가 모릅니다.
+          메일 비밀번호를 바꾸셨다면 <a href="#" id="aiChatFixAccount" style="color:inherit;font-weight:700">[메일 계정 관리]</a>에서 새 비밀번호를 넣어 주세요.</div>` : ''}
         ${info.keySet === false ? `<div style="padding:9px 16px;background:#fffbeb;border-bottom:1px solid #fde68a;color:#92400e;font-size:12.5px">
           ⚠ 서버에 Claude API 키가 아직 없어 답을 드릴 수 없습니다 (ANTHROPIC_API_KEY).</div>` : ''}
         ${overCap ? `<div id="aiChatCap" style="padding:9px 16px;background:#fef2f2;border-bottom:1px solid #fecaca;color:#991b1b;font-size:12.5px">
@@ -13382,6 +13428,11 @@ async function renderAiChatPage() {
     renderAiChatPage();
   });
   document.getElementById('aiChatGuideBtn')?.addEventListener('click', openAiChatGuide);
+  // 받아 오기가 멈춘 메일함 — [메일 계정 관리]로 바로 (비밀번호를 다시 넣는 곳)
+  document.getElementById('aiChatFixAccount')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelector('.nav-item[data-view="tool-mail-accounts"]')?.click();
+  });
   els.content.querySelectorAll('.ai-chat-ex').forEach((b) => b.addEventListener('click', () => aiChatSend(b.dataset.q)));
   els.content.querySelectorAll('.ai-chat-conv').forEach((b) => b.addEventListener('click', async () => {
     if (_aiChat.running) return;
@@ -13510,6 +13561,548 @@ async function aiChatSend(text) {
     if (pending.error && !pending.text) _aiChat.draft = q;
     await aiChatLoadList();      // 대화 목록·이번 달 사용량 새로
     if (state.view === 'tool-ai-chat') renderAiChatPage();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// 🌏 시차·환율 (2026-11-23 요청 — 클라이언트가 받은 World Desk 를 CRM 화면으로 옮겼다)
+// 계산(서머타임 · 전환 때 없는 시간 · 두 번 오는 시간)은 받은 파일의 핵심 코드를 그대로 쓰고, 화면만 CRM 모양으로 다시 그렸다.
+// 환율은 Coinbase 공개 API (키 없음 · 로그인 정보는 보내지 않는다) — 이 화면이 열려 있을 때 60초마다 다시 조회한다.
+// 도시·통화 선택과 마지막 환율은 이 브라우저에만 기억한다 (받은 파일과 같은 저장 이름).
+// ══════════════════════════════════════════════════════════════
+const WD = (() => {
+  const formatters = new Map();
+  const pad = (n) => String(n).padStart(2, '0');
+  function parts(instant, zone) {
+    if (!formatters.has(zone)) formatters.set(zone, new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }));
+    return Object.fromEntries(formatters.get(zone).formatToParts(new Date(instant)).filter((p) => p.type !== 'literal').map((p) => [p.type, Number(p.value)]));
+  }
+  function wallStamp(p) { const d = new Date(0); d.setUTCFullYear(p.year, p.month - 1, p.day); d.setUTCHours(p.hour, p.minute, p.second || 0, 0); return d.getTime(); }
+  function offset(instant, zone) { return (wallStamp(parts(instant, zone)) - Math.floor(Number(instant) / 1000) * 1000) / 60000; }
+  function localInput(instant, zone) { const p = parts(instant, zone); return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`; }
+  function parseLocal(value) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+    if (!m) return null;
+    const [year, month, day, hour, minute] = m.slice(1).map(Number);
+    const p = { year, month, day, hour, minute, second: 0 };
+    const date = new Date(wallStamp(p));
+    if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || hour > 23 || minute > 59 || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) return null;
+    return p;
+  }
+  // 그 시각 근처의 UTC 차이들을 다 대 보고 되돌려 맞는 것만 남긴다 — 없으면 서머타임 시작 때 없는 시간, 둘이면 끝날 때 두 번 오는 시간
+  function resolveLocal(value, zone) {
+    const p = parseLocal(value);
+    if (!p) return { kind: 'invalid', instants: [] };
+    const naive = wallStamp(p);
+    const offsets = new Set();
+    for (let h = -72; h <= 72; h += 6) offsets.add(offset(naive + h * 3600000, zone));
+    const instants = [...offsets].map((o) => naive - o * 60000).filter((t) => localInput(t, zone) === value).sort((a, b) => a - b);
+    return { kind: instants.length === 0 ? 'gap' : instants.length > 1 ? 'fold' : 'valid', instants };
+  }
+  function offsetText(minutes) { const s = Math.round(Math.abs(minutes) * 60); return `UTC${minutes < 0 ? '−' : '+'}${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}${s % 60 ? ':' + pad(s % 60) : ''}`; }
+  function zoneName(instant, zone) { return new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'long' }).formatToParts(new Date(instant)).find((p) => p.type === 'timeZoneName').value; }
+  function isDaylight(instant, zone) { return /Daylight|Summer/.test(zoneName(instant, zone)); }
+  function difference(instant, from, to) { return offset(instant, to) - offset(instant, from); }
+  function calendarDifference(instant, from, to) { const a = parts(instant, from), b = parts(instant, to); return Math.round((wallStamp({ ...b, hour: 0, minute: 0, second: 0 }) - wallStamp({ ...a, hour: 0, minute: 0, second: 0 })) / 86400000); }
+  function validRates(raw) {
+    if (!raw || typeof raw !== 'object') throw Error('환율 응답이 올바르지 않습니다.');
+    const rates = {};
+    for (const [k, v] of Object.entries(raw)) { const n = Number(v); if (/^[A-Z]{3}$/.test(k) && Number.isFinite(n) && n > 0) rates[k] = n; }
+    if (!rates.USD || Math.abs(rates.USD - 1) > 0.000001 || !rates.KRW || !rates.EUR || !rates.JPY) throw Error('필수 환율이 누락되었습니다.');
+    return rates;
+  }
+  function parseAmount(value) { const s = String(value).trim(); if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{0,8})?$/.test(s)) return null; const n = Number(s.replaceAll(',', '')); return Number.isFinite(n) && n >= 0 && n <= 1e15 ? n : null; }
+  function convert(amount, from, to, rates) {
+    if (!Number.isFinite(amount) || amount < 0) throw Error('금액을 확인하세요.');
+    if (from === to) return amount;
+    if (!rates || !(rates[from] > 0) || !(rates[to] > 0)) throw Error('선택한 통화의 환율이 없습니다.');
+    return (amount / rates[from]) * rates[to];
+  }
+  async function fetchRates() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const res = await fetch('https://api.coinbase.com/v2/exchange-rates?currency=USD', { signal: ctrl.signal, cache: 'no-store', credentials: 'omit' });
+      if (!res.ok) throw Error(res.status === 429 ? '조회 요청이 많습니다. 잠시 후 다시 시도합니다.' : `환율 서버 응답 오류 (${res.status})`);
+      const data = await res.json();
+      if (data?.data?.currency !== 'USD') throw Error('환율 기준 통화가 올바르지 않습니다.');
+      return { rates: validRates(data.data.rates), fetchedAt: Date.now(), provider: 'Coinbase' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return { parts, offset, localInput, resolveLocal, offsetText, isDaylight, difference, calendarDifference, validRates, parseAmount, convert, fetchRates };
+})();
+
+const WD_CITIES = [
+  ['Asia/Seoul', '서울', '대한민국'], ['Asia/Tokyo', '도쿄', '일본'], ['Asia/Shanghai', '상하이', '중국'], ['Asia/Hong_Kong', '홍콩', '홍콩'], ['Asia/Taipei', '타이베이', '대만'],
+  ['Asia/Singapore', '싱가포르', '싱가포르'], ['Asia/Kuala_Lumpur', '쿠알라룸푸르', '말레이시아'], ['Asia/Bangkok', '방콕', '태국'], ['Asia/Ho_Chi_Minh', '호찌민', '베트남'],
+  ['Asia/Jakarta', '자카르타', '인도네시아'], ['Asia/Manila', '마닐라', '필리핀'], ['Asia/Kolkata', '뉴델리', '인도'], ['Asia/Kathmandu', '카트만두', '네팔'], ['Asia/Dubai', '두바이', '아랍에미리트'],
+  ['Asia/Riyadh', '리야드', '사우디아라비아'], ['Asia/Jerusalem', '예루살렘', '이스라엘'], ['Europe/Istanbul', '이스탄불', '튀르키예'], ['Europe/London', '런던', '영국'], ['Europe/Paris', '파리', '프랑스'],
+  ['Europe/Berlin', '베를린', '독일'], ['Europe/Rome', '로마', '이탈리아'], ['Europe/Madrid', '마드리드', '스페인'], ['Europe/Amsterdam', '암스테르담', '네덜란드'], ['Europe/Zurich', '취리히', '스위스'],
+  ['Europe/Dublin', '더블린', '아일랜드'], ['Europe/Lisbon', '리스본', '포르투갈'], ['Europe/Helsinki', '헬싱키', '핀란드'], ['Europe/Warsaw', '바르샤바', '폴란드'],
+  ['Europe/Copenhagen', '코펜하겐', '덴마크'], ['Europe/Bucharest', '부쿠레슈티', '루마니아'], ['Europe/Moscow', '모스크바', '러시아'],
+  ['America/New_York', '뉴욕', '미국'], ['America/Chicago', '시카고', '미국'], ['America/Denver', '덴버', '미국'], ['America/Los_Angeles', '로스앤젤레스', '미국'], ['America/Phoenix', '피닉스', '미국'],
+  ['Pacific/Honolulu', '호놀룰루', '미국'], ['America/Toronto', '토론토', '캐나다'], ['America/Vancouver', '밴쿠버', '캐나다'], ['America/Mexico_City', '멕시코시티', '멕시코'],
+  ['America/Sao_Paulo', '상파울루', '브라질'], ['America/Santiago', '산티아고', '칠레'], ['America/Argentina/Buenos_Aires', '부에노스아이레스', '아르헨티나'], ['Australia/Sydney', '시드니', '호주'],
+  ['Australia/Melbourne', '멜버른', '호주'], ['Australia/Brisbane', '브리즈번', '호주'], ['Australia/Perth', '퍼스', '호주'], ['Australia/Adelaide', '애들레이드', '호주'],
+  ['Australia/Lord_Howe', '로드하우섬', '호주'], ['Pacific/Auckland', '오클랜드', '뉴질랜드'], ['Africa/Johannesburg', '요하네스버그', '남아프리카공화국'], ['Africa/Cairo', '카이로', '이집트'],
+  ['Africa/Nairobi', '나이로비', '케냐'], ['Africa/Casablanca', '카사블랑카', '모로코'], ['UTC', 'UTC', '협정 세계시'],
+];
+const WD_CURRENCIES = ['USD', 'KRW', 'EUR', 'JPY', 'GBP', 'CNY', 'HKD', 'TWD', 'SGD', 'MYR', 'THB', 'VND', 'IDR', 'PHP', 'AUD', 'CAD', 'NZD', 'CHF', 'INR', 'AED', 'SAR', 'TRY', 'BRL', 'MXN', 'ZAR', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'ILS', 'RON'];
+const WD_CITY_MAP = new Map(WD_CITIES.map((c) => [c[0], c]));
+var _wd = { timer: null, live: true, instant: Date.now(), timelineKey: '', snapshot: null, busy: false, error: '', cached: false, nextFetch: 0, lastAttempt: 0, ready: false };
+
+const wdStore = {
+  get(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* 저장소를 못 쓰는 브라우저 — 이번 화면에서만 쓴다 */ } },
+};
+function wdZones() {
+  const extra = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone').filter((z) => !WD_CITY_MAP.has(z)) : [];
+  return { extra, all: new Set([...WD_CITIES.map((c) => c[0]), ...extra]) };
+}
+const wdCity = (z) => WD_CITY_MAP.get(z)?.[1] || String(z).split('/').at(-1).replaceAll('_', ' ');
+const wdDate = (t, z, year = true) => new Intl.DateTimeFormat('ko-KR', { timeZone: z, ...(year ? { year: 'numeric' } : {}), month: 'long', day: 'numeric', weekday: 'short' }).format(new Date(t));
+const wdTime = (t, z, seconds = false) => new Intl.DateTimeFormat('en-GB', { timeZone: z, hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}), hourCycle: 'h23' }).format(new Date(t));
+function wdDiffText(minutes) {
+  if (!minutes) return '시차 없음';
+  const s = Math.round(Math.abs(minutes) * 60), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return `${h ? h + '시간 ' : ''}${m ? m + '분 ' : ''}${s % 60 ? (s % 60) + '초 ' : ''}${minutes < 0 ? '느림' : '빠름'}`;
+}
+const wdNumber = (n, max = 6) => new Intl.NumberFormat('ko-KR', { maximumFractionDigits: max }).format(n);
+function wdMoney(n, code) {
+  const digits = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits;
+  return new Intl.NumberFormat('ko-KR', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+}
+function wdPrefs() {
+  const p = wdStore.get('worlddesk.settings.v1') || {};
+  const { all } = wdZones();
+  return {
+    fromZone: all.has(p.fromZone) ? p.fromZone : 'Asia/Seoul',
+    toZone: all.has(p.toZone) ? p.toZone : 'America/New_York',
+    fromCurrency: WD_CURRENCIES.includes(p.fromCurrency) ? p.fromCurrency : 'USD',
+    toCurrency: WD_CURRENCIES.includes(p.toCurrency) ? p.toCurrency : 'KRW',
+    clocks: Array.isArray(p.clocks) ? [...new Set(p.clocks.filter((z) => all.has(z)))].slice(0, 8) : ['Asia/Seoul', 'America/New_York', 'Europe/London', 'Australia/Sydney'],
+  };
+}
+function wdSave() {
+  const v = (id) => document.getElementById(id)?.value;
+  wdStore.set('worlddesk.settings.v1', { fromZone: v('wdFromZone'), toZone: v('wdToZone'), fromCurrency: v('wdFromCur'), toCurrency: v('wdToCur'), clocks: _wd.clocks });
+}
+
+function renderWorldDeskPage() {
+  const $ = (id) => document.getElementById(id);
+  const prefs = wdPrefs();
+  _wd.clocks = prefs.clocks;
+  if (!_wd.snapshot) {
+    const c = wdStore.get('worlddesk.rates.v1');
+    try { if (c && Number.isFinite(c.fetchedAt) && c.fetchedAt > 0 && c.fetchedAt <= Date.now() + 60000) { _wd.snapshot = { ...c, rates: WD.validRates(c.rates) }; _wd.cached = true; } } catch { /* 저장된 값이 깨졌으면 새로 조회 */ }
+  }
+  const card = 'background:var(--bg-surface);border:1px solid var(--border-default);border-radius:16px;padding:22px;min-width:0';
+  const label = 'display:block;font-size:12.5px;font-weight:700;color:var(--text-secondary);margin-bottom:6px';
+  const sel = 'width:100%;height:42px;padding:0 10px;border:1px solid var(--border-default);border-radius:9px;background:var(--bg-surface);color:var(--text-primary);font-size:13.5px';
+  const swap = 'width:34px;height:42px;border:none;background:transparent;color:var(--text-tertiary);font-size:20px;cursor:pointer;border-radius:8px';
+  const badge = 'font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:7px';
+  els.content.innerHTML = `
+    <div style="max-width:1180px;margin:0 auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px 20px;flex-wrap:wrap;margin-bottom:18px;padding:14px 20px;border:1px solid var(--border-default);border-radius:14px;background:var(--bg-surface)">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text-secondary)">내 기준 시간 · 서울</div>
+          <div id="wdHeaderDate" style="font-size:12.5px;color:var(--text-tertiary);margin-top:2px"></div>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:10px">
+          <div id="wdSeoulNow" style="font-size:30px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums;color:var(--text-primary)">--:--:--</div>
+          <div style="font-size:11px;color:var(--text-quaternary);letter-spacing:.5px">KST · UTC+09:00</div>
+        </div>
+      </div>
+
+      <div class="wd-grid" style="display:grid;grid-template-columns:1.08fr 1fr;gap:18px">
+        <!-- 시차 계산 -->
+        <section style="${card}" aria-labelledby="wdTimeTitle">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+            <h3 id="wdTimeTitle" style="margin:0;font-size:17px;font-weight:800;color:var(--text-primary)">◷ 시차 계산</h3>
+            <span style="${badge};background:var(--success-soft);color:var(--success-text)">서머타임 자동 반영</span>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr);gap:8px;align-items:end">
+            <div><label for="wdFromZone" style="${label}">기준 도시</label><select id="wdFromZone" style="${sel}"></select></div>
+            <button type="button" id="wdSwapZones" title="기준 도시와 비교 도시 바꾸기" aria-label="도시 바꾸기" style="${swap}">⇄</button>
+            <div><label for="wdToZone" style="${label}">비교 도시</label><select id="wdToZone" style="${sel}"></select></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">
+            <label for="wdLocalDate" style="${label};margin:0">기준 도시의 날짜와 시간</label>
+            <button type="button" id="wdUseNow" style="border:none;background:none;color:var(--brand-text,#4338ca);font-size:12.5px;font-weight:700;cursor:pointer;padding:4px 0">현재 시간 사용</button>
+          </div>
+          <input type="datetime-local" id="wdLocalDate" min="1900-01-01T00:00" max="2100-12-31T23:59" step="60"
+            style="margin-top:6px;width:100%;height:42px;padding:6px 10px;border:1px solid var(--border-default);border-radius:9px;background:var(--bg-surface);color:var(--text-primary);font-size:14px">
+          <div id="wdTimeMode" style="font-size:11.5px;color:var(--text-tertiary);margin-top:5px">현재 시간을 따라가는 중</div>
+          <div id="wdFold" hidden style="margin-top:10px;padding:10px 12px;border-radius:9px;background:var(--warning-soft);border:1px solid var(--warning-soft);color:var(--warning-text);font-size:12.5px">
+            <label for="wdOccurrence">두 번 오는 시간입니다 (서머타임 끝). 적용할 시간을 고르세요.</label>
+            <select id="wdOccurrence" style="${sel};margin-top:6px;height:36px"><option value="0">첫 번째 시간</option><option value="1">두 번째 시간</option></select>
+          </div>
+          <div id="wdTimeAlert" hidden role="status" style="margin-top:10px;padding:10px 12px;border-radius:9px;background:var(--warning-soft);border:1px solid var(--warning-soft);color:var(--warning-text);font-size:12.5px"></div>
+          <div id="wdTimeResult" style="margin-top:16px;padding:18px 20px;border-radius:14px;background:var(--brand,#4f46e5);color:#fff">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;opacity:.95"><span id="wdResultCity"></span><span id="wdDayBadge" style="font-size:11.5px;background:rgba(255,255,255,.16);padding:3px 8px;border-radius:6px"></span></div>
+            <div id="wdResultTime" style="font-size:46px;font-weight:700;letter-spacing:-1.5px;line-height:1.15;margin-top:8px;font-variant-numeric:tabular-nums">--:--</div>
+            <div id="wdResultDate" style="font-size:13px;opacity:.85;margin-top:4px"></div>
+            <div style="display:flex;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.22);font-size:12.5px">
+              <strong id="wdDifference" style="font-weight:600"></strong><span id="wdResultOffset" style="opacity:.85;text-align:right"></span>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px">
+            <span style="font-size:12.5px;font-weight:700;color:var(--text-secondary)">두 도시의 하루 비교</span>
+            <span style="font-size:11.5px;color:var(--text-tertiary)"><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--brand-soft,#e0e7ff);border:1px solid var(--brand,#4f46e5);margin-right:4px"></i>업무 시간 09–18시</span>
+          </div>
+          <div id="wdTimeline" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div style="font-size:11.5px;color:var(--text-quaternary);margin-top:6px">선택한 시각부터 24시간 · 한 칸이 실제 1시간입니다.</div>
+          <button type="button" id="wdCopyTime" style="margin-top:14px;width:100%;height:38px;border-radius:9px;border:1px solid var(--border-default);background:var(--bg-surface);color:var(--text-secondary);font-size:13px;font-weight:700;cursor:pointer">📋 변환 결과 복사</button>
+        </section>
+
+        <!-- 환율 계산 -->
+        <section style="${card}" aria-labelledby="wdFxTitle">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+            <h3 id="wdFxTitle" style="margin:0;font-size:17px;font-weight:800;color:var(--text-primary)">↔ 환율 계산</h3>
+            <span id="wdFxBadge" style="${badge};background:var(--bg-surface-alt);color:var(--text-tertiary)">연결 중</span>
+          </div>
+          <div style="display:flex;justify-content:space-between"><label for="wdAmount" style="${label}">환산할 금액</label><span style="font-size:11.5px;color:var(--text-tertiary)">수수료 제외</span></div>
+          <div style="display:flex;align-items:center;border:1px solid var(--border-default);border-radius:10px;padding:12px 14px;background:var(--bg-surface)">
+            <input id="wdAmount" type="text" inputmode="decimal" value="1,000" autocomplete="off" maxlength="28"
+              style="min-width:0;width:100%;border:none;outline:none;background:transparent;color:var(--text-primary);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums">
+            <span id="wdAmountCode" style="font-size:14px;font-weight:700;color:var(--text-tertiary);margin-left:12px">USD</span>
+          </div>
+          <div id="wdAmountError" hidden role="status" style="font-size:12px;color:var(--danger-text);margin-top:6px">0 이상 1,000조 이하의 숫자를 입력하세요. 소수점은 8자리까지 됩니다.</div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 34px minmax(0,1fr);gap:8px;align-items:end;margin-top:14px">
+            <div><label for="wdFromCur" style="${label}">보내는 통화</label><select id="wdFromCur" style="${sel}"></select></div>
+            <button type="button" id="wdSwapCur" title="보내는 통화와 받는 통화 바꾸기" aria-label="통화 바꾸기" style="${swap}">⇄</button>
+            <div><label for="wdToCur" style="${label}">받는 통화</label><select id="wdToCur" style="${sel}"></select></div>
+          </div>
+          <div style="margin-top:16px;padding:16px 18px;border-radius:14px;background:var(--brand-soft,#eef2ff);border:1px solid var(--border-subtle)">
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--brand-text,#4338ca)"><span>환산 금액</span><span id="wdTargetCode">KRW</span></div>
+            <div id="wdConverted" aria-live="polite" style="font-size:34px;font-weight:700;letter-spacing:-1px;margin:8px 0 6px;line-height:1.2;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;color:var(--text-primary)">—</div>
+            <div id="wdUnitRate" style="font-size:13px;color:var(--text-secondary)">환율을 불러오고 있습니다.</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text-tertiary)">
+            <span id="wdCountdown">60초마다 자동 조회</span>
+            <button type="button" id="wdRefresh" style="border:none;background:none;color:var(--brand-text,#4338ca);font-size:12.5px;font-weight:700;cursor:pointer">새로고침</button>
+          </div>
+          <div id="wdFxStatus" role="status" style="font-size:12px;line-height:1.6;color:var(--text-tertiary);margin-top:4px">최신 제공 환율을 확인하고 있습니다.</div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-subtle)">
+            <div style="font-size:12.5px;font-weight:700;color:var(--text-secondary)">주요 통화 · 원화 기준</div>
+            <div id="wdRateList" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px"></div>
+          </div>
+          <div style="font-size:11.5px;line-height:1.6;color:var(--text-quaternary);margin-top:14px">
+            Coinbase 제공 참고 환율을 60초마다 조회합니다 (이 화면이 열려 있을 때). 조회 시각은 시세 확정 시각과 다를 수 있고, 은행의 실제 환전·송금 환율과 수수료는 다릅니다.
+          </div>
+        </section>
+      </div>
+
+      <!-- 세계 시계 -->
+      <section style="margin-top:22px" aria-labelledby="wdWorldTitle">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <h3 id="wdWorldTitle" style="margin:0;font-size:17px;font-weight:800;color:var(--text-primary)">지금, 다른 도시에서는</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label for="wdAddCity" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">세계 시계에 추가할 도시</label>
+            <select id="wdAddCity" style="${sel};height:36px;max-width:220px;font-size:13px"></select>
+            <button type="button" id="wdAddClock" style="height:36px;padding:0 14px;border-radius:9px;border:1px solid var(--brand,#4f46e5);background:var(--bg-surface);color:var(--brand-text,#4338ca);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">+ 도시 추가</button>
+          </div>
+        </div>
+        <div id="wdClocks" class="wd-clocks" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px"></div>
+        <div style="font-size:11.5px;color:var(--text-quaternary);margin-top:8px">세계 시계는 지금 시각입니다 (8개까지). 시간은 이 컴퓨터의 시계와 브라우저의 시간대 규칙을 씁니다 — 서머타임 규칙이 바뀌면 브라우저를 최신으로 유지해 주세요.</div>
+      </section>
+    </div>`;
+
+  if (!document.getElementById('wdStyle')) {
+    const st = document.createElement('style');
+    st.id = 'wdStyle';
+    st.textContent = '@media (max-width: 900px) { .wd-grid { grid-template-columns: 1fr !important } .wd-clocks { grid-template-columns: repeat(2, minmax(0, 1fr)) !important } }'
+      // 어두운 화면에서 날짜 칸의 달력 아이콘이 안 보이던 것
+      + ' :root[data-theme="dark"] #wdLocalDate { color-scheme: dark }';
+    document.head.appendChild(st);
+  }
+
+  // 도시·통화 목록
+  const { extra } = wdZones();
+  for (const id of ['wdFromZone', 'wdToZone', 'wdAddCity']) {
+    const s = $(id);
+    const common = document.createElement('optgroup');
+    common.label = '주요 도시';
+    for (const [z, name, country] of WD_CITIES) common.append(new Option(`${name} · ${country}`, z));
+    s.append(common);
+    if (extra.length) {
+      const rest = document.createElement('optgroup');
+      rest.label = '전체 시간대';
+      for (const z of extra) rest.append(new Option(z, z));
+      s.append(rest);
+    }
+  }
+  $('wdFromZone').value = prefs.fromZone;
+  $('wdToZone').value = prefs.toZone;
+  $('wdAddCity').value = 'Asia/Tokyo';
+  const names = new Intl.DisplayNames(['ko'], { type: 'currency' });
+  for (const id of ['wdFromCur', 'wdToCur']) for (const code of WD_CURRENCIES) $(id).append(new Option(`${code} · ${names.of(code)}`, code));
+  $('wdFromCur').value = prefs.fromCurrency;
+  $('wdToCur').value = prefs.toCurrency;
+  // 다른 화면에 다녀와도 직접 넣은 날짜·시간은 그대로 둔다 (잘못 넣은 채 떠났으면 현재 시간으로)
+  if (!_wd.live && _wd.instant !== null) {
+    const from = $('wdFromZone').value;
+    $('wdLocalDate').value = WD.localInput(_wd.instant, from);
+    const r = WD.resolveLocal($('wdLocalDate').value, from);
+    $('wdOccurrence').value = String(Math.max(0, r.instants.findIndex((t) => Math.floor(t / 60000) === Math.floor(_wd.instant / 60000))));
+  } else {
+    _wd.live = true;
+  }
+
+  // 묶기
+  for (const id of ['wdFromZone', 'wdToZone']) $(id).addEventListener('change', () => { $('wdOccurrence').value = '0'; wdSave(); wdRenderTime(); });
+  $('wdLocalDate').addEventListener('input', () => { _wd.live = false; $('wdOccurrence').value = '0'; wdRenderTime(); });
+  $('wdOccurrence').addEventListener('change', wdRenderTime);
+  $('wdUseNow').addEventListener('click', () => { _wd.live = true; wdRenderTime(); });
+  $('wdSwapZones').addEventListener('click', () => {
+    const instant = _wd.instant;
+    const old = $('wdFromZone').value;
+    $('wdFromZone').value = $('wdToZone').value;
+    $('wdToZone').value = old;
+    if (!_wd.live && instant !== null) {
+      $('wdLocalDate').value = WD.localInput(instant, $('wdFromZone').value);
+      const r = WD.resolveLocal($('wdLocalDate').value, $('wdFromZone').value);
+      $('wdOccurrence').value = String(Math.max(0, r.instants.findIndex((t) => Math.floor(t / 60000) === Math.floor(instant / 60000))));
+    }
+    wdSave();
+    wdRenderTime();
+  });
+  for (const id of ['wdFromCur', 'wdToCur']) $(id).addEventListener('change', () => { wdSave(); wdRenderFx(); });
+  $('wdAmount').addEventListener('input', wdRenderFx);
+  $('wdAmount').addEventListener('blur', () => { const v = WD.parseAmount($('wdAmount').value); if (v !== null) $('wdAmount').value = wdNumber(v, 8); });
+  $('wdSwapCur').addEventListener('click', () => { const old = $('wdFromCur').value; $('wdFromCur').value = $('wdToCur').value; $('wdToCur').value = old; wdSave(); wdRenderFx(); });
+  $('wdRefresh').addEventListener('click', wdRefresh);
+  $('wdAddClock').addEventListener('click', () => {
+    const z = $('wdAddCity').value;
+    if (_wd.clocks.includes(z)) return alert('이미 추가한 도시입니다.');
+    if (_wd.clocks.length >= 8) return alert('세계 시계는 8개 도시까지 추가할 수 있습니다.');
+    _wd.clocks.push(z);
+    wdSave();
+    wdBuildClocks();
+  });
+  $('wdCopyTime').addEventListener('click', async () => {
+    if (_wd.instant === null) return;
+    const from = $('wdFromZone').value, to = $('wdToZone').value, t = _wd.instant;
+    const text = `${wdCity(from)} ${wdDate(t, from)} ${wdTime(t, from)} (${WD.offsetText(WD.offset(t, from))})\n`
+      + `${wdCity(to)} ${wdDate(t, to)} ${wdTime(t, to)} (${WD.offsetText(WD.offset(t, to))})\n시차: ${wdDiffText(WD.difference(t, from, to))}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      $('wdCopyTime').textContent = '✓ 복사했습니다';
+      setTimeout(() => { if ($('wdCopyTime')) $('wdCopyTime').textContent = '📋 변환 결과 복사'; }, 1500);
+    } catch {
+      alert('브라우저에서 클립보드 복사를 허용해 주세요.');
+    }
+  });
+
+  _wd.timelineKey = '';
+  wdBuildClocks();
+  wdRenderTime();
+  wdRenderFx();
+  if (!_wd.snapshot || Date.now() >= _wd.nextFetch) wdRefresh();
+  // 1초마다 시계 · 60초마다 환율 — 이 화면을 떠나면 멈춘다
+  clearInterval(_wd.timer);
+  _wd.timer = setInterval(() => {
+    if (state.view !== 'tool-world-desk' || !document.getElementById('wdSeoulNow')) { clearInterval(_wd.timer); _wd.timer = null; return; }
+    if (document.hidden) return;
+    wdRenderClocks();
+    if (_wd.live) wdRenderTime();
+    wdRenderFxStatus();
+    if (!_wd.busy && Date.now() >= _wd.nextFetch) wdRefresh();
+  }, 1000);
+}
+
+function wdRenderTime() {
+  const $ = (id) => document.getElementById(id);
+  if (!$('wdFromZone')) return;
+  const from = $('wdFromZone').value, to = $('wdToZone').value;
+  $('wdTimeAlert').hidden = true;
+  $('wdFold').hidden = true;
+  if (_wd.live) {
+    _wd.instant = Date.now();
+    $('wdLocalDate').value = WD.localInput(_wd.instant, from);
+  } else {
+    const r = WD.resolveLocal($('wdLocalDate').value, from);
+    if (r.kind === 'invalid' || r.kind === 'gap') {
+      _wd.instant = null;
+      $('wdTimeAlert').textContent = r.kind === 'gap'
+        ? '서머타임·시간대 전환으로 이 도시에는 없는 시간입니다. 전환 전이나 이후 시간을 고르세요.'
+        : '1900~2100년 사이의 올바른 날짜와 시간을 입력하세요.';
+      $('wdTimeAlert').hidden = false;
+      $('wdTimeResult').hidden = true;
+      $('wdCopyTime').disabled = true;
+      $('wdTimeline').replaceChildren();
+      $('wdTimeMode').textContent = '지정한 날짜와 시간';
+      return;
+    }
+    if (r.kind === 'fold') {
+      $('wdFold').hidden = false;
+      for (let i = 0; i < r.instants.length; i++) $('wdOccurrence').options[i].text = `${i === 0 ? '첫 번째' : '두 번째'} 시간 · ${WD.offsetText(WD.offset(r.instants[i], from))}`;
+    }
+    _wd.instant = r.instants[r.kind === 'fold' ? Number($('wdOccurrence').value) : 0];
+  }
+  const t = _wd.instant;
+  $('wdTimeResult').hidden = false;
+  $('wdCopyTime').disabled = false;
+  $('wdTimeMode').textContent = _wd.live ? '현재 시간을 따라가는 중' : '지정한 날짜의 시간대 규칙으로 계산';
+  $('wdResultCity').textContent = wdCity(to);
+  $('wdResultTime').textContent = wdTime(t, to);
+  $('wdResultDate').textContent = wdDate(t, to);
+  const days = WD.calendarDifference(t, from, to);
+  $('wdDayBadge').textContent = days === 0 ? '같은 날' : days === -1 ? '전날' : days === 1 ? '다음 날' : `${Math.abs(days)}일 ${days < 0 ? '전' : '후'}`;
+  const diff = WD.difference(t, from, to);
+  $('wdDifference').textContent = from === to || diff === 0 ? `${wdCity(from)}와 시차 없음` : `${wdCity(from)}보다 ${wdDiffText(diff)}`;
+  $('wdResultOffset').textContent = WD.offsetText(WD.offset(t, to)) + (WD.isDaylight(t, to) ? ' · 서머타임' : '');
+  wdRenderTimeline(t, from, to);
+}
+
+function wdRenderTimeline(t, from, to) {
+  const box = document.getElementById('wdTimeline');
+  const key = [Math.floor(t / 60000), from, to].join('|');
+  if (key === _wd.timelineKey && box.childElementCount) return;
+  _wd.timelineKey = key;
+  box.replaceChildren();
+  for (const zone of [from, to]) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px';
+    const name = document.createElement('span');
+    name.style.cssText = 'width:62px;flex-shrink:0;font-size:12px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    name.textContent = wdCity(zone);
+    const cells = document.createElement('div');
+    cells.style.cssText = 'display:grid;grid-template-columns:repeat(24,minmax(0,1fr));gap:2px;flex:1';
+    for (let i = 0; i < 24; i++) {
+      const instant = t + i * 3600000, p = WD.parts(instant, zone), work = p.hour >= 9 && p.hour < 18;
+      const c = document.createElement('span');
+      c.style.cssText = `height:22px;border-radius:3px;font-size:10px;display:grid;place-items:center;font-variant-numeric:tabular-nums;`
+        + (work ? 'background:var(--brand-soft,#e0e7ff);color:var(--brand-text,#4338ca);' : 'background:var(--bg-surface-alt);color:var(--text-quaternary);')
+        + (i === 0 ? 'box-shadow:inset 0 0 0 1.5px var(--brand,#4f46e5);' : '');
+      c.textContent = p.hour % 3 === 0 ? String(p.hour).padStart(2, '0') : '';
+      c.title = `${wdCity(zone)} ${wdDate(instant, zone, false)} ${wdTime(instant, zone)} · ${WD.offsetText(WD.offset(instant, zone))}`;
+      cells.append(c);
+    }
+    row.append(name, cells);
+    box.append(row);
+  }
+}
+
+function wdBuildClocks() {
+  const box = document.getElementById('wdClocks');
+  if (!box) return;
+  box.replaceChildren();
+  for (const zone of _wd.clocks) {
+    const card = document.createElement('article');
+    card.dataset.zone = zone;
+    card.style.cssText = 'position:relative;border:1px solid var(--border-default);border-radius:13px;padding:16px;background:var(--bg-surface)';
+    card.innerHTML = `<div style="display:flex;gap:7px;align-items:center"><span class="wd-sun" style="font-size:17px"></span><b style="font-size:14px;color:var(--text-primary)"></b></div>
+      <button type="button" class="wd-remove" style="position:absolute;right:8px;top:7px;border:none;background:none;color:var(--text-quaternary);font-size:16px;cursor:pointer;padding:4px">×</button>
+      <div class="wd-clock-time" style="font-size:28px;font-weight:650;letter-spacing:-.5px;margin-top:10px;font-variant-numeric:tabular-nums;color:var(--text-primary)"></div>
+      <div class="wd-clock-date" style="font-size:12px;color:var(--text-tertiary);margin-top:2px"></div>
+      <div style="display:flex;justify-content:space-between;gap:5px;font-size:11px;color:var(--text-tertiary);margin-top:12px;padding-top:10px;border-top:1px solid var(--border-subtle)">
+        <span class="wd-clock-offset"></span><span class="wd-clock-state"></span></div>`;
+    card.querySelector('b').textContent = wdCity(zone);
+    const rm = card.querySelector('.wd-remove');
+    rm.title = `${wdCity(zone)} 시계 빼기`;
+    rm.setAttribute('aria-label', rm.title);
+    rm.addEventListener('click', () => { _wd.clocks = _wd.clocks.filter((z) => z !== zone); wdSave(); wdBuildClocks(); });
+    box.append(card);
+  }
+  if (!_wd.clocks.length) {
+    const empty = document.createElement('p');
+    empty.style.cssText = 'font-size:13px;color:var(--text-tertiary)';
+    empty.textContent = '도시를 추가해 지금 시각을 확인하세요.';
+    box.append(empty);
+  }
+  wdRenderClocks();
+}
+
+function wdRenderClocks() {
+  const now = Date.now();
+  const s = document.getElementById('wdSeoulNow');
+  if (!s) return;
+  s.textContent = wdTime(now, 'Asia/Seoul', true);
+  document.getElementById('wdHeaderDate').textContent = wdDate(now, 'Asia/Seoul');
+  for (const card of document.querySelectorAll('#wdClocks [data-zone]')) {
+    const z = card.dataset.zone, p = WD.parts(now, z), night = p.hour < 6 || p.hour >= 20, dst = WD.isDaylight(now, z);
+    card.style.background = night ? 'var(--bg-surface-alt)' : 'var(--bg-surface)';
+    card.querySelector('.wd-sun').textContent = night ? '☾' : '☼';
+    card.querySelector('.wd-sun').style.color = night ? 'var(--text-tertiary)' : 'var(--warning)';
+    card.querySelector('.wd-clock-time').textContent = wdTime(now, z, true);
+    card.querySelector('.wd-clock-date').textContent = wdDate(now, z, false);
+    card.querySelector('.wd-clock-offset').textContent = WD.offsetText(WD.offset(now, z));
+    const st = card.querySelector('.wd-clock-state');
+    st.textContent = dst ? '서머타임 적용' : night ? '밤 시간' : p.hour >= 9 && p.hour < 18 ? '업무 시간' : '현재 시간';
+    st.style.color = dst ? 'var(--success-text)' : 'var(--text-tertiary)';
+  }
+}
+
+function wdRenderFx() {
+  const $ = (id) => document.getElementById(id);
+  if (!$('wdFromCur')) return;
+  const from = $('wdFromCur').value, to = $('wdToCur').value, n = WD.parseAmount($('wdAmount').value);
+  $('wdAmountCode').textContent = from;
+  $('wdTargetCode').textContent = to;
+  $('wdAmountError').hidden = n !== null;
+  try {
+    const rate = WD.convert(1, from, to, _wd.snapshot?.rates);
+    $('wdUnitRate').textContent = `1 ${from} = ${wdNumber(rate)} ${to}`;
+    $('wdConverted').textContent = n === null ? '—' : wdMoney(WD.convert(n, from, to, _wd.snapshot?.rates), to);
+  } catch {
+    $('wdConverted').textContent = '—';
+    $('wdUnitRate').textContent = _wd.busy ? '환율을 불러오고 있습니다.' : '조회된 환율이 없습니다. 새로고침해 주세요.';
+  }
+  const list = $('wdRateList');
+  list.replaceChildren();
+  for (const [code, unit] of [['USD', 1], ['EUR', 1], ['JPY', 100]]) {
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:8px 10px;border-radius:9px;background:var(--bg-surface-alt)';
+    const l = document.createElement('div');
+    l.style.cssText = 'font-size:11.5px;color:var(--text-tertiary)';
+    l.textContent = `${unit} ${code}`;
+    const v = document.createElement('div');
+    v.style.cssText = 'font-size:15px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums;color:var(--text-primary)';
+    try { v.textContent = wdNumber(WD.convert(unit, code, 'KRW', _wd.snapshot?.rates), 2) + '원'; } catch { v.textContent = '—'; }
+    item.append(l, v);
+    list.append(item);
+  }
+  wdRenderFxStatus();
+}
+
+function wdRenderFxStatus() {
+  const $ = (id) => document.getElementById(id);
+  if (!$('wdFxBadge')) return;
+  const snap = _wd.snapshot;
+  const old = snap && (Date.now() - snap.fetchedAt > 120000 || _wd.cached);
+  const b = $('wdFxBadge');
+  const warn = _wd.error || old;
+  b.textContent = _wd.busy ? '조회 중' : _wd.error ? '연결 확인 필요' : old ? '이전 조회값' : snap ? '자동 조회 중' : '환율 없음';
+  b.style.background = warn ? 'var(--warning-soft)' : snap && !_wd.busy ? 'var(--success-soft)' : 'var(--bg-surface-alt)';
+  b.style.color = warn ? 'var(--warning-text)' : snap && !_wd.busy ? 'var(--success-text)' : 'var(--text-tertiary)';
+  const stamp = snap ? `${wdDate(snap.fetchedAt, 'Asia/Seoul')} ${wdTime(snap.fetchedAt, 'Asia/Seoul', true)} (서울)` : '';
+  $('wdFxStatus').style.color = warn ? 'var(--warning-text)' : 'var(--text-tertiary)';
+  $('wdFxStatus').textContent = _wd.error
+    ? (snap ? `조회 실패 · 마지막 성공 조회 ${stamp}의 값을 씁니다.` : '환율을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침해 주세요.')
+    : (snap ? `${_wd.cached ? '저장된 값 · ' : ''}마지막 성공 조회 ${stamp}` : '최신 제공 환율을 확인하고 있습니다.');
+  $('wdCountdown').textContent = document.hidden ? '다시 열면 자동 조회' : _wd.busy ? '환율을 조회하고 있습니다' : `다음 조회 ${Math.max(0, Math.ceil((_wd.nextFetch - Date.now()) / 1000))}초 후`;
+  $('wdRefresh').disabled = _wd.busy || Date.now() - _wd.lastAttempt < 5000;
+}
+
+async function wdRefresh() {
+  if (_wd.busy) return;
+  _wd.busy = true;
+  _wd.lastAttempt = Date.now();
+  wdRenderFxStatus();
+  try {
+    _wd.snapshot = await WD.fetchRates();
+    _wd.cached = false;
+    _wd.error = '';
+    wdStore.set('worlddesk.rates.v1', _wd.snapshot);
+  } catch (e) {
+    _wd.error = e?.name === 'AbortError' ? '환율 서버가 응답하지 않습니다.' : (e?.message || '조회 실패');
+  } finally {
+    _wd.busy = false;
+    _wd.nextFetch = Date.now() + 60000;
+    wdRenderFx();
   }
 }
 
@@ -17252,7 +17845,7 @@ function initSettingsModal() {
       currentUser = data.username;
       isMaster = data.isMaster;
       btn.style.display = 'inline-block'; // 로그인 성공시 버튼 노출
-      // 🤖 AI 메일 비서 — 대표님 전용 메뉴 (서버가 정한다: lib/ai/chat-access.ts)
+      // 🤖 AI 메일 비서 — 대표님·전무님 메뉴 (서버가 정한다: lib/ai/chat-access.ts)
       const aiNav = document.getElementById('navAiChat');
       if (aiNav) aiNav.style.display = data.aiChat ? '' : 'none';
       

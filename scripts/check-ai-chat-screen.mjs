@@ -1,14 +1,17 @@
 /**
- * 🤖 AI 메일 비서 화면 확인 (2026-11-12) — **질문을 실제로 보내지 않는다** (돈 안 듦, 서버 답은 가짜로 바꿔 끼운다).
+ * 🤖 AI 메일 비서 화면 확인 (2026-11-12 · 11-23 전무님 추가) — **질문을 실제로 보내지 않는다** (돈 안 듦, 서버 답은 가짜로 바꿔 끼운다).
  *
- *   1) 사이드바 [기한 관리] 바로 아래에 [🤖 AI 메일 비서] — david·admin 에게만 보이고 hoon 에게는 안 보이는가
+ *   1) 사이드바 [기한 관리] 바로 아래에 [🤖 AI 메일 비서] — david·hoon·admin 에게 보이고 yogico 에게는 안 보이는가
  *   2) Claude 채팅 모양 — 입력창 안 모델 고르기(기본 Opus 5.5) · ↑ 보내기, 입력칸 아래 안내 줄은 없다
  *   3) [📘 사용 방법] 팝업 — 할 수 있는 것 / 하지 않는 것 / 요령·비용 · 이번 달 사용액 · 예시는 입력칸에만
  *   4) 질문을 보내면 — 찾고 읽은 단계가 답 위에 보이고 끝나면 한 줄로 접힘 · 답 글자 · 근거 메일 · 📋 복사 · 사용료
  *   5) 고른 모델이 서버로 가는가 (Sonnet 으로 바꾸면 다음 질문은 Sonnet)
  *   5') 📎 로 파일을 올리면 조각 올리기를 거쳐 질문과 함께 uploads 로 가고, 내 질문에 파일 이름이 붙는가 (조각 올리기도 가짜)
  *   6) 근거 메일을 누르면 팝업 — 대표님은 받은 메일함의 메일 창, admin 은 읽기 전용 창(원문/번역)
- *   7) hoon 이 주소로 들어오면 막히는가 · 한 달 한도(10만 원) 80% 경고 · 100% 잠김
+ *   7) yogico 가 주소로 들어오면 막히는가 · 한 달 한도(10만 원) 80% 경고 · 100% 잠김
+ *   8) 전무님 — 머리 줄·빈 화면·사용 방법이 전무님 메일함(hoon@) 기준 · 질문 예시도 전무님 거래처 ·
+ *      받아 오기가 멈췄으면 노란 안내 + [메일 계정 관리] 로 가기 · 근거 메일은 받은 메일함 창
+ *   9) 근거 메일 API — 전무님 비서로 대표님 메일, 대표님 비서로 전무님 메일은 404 (실제 서버)
  *
  * 사용: CRM_BASE=http://localhost:3000 [SHOT=경로.png] node scripts/check-ai-chat-screen.mjs
  */
@@ -59,10 +62,12 @@ const open = async (user, usedKrw = null) => {
         success: true, user, model: 'claude-opus-5-5', defaultModel: 'claude-opus-5-5',
         models: [{ id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' }, { id: 'claude-haiku-5-5', label: 'Haiku 5.5' }],
         mailboxOwner: 'david', canOpenMails: user === 'david', keySet: true,
+        mailbox: { owner: 'david', title: '대표님', address: 'david@yogico.kr', since: '2026년 1월', sinceNote: '그보다 오래된 것은 거래처 폴더에 있던 일부뿐', lastSyncAt: new Date().toISOString(), stale: false },
+        examples: ['이번 주에 꼭 답해야 할 메일 정리해 줘', 'Dangaard 와는 지금 어디까지 얘기됐어?'], guideExamples: ['피싱 같아 보이는 메일 있었어?'],
         conversations: [], month: { usd: usedKrw / 1400, krw: usedKrw, questions: 300, capKrw: 100000, mine: { krw: usedKrw, questions: 300 } },
       }) });
     }
-    if (/\/api\/ai\/chat\?mail=/.test(u)) return r.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_MAIL) });
+    if (/\/api\/ai\/chat\?mail=/.test(u) && !/[?&]real=1/.test(u)) return r.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_MAIL) });
     // 파일 조각 올리기 — DB 에 남지 않게 가짜로
     if (/\/api\/mail\/upload/.test(u)) { p.uploaded = (p.uploaded || 0) + 1; return r.respond({ status: 200, contentType: 'application/json', body: '{"success":true}' }); }
     if (/\/api\/ai\/chat/.test(u) && r.method() === 'POST') {
@@ -70,6 +75,8 @@ const open = async (user, usedKrw = null) => {
       p.posted.push(body);
       return r.respond({ status: 200, contentType: 'application/x-ndjson; charset=utf-8', body: fake(body.model) });
     }
+    // 로그인 메일 수집은 막는다 — 비밀번호가 틀린 메일함(전무님 11/13~)이면 열 때마다 메일 서버에 실패 로그인이 쌓인다
+    if (/\/api\/mail\/sync-on-login/.test(u)) return r.respond({ status: 200, contentType: 'application/json', body: '{"success":true,"ran":false,"skipped":"test"}' });
     // 메일 보내기·예약 처리는 막는다
     if (/\/api\/cron\//.test(u) || (/\/api\/mail\/(send|schedule|campaign|reply|test-send|compose)/.test(u) && r.method() !== 'GET')) return r.abort();
     r.continue();
@@ -96,14 +103,14 @@ const ask = async (p, q) => {
 
 try {
   // 1) 메뉴 — 누구에게 보이는가
-  for (const [user, want] of [['david', true], ['admin', true], ['hoon', false]]) {
+  for (const [user, want] of [['david', true], ['hoon', true], ['admin', true], ['yogico', false]]) {
     const p = await open(user);
     const n = await navState(p);
     ok(n.shown === want, `${user}: 메뉴 ${n.shown ? '보임' : '안 보임'}${n.shown ? ` (바로 위: ${n.after})` : ''}`);
-    if (user === 'david') ok(n.after === 'tool-deadlines', '자리 — [기한 관리] 바로 아래');
-    if (user === 'hoon') {
+    if (user === 'david' || user === 'hoon') ok(n.after === 'tool-deadlines', `${user}: 자리 — [기한 관리] 바로 아래`);
+    if (user === 'yogico') {
       await p.evaluate(() => { state.view = 'tool-ai-chat'; render(); });
-      ok(await waitFor(p, () => /대표님 아이디에서만/.test(document.getElementById('content')?.innerText || '')), 'hoon: 화면에 들어와도 "대표님 아이디에서만" 으로 막힘');
+      ok(await waitFor(p, () => /AI 메일 비서를 쓸 수 없습니다/.test(document.getElementById('content')?.innerText || '')), 'yogico: 화면에 들어와도 "쓸 수 없습니다" 로 막힘');
     }
     await p.close();
   }
@@ -120,6 +127,11 @@ try {
   }));
   ok(/Opus 5\.5 \(기본\)/.test(look.sel) && look.opts.length === 3 && look.send === '↑', `입력창 — 모델 ${look.opts.join(' / ')} · 기본 ${look.sel} · 보내기 ↑`);
   ok(!look.footer, '입력칸 아래 안내 줄 없음');
+  const dHead = await p.evaluate(() => ({
+    head: document.getElementById('aiChatGuideBtn')?.previousElementSibling?.innerText || '',
+    stale: !!document.getElementById('aiChatStale'), apiStale: !!_aiChat.info?.mailbox?.stale,
+  }));
+  ok(dHead.head === '대표님 메일함 · david@yogico.kr' && dHead.stale === dHead.apiStale, `대표님 머리 줄 — "${dHead.head}" · 받아 오기 멈춤 안내 ${dHead.stale ? '보임' : '없음'}`);
   if (SHOT) await p.screenshot({ path: SHOT });
 
   // 3) 사용 방법 팝업 — 이번 달 사용액은 여기서
@@ -185,6 +197,7 @@ try {
   await p.evaluate(() => document.querySelector('.ai-chat-src').click());
   ok(await waitFor(p, () => !!document.getElementById('mailDetailRoot')), '대표님: 근거 메일 누르면 메일 창(받은 메일함 것)이 뜸');
   ok(!p.errs.length, `화면 오류 없음${p.errs.length ? ` — ${p.errs.join(' / ')}` : ''}`);
+  const davidMail = await p.evaluate(async () => { const d = await (await fetch('/api/mail/inbox?limit=1')).json(); return String(d.items?.[0]?._id || ''); });
   await p.close();
 
   // 6') admin 은 읽기 전용 창 — 원문 / 한국어 번역
@@ -200,7 +213,56 @@ try {
   await q.keyboard.press('Escape');
   ok(await waitFor(q, () => !document.getElementById('aiChatMailRoot'), 3000), 'Esc 로 닫힘');
   ok(!q.errs.length, `화면 오류 없음${q.errs.length ? ` — ${q.errs.join(' / ')}` : ''}`);
+  const adminSees = await q.evaluate(async (id) => (await fetch(`/api/ai/chat?mail=${id}&real=1`)).status, davidMail);
+  ok(davidMail && adminSees === 200, `admin(시험용) 비서로 대표님 메일 열기 → ${adminSees}`);
   await q.close();
+
+  // 8) 전무님 — 전무님 메일함 기준 (2026-11-23)
+  const h = await open('hoon');
+  await h.evaluate(() => document.getElementById('navAiChat').click());
+  ok(await waitFor(h, () => document.querySelectorAll('.ai-chat-ex').length >= 3), '전무님: AI 메일 비서 화면 열림');
+  const hv = await h.evaluate(() => ({
+    head: document.getElementById('aiChatGuideBtn')?.previousElementSibling?.innerText || '',
+    ex: [...document.querySelectorAll('.ai-chat-ex')].map((b) => b.textContent.trim()),
+    text: document.getElementById('content')?.innerText || '',
+    stale: document.getElementById('aiChatStale')?.innerText || '',
+    apiStale: !!_aiChat.info?.mailbox?.stale,
+    sub: document.getElementById('viewSubtitle')?.textContent || '',
+  }));
+  ok(hv.head === '전무님 메일함 · hoon@yogico.kr', `전무님 머리 줄 — "${hv.head}"`);
+  ok(/전무님 메일함에서 직접 찾아 읽고/.test(hv.text) && !/대표님/.test(hv.text + hv.sub), '빈 화면·제목 설명 — 전무님 메일함 · "대표님" 글자 없음');
+  ok(hv.ex.some((q) => /My K Romania/.test(q)) && !hv.ex.some((q) => /Yogibo Japan/.test(q)), `질문 예시 — 전무님 거래처 (${hv.ex.join(' / ')})`);
+  ok(!!hv.stale === hv.apiStale, `받아 오기 멈춤 안내 — ${hv.stale ? hv.stale.replace(/\s+/g, ' ').slice(0, 70) + '…' : '없음 (서버: 정상)'}`);
+  if (SHOT) await h.screenshot({ path: SHOT.replace(/\.png$/, '-hoon.png') });
+  await h.click('#aiChatGuideBtn');
+  await waitFor(h, () => !!document.getElementById('aiChatGuideRoot'));
+  const hg = await h.evaluate(() => document.getElementById('aiChatGuideRoot')?.innerText || '');
+  ok(/전무님 메일함\(hoon@yogico\.kr\)만 봅니다/.test(hg) && /2026년 8월 21일부터 지금까지/.test(hg) && !/대표님|david@/.test(hg),
+    '사용 방법 — 전무님 메일함(hoon@)만 · 2026년 8월 21일부터 · 대표님 말 없음');
+  ok(/TOUN28/.test(hg), '사용 방법 예시도 전무님 거래처 (TOUN28 등)');
+  await h.keyboard.press('Escape');
+  await waitFor(h, () => !document.getElementById('aiChatGuideRoot'), 3000);
+  if (hv.apiStale) {
+    await h.click('#aiChatFixAccount');
+    ok(await waitFor(h, () => state.view === 'tool-mail-accounts', 5000), '노란 안내의 [메일 계정 관리] 누르면 그 화면으로');
+    await h.evaluate(() => document.getElementById('navAiChat').click());
+    await waitFor(h, () => !!document.getElementById('aiChatInput'));
+  }
+  ok(await ask(h, 'Dangaard 와는 지금 어디까지 얘기됐어?'), '전무님: 질문 → 답 (가짜 답)');
+  ok(h.posted[0]?.message === 'Dangaard 와는 지금 어디까지 얘기됐어?' && h.posted[0]?.model === 'claude-opus-5-5', `전무님: 보낸 질문 그대로 · 모델 ${h.posted[0]?.model}`);
+  await h.evaluate(() => document.querySelector('.ai-chat-src').click());
+  ok(await waitFor(h, () => !!document.getElementById('mailDetailRoot')), '전무님: 근거 메일 누르면 받은 메일함의 메일 창 (메일함 주인)');
+  ok(!h.errs.length, `화면 오류 없음${h.errs.length ? ` — ${h.errs.join(' / ')}` : ''}`);
+
+  // 9) 근거 메일 API — 남의 메일함 메일은 열리지 않는다 (실제 서버)
+  const hoonMail = await h.evaluate(async () => { const d = await (await fetch('/api/mail/inbox?limit=1')).json(); return String(d.items?.[0]?._id || ''); });
+  const hoonTriesDavid = await h.evaluate(async (id) => (await fetch(`/api/ai/chat?mail=${id}&real=1`)).status, davidMail);
+  ok(davidMail && hoonTriesDavid === 404, `전무님 비서로 대표님 메일 열기 → ${hoonTriesDavid} (막힘)`);
+  await h.close();
+  const d2 = await open('david');
+  const davidTriesHoon = await d2.evaluate(async (id) => (await fetch(`/api/ai/chat?mail=${id}&real=1`)).status, hoonMail);
+  ok(hoonMail && davidTriesHoon === 404, `대표님 비서로 전무님 메일 열기 → ${davidTriesHoon} (막힘)`);
+  await d2.close();
 
   // 7) 한도 — 사용액만 가짜로
   for (const [usedKrw, want] of [[85000, 'near'], [100000, 'over']]) {
