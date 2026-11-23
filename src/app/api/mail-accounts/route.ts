@@ -63,15 +63,22 @@ export async function POST(req: Request) {
   let body: any = {};
   try { body = await req.json(); } catch {}
   const {
-    accountName, smtpHost, smtpPort, smtpSecure,
-    smtpUser, smtpPass, fromName, fromAddress, isDefault,
+    smtpHost, smtpPort, smtpSecure,
+    smtpUser, smtpPass, fromName, isDefault,
     senderTitle, senderPhone, senderCompany, senderAddress, senderWebsite,
   } = body;
+  let { accountName, fromAddress } = body;
 
-  // 필수값 검증
-  if (!accountName || !smtpHost || !smtpUser || !smtpPass || !fromAddress) {
+  // 별칭·발신 주소는 비면 이메일로 채운다 — 발신 주소는 어차피 로그인 이메일과 같아야 하고(아래),
+  // 예전에는 둘 중 하나만 비어도 "필수값 누락: accountName / … / fromAddress" 로 막혀 어디를 채울지 몰랐다 (11/23 rnd@ 추가 때)
+  if (!String(fromAddress || '').trim()) fromAddress = String(smtpUser || '').trim();
+  if (!String(accountName || '').trim()) accountName = String(fromName || '').trim() || String(smtpUser || '').trim();
+
+  // 필수값 검증 — 정말 빠진 칸만 화면 이름으로
+  const missing = [!smtpUser && '이메일', !smtpPass && '비밀번호', !smtpHost && 'SMTP 호스트'].filter(Boolean);
+  if (missing.length) {
     return NextResponse.json(
-      { success: false, error: '필수값 누락: accountName / smtpHost / smtpUser / smtpPass / fromAddress' },
+      { success: false, error: `이 칸이 비어 있습니다: ${missing.join(' · ')}` },
       { status: 400 },
     );
   }

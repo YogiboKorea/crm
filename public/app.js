@@ -8848,7 +8848,7 @@ async function renderMailSettingsPage() {
       <div style="background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:12px;padding:20px">
         <h3 style="font-size:14px;margin-bottom:4px">이카운트 웹메일 연결</h3>
         <p style="font-size:12px;color:var(--text-tertiary);margin-bottom:14px">
-          이카운트 웹메일 → 개인기능설정 → 외부연동설정에서 "메일 클라이언트 사용"이 켜져 있어야 합니다.
+          이카운트 웹메일 → 개인기능설정 → 외부연동설정에서 "메일 클라이언트 사용"은 사용, "해외 로그인 차단"은 사용안함이어야 합니다 (CRM 서버가 해외 IP 로 잡힙니다).
         </p>
         <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;font-size:13px">
           <span style="color:var(--text-secondary)">수신 서버</span>
@@ -12411,12 +12411,31 @@ var UPDATE_LOG = [
     date: '2026-11-23',
     items: [
       {
+        kind: 'data', icon: '📥', title: '대표님 아이디에 rnd@yogico.kr 메일함 추가',
+        how: [
+          '대표님 아이디에 <b>rnd@yogico.kr</b> 계정을 붙였습니다 (별칭 "R&D (rnd@)"). 대표 계정(기본 발송)은 david@ 그대로입니다.',
+          '받은 메일함에서 메일 계정을 rnd@ 로 고르면 그 메일을 볼 수 있습니다. 지금 rnd@ 받은편지함이 비어 있어 0통이고, 앞으로 오는 메일부터 쌓입니다 (지운 메일함·스팸은 가져오지 않습니다).',
+          '<b>AI 메일 비서</b>도 대표님 메일함으로 rnd@ 메일까지 함께 찾습니다.',
+          '연결하려면 이카운트 웹메일 → 개인기능설정 → 외부연동설정에서 <b>메일 클라이언트 사용 = 사용 · 해외 로그인 차단 = 사용안함</b>이어야 했습니다 — 다른 주소를 붙일 때도 이 두 가지를 먼저 확인해 주세요.',
+        ],
+        go: 'tool-mail-accounts', goLabel: '메일 계정 관리',
+      },
+      {
+        kind: 'better', icon: '📮', title: '메일 계정 추가 — 이카운트에서 바꿀 설정을 화면 모양 그대로 안내',
+        how: [
+          '<b>[메일 계정 관리] → [+ 계정 추가]</b>에서 이카운트를 고르면, 이카운트 웹메일 <b>개인기능설정 → 외부연동설정</b> 화면이 어떻게 되어 있어야 하는지 그대로 보여 줍니다 — <b>메일 클라이언트 사용 = 사용 · 해외 로그인 차단 = 사용안함</b>.',
+          '이 두 줄 중 하나라도 막혀 있으면 비밀번호가 맞아도 "로그인 거절"이 납니다 (CRM 서버가 해외 IP 로 잡힙니다). 비밀번호는 ERP 가 아니라 <b>웹메일 비밀번호</b>입니다.',
+          '별칭·발신 주소는 비워 두면 이메일로 채워집니다 — 예전처럼 "필수값 누락" 으로 막히지 않고, 정말 빠진 칸만 알려 드립니다.',
+        ],
+        go: 'tool-mail-accounts', goLabel: '메일 계정 관리',
+      },
+      {
         kind: 'new', icon: '🤖', title: 'AI 메일 비서 — 전무님 아이디에도 (전무님 메일함 기준)',
         how: [
           '전무님 아이디(hoon)에도 사이드바 <b>[기한 관리]</b> 아래 <b>[AI 메일 비서]</b>가 생겼습니다. 쓰는 법·모델 고르기·파일 올리기·근거 메일 열기 모두 대표님 것과 같습니다.',
           '<b>각자 자기 메일함만</b> 읽습니다 — 전무님 비서는 전무님 메일(hoon@yogico.kr)만, 대표님 비서는 대표님 메일(david@yogico.kr)만 봅니다. 대화 기록도 아이디마다 따로입니다.',
           '전무님 메일함에는 <b>2026년 8월 21일부터</b>의 메일이 있습니다. 질문 예시도 전무님 거래처(Dangaard · My K Romania · TOUN28 등)로 바꿨습니다.',
-          '메일 서버에서 새 메일을 하루 넘게 못 받아 오면(비밀번호를 바꾼 경우 등) 채팅 창 위에 노란 안내가 뜹니다 — <b>[메일 계정 관리]</b>에서 새 비밀번호를 넣으면 다시 받아 옵니다.',
+          '메일 서버에서 새 메일을 하루 넘게 못 받아 오면 채팅 창 위에 노란 안내가 뜹니다 — 이카운트 웹메일 → 개인기능설정 → 외부연동설정에서 <b>메일 클라이언트 사용 = 사용 · 해외 로그인 차단 = 사용안함</b>인지 확인하고, 웹메일 비밀번호를 바꿨다면 <b>[메일 계정 관리]</b>에서 새로 넣으면 다시 받아 옵니다.',
           '한 달 한도 <b>10만 원</b>은 대표님·전무님 <b>합계</b>입니다 (같은 API 키).',
         ],
         go: 'tool-ai-chat', goLabel: 'AI 메일 비서',
@@ -13345,7 +13364,8 @@ async function renderAiChatPage() {
         </div>
         ${box.stale ? `<div id="aiChatStale" style="padding:9px 16px;background:var(--warning-soft);border-bottom:1px solid var(--border-subtle);color:var(--warning-text);font-size:12.5px;line-height:1.6">
           ⚠ 이 메일함은 <b>${escapeHtml(syncAt)}</b> 이후로 새 메일을 받아 오지 못하고 있습니다 — 그 뒤에 온 메일은 AI 가 모릅니다.
-          메일 비밀번호를 바꾸셨다면 <a href="#" id="aiChatFixAccount" style="color:inherit;font-weight:700">[메일 계정 관리]</a>에서 새 비밀번호를 넣어 주세요.</div>` : ''}
+          이카운트 웹메일 → 개인기능설정 → 외부연동설정에서 <b>메일 클라이언트 사용 = 사용 · 해외 로그인 차단 = 사용안함</b>인지 확인하고,
+          웹메일 비밀번호를 바꾸셨다면 <a href="#" id="aiChatFixAccount" style="color:inherit;font-weight:700">[메일 계정 관리]</a>에서 새 비밀번호를 넣어 주세요.</div>` : ''}
         ${info.keySet === false ? `<div style="padding:9px 16px;background:#fffbeb;border-bottom:1px solid #fde68a;color:#92400e;font-size:12.5px">
           ⚠ 서버에 Claude API 키가 아직 없어 답을 드릴 수 없습니다 (ANTHROPIC_API_KEY).</div>` : ''}
         ${overCap ? `<div id="aiChatCap" style="padding:9px 16px;background:#fef2f2;border-bottom:1px solid #fecaca;color:#991b1b;font-size:12.5px">
@@ -16148,9 +16168,38 @@ async function renderScheduledMailsPage() {
   });
 }
 
+/**
+ * 이카운트 웹메일 → 개인기능설정 → 외부연동설정 — 화면 모양 그대로 (2026-11-23).
+ * 글로만 "메일 클라이언트 사용 → 사용" 이라고 쓰니 어느 줄을 봐야 하는지 헷갈렸다 (rnd@ 추가 때 두 줄 다 막혀 있었다).
+ * 9/14 대표님 계정 · 11/23 rnd@ 계정 모두 이 두 줄 때문에 로그인이 거절됐다. CRM 서버(Vercel)는 서울 리전이어도 해외 IP 로 잡힌다.
+ */
+function ecountLinkSettingsHtml() {
+  const row = (name, value, note) => `
+    <span style="color:#1d4ed8">${name}</span>
+    <span style="justify-self:start;font-weight:800;color:#0f172a;background:#fde68a;border-radius:4px;padding:0 7px">${value}</span>
+    <span style="color:#64748b">${note}</span>`;
+  return `
+    <div style="margin-top:9px;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;overflow:hidden">
+      <div style="padding:7px 12px;font-size:12px;font-weight:800;color:#0f172a;border-bottom:1px solid #2563eb">
+        ▾ 외부연동설정 <span style="font-weight:500;color:#64748b">— 이카운트 웹메일에서 이렇게 되어 있어야 합니다</span>
+      </div>
+      <div style="display:grid;grid-template-columns:auto auto 1fr;gap:5px 14px;align-items:center;padding:8px 12px;font-size:12px;line-height:1.6">
+        <span style="color:#1d4ed8">외부 메일 설정</span><span style="color:#0f172a;padding:0 7px">그대로</span><span></span>
+        ${row('메일 클라이언트 사용', '사용', '꺼져 있으면 CRM·아웃룩 같은 외부 프로그램 로그인이 모두 막힘')}
+        ${row('해외 로그인 차단', '사용안함', 'CRM 서버가 해외 IP 로 잡혀서 켜 두면 막힘')}
+      </div>
+      <div style="padding:6px 12px 8px;font-size:11px;color:#64748b;border-top:1px dashed #e2e8f0">
+        바꾸는 곳: 그 메일 주소로 이카운트 웹메일 로그인 → 개인기능설정 → 외부연동설정 · 비밀번호는 ERP 가 아니라 웹메일 비밀번호
+      </div>
+    </div>`;
+}
+
 async function renderMailAccountsTool() {
   els.content.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-tertiary)">로드 중...</div>`;
   const list = await loadMailAccounts(true);
+  // 불러오는 사이 다른 화면으로 옮겼으면 그 화면을 덮어쓰지 않는다
+  // (AI 메일 비서 → [메일 계정 관리] → 바로 다시 AI 메일 비서로 오면 계정 화면이 채팅을 덮었다, 2026-11-23)
+  if (state.view !== 'tool-mail-accounts') return;
 
   els.content.innerHTML = `
     ${mailAccountPrimaryPanelHtml(list)}
@@ -16181,6 +16230,7 @@ async function renderMailAccountsTool() {
             <li><b>메일 클라이언트 사용</b>: "사용" 으로 변경</li>
             <li><b>해외 로그인 차단</b>: "사용안함" 으로 변경 (Vercel 서버는 해외라서 필수)</li>
           </ol>
+          ${ecountLinkSettingsHtml()}
         </div>
 
         <button id="addFirstAccountBtn" type="button"
@@ -16457,6 +16507,7 @@ function openMailAccountModal(editId) {
         '"메일 클라이언트 사용"을 사용으로 변경',
         '"해외 로그인 차단"을 사용안함으로 변경 (Vercel 서버는 해외 IP)',
       ],
+      extraHtml: ecountLinkSettingsHtml(),
     },
     gmail: {
       title: 'Gmail은 계정 비밀번호로 로그인되지 않습니다',
@@ -16530,6 +16581,7 @@ function openMailAccountModal(editId) {
           <div id="macGuide" style="display:none;padding:12px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px">
             <div id="macGuideTitle" style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:6px"></div>
             <ol id="macGuideSteps" style="margin:0;padding-left:20px;font-size:12px;color:#0f172a;line-height:1.7"></ol>
+            <div id="macGuideExtra"></div>
           </div>
 
           <!-- 로그인 거절(535) 때 뜨는 안내 — 저장 실패 처리에서 보여준다 -->
@@ -16542,6 +16594,7 @@ function openMailAccountModal(editId) {
               <li><b>"메일 클라이언트 사용" → 사용</b></li>
               <li>설정을 바꾼 뒤 다시 <b>[저장]</b> — 틀린 시도를 여러 번 했다면 몇 분 뒤에 시도</li>
             </ol>
+            ${ecountLinkSettingsHtml()}
             <div style="font-size:11px;color:#7f1d1d;margin-top:6px">메뉴 이름은 이카운트 화면에 따라 조금 다를 수 있습니다. 회사 관리자 계정에서만 바꿀 수 있는 경우도 있습니다.</div>
           </div>
 
@@ -16714,6 +16767,8 @@ function openMailAccountModal(editId) {
     if (guide && guideEl) {
       titleEl.textContent = `⚡ ${guide.title}`;
       stepsEl.innerHTML = guide.steps.map(s => `<li>${escapeHtml(s)}</li>`).join('');
+      const extraEl = document.getElementById('macGuideExtra');
+      if (extraEl) extraEl.innerHTML = guide.extraHtml || '';
       guideEl.style.display = 'block';
     } else if (guideEl) {
       guideEl.style.display = 'none'; syncBodyScrollLock();
@@ -16744,7 +16799,33 @@ function openMailAccountModal(editId) {
   // 최초 렌더 시 현재 프리셋에 대한 가이드도 즉시 표시
   applyPreset(currentPresetKey);
 
+  // 발신 주소는 로그인 이메일과 같아야 저장된다 — 이메일을 치면 따라 채운다 (따로 고쳐 쓴 값은 건드리지 않는다)
+  let macLastUser = document.getElementById('macUser')?.value.trim() || '';
+  document.getElementById('macUser')?.addEventListener('input', (e) => {
+    const fa = document.getElementById('macFromAddress');
+    const v = e.target.value.trim();
+    if (fa && (!fa.value.trim() || fa.value.trim() === macLastUser)) {
+      fa.value = v;
+      fa.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    macLastUser = v;
+  });
+
   document.getElementById('macSave')?.addEventListener('click', async () => {
+    // 비어 있으면 채운다 — 별칭은 발신자 이름이나 이메일, 발신 주소는 이메일 (서버가 둘 다 필수로 본다)
+    const emailNow = document.getElementById('macUser').value.trim();
+    if (emailNow) {
+      const fa = document.getElementById('macFromAddress');
+      if (fa && !fa.value.trim()) fa.value = emailNow;
+      const nm = document.getElementById('macName');
+      if (nm && !nm.value.trim()) nm.value = document.getElementById('macFromName')?.value.trim() || emailNow;
+    }
+    // 정말 빠진 칸만 한국어로 — 예전에는 필수 칸 이름을 영어로 다 늘어놔서 어디를 채울지 알 수 없었다
+    const missing = [];
+    if (!emailNow) missing.push('📧 이메일');
+    if (!isEdit && !document.getElementById('macPass').value) missing.push('🔑 비밀번호');
+    if (!document.getElementById('macHost').value.trim()) missing.push('SMTP 호스트 (서비스를 다시 골라 주세요)');
+    if (missing.length) { alert(`이 칸을 채워 주세요: ${missing.join(' · ')}`); return; }
     const payload = {
       accountName: document.getElementById('macName').value.trim(),
       smtpHost: document.getElementById('macHost').value.trim(),
@@ -16812,9 +16893,11 @@ function openMailAccountModal(editId) {
         box.hidden = !authFail;
         if (authFail) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-      alert('저장 실패: ' + msg + (authFail
-        ? '\n\n메일 서버가 로그인을 거절했습니다. 비밀번호가 맞다면 이카운트 설정 때문일 가능성이 큽니다.\n폼 안의 빨간 안내(이카운트에서 바꿀 설정)를 확인해 주세요.'
-        : ''));
+      // 두 설정을 알림창에 바로 적는다 — 서버 문구에 이미 있으면(외부연동설정) 겹치지 않게 짧게
+      alert('저장 실패: ' + msg + (!authFail ? ''
+        : /외부연동설정/.test(msg)
+          ? '\n\n폼 안의 빨간 안내(이카운트 외부연동설정 그림)를 확인해 주세요.'
+          : '\n\n메일 서버가 로그인을 거절했습니다. 이카운트 웹메일 → 개인기능설정 → 외부연동설정에서\n① 메일 클라이언트 사용 = 사용\n② 해외 로그인 차단 = 사용안함\n인지 확인해 주세요. (비밀번호는 ERP 가 아니라 웹메일 비밀번호)'));
       btn.disabled = false; btn.textContent = isEdit ? '💾 수정' : '+ 저장 & 연결 테스트';
     }
   });

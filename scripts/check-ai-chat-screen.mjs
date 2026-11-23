@@ -131,7 +131,7 @@ try {
     head: document.getElementById('aiChatGuideBtn')?.previousElementSibling?.innerText || '',
     stale: !!document.getElementById('aiChatStale'), apiStale: !!_aiChat.info?.mailbox?.stale,
   }));
-  ok(dHead.head === '대표님 메일함 · david@yogico.kr' && dHead.stale === dHead.apiStale, `대표님 머리 줄 — "${dHead.head}" · 받아 오기 멈춤 안내 ${dHead.stale ? '보임' : '없음'}`);
+  ok(/^대표님 메일함 · david@yogico\.kr(, [\w.-]+@yogico\.kr)*$/.test(dHead.head) && !/hoon@/.test(dHead.head) && dHead.stale === dHead.apiStale, `대표님 머리 줄 — "${dHead.head}" · 받아 오기 멈춤 안내 ${dHead.stale ? '보임' : '없음'}`);
   if (SHOT) await p.screenshot({ path: SHOT });
 
   // 3) 사용 방법 팝업 — 이번 달 사용액은 여기서
@@ -244,7 +244,7 @@ try {
   await waitFor(h, () => !document.getElementById('aiChatGuideRoot'), 3000);
   if (hv.apiStale) {
     await h.click('#aiChatFixAccount');
-    ok(await waitFor(h, () => state.view === 'tool-mail-accounts', 5000), '노란 안내의 [메일 계정 관리] 누르면 그 화면으로');
+    ok(await waitFor(h, () => state.view === 'tool-mail-accounts' && /등록된 계정/.test(document.getElementById('content')?.innerText || ''), 15000), '노란 안내의 [메일 계정 관리] 누르면 그 화면으로');
     await h.evaluate(() => document.getElementById('navAiChat').click());
     await waitFor(h, () => !!document.getElementById('aiChatInput'));
   }

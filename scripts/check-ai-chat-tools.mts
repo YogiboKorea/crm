@@ -16,7 +16,7 @@ config({ path: '.env.local', quiet: true });
 let fail = 0;
 const ok = (c: any, m: string) => { if (!c) fail++; console.log(`  ${c ? 'OK  ' : 'X   '}${m}`); };
 
-const { runMailTool, AI_CHAT_MODEL, mailboxFreshness, systemPreview } = await import('../src/lib/ai/mail-chat.ts');
+const { runMailTool, AI_CHAT_MODEL, mailboxFreshness, systemPreview, mailboxProfile } = await import('../src/lib/ai/mail-chat.ts');
 const { AI_CHAT_MAILBOX_OWNER, canUseAiChat, aiChatMailboxOwner } = await import('../src/lib/ai/chat-access.ts');
 const { accountIdsForOwner } = await import('../src/lib/mail/scope.ts');
 await mongoose.connect(process.env.MONGODB_URI!);
@@ -58,6 +58,10 @@ try {
     ok(other && !!out.error, `${otherOwner} 메일함 메일은 막힘 — ${out.error}`);
     const att: any = other ? await runMailTool('read_attachment', { id: String(other._id) }, owner) : { error: '-' };
     ok(!!att.error, `${otherOwner} 메일 첨부도 막힘 — ${att.error}`);
+
+    // 화면·지시문에 쓰는 주소 — 실제 등록된 계정 (대표님은 11/23 부터 david@ · rnd@)
+    const prof = await mailboxProfile(owner, ids);
+    ok(prof.address.split(', ')[0] === `${owner}@yogico.kr` && !prof.address.includes(`${otherOwner}@`), `메일함 주소 — ${prof.address}`);
 
     const f = await mailboxFreshness(ids);
     console.log(`        받아 온 시각 ${f.lastSyncAt?.toISOString().slice(0, 16) || '-'} · 가장 최근 메일 ${f.latestMail?.toISOString().slice(0, 16) || '-'} · 멈춤 ${f.stale ? '예' : '아니오'}`);

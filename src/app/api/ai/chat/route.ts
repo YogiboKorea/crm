@@ -5,8 +5,8 @@ import dbConnect from '@/lib/mongodb';
 import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 import { AiChat, type IAiChat } from '@/models/AiChat';
 import { AiChatUsage } from '@/models/AiChatUsage';
-import { canUseAiChat, aiChatMailboxOwner, aiChatMailbox } from '@/lib/ai/chat-access';
-import { runMailChat, mailboxFreshness, pickModel, AI_CHAT_MODEL, AI_CHAT_MODELS, AI_CHAT_MONTHLY_KRW, MAX_CONTEXT_TOKENS, krwOf } from '@/lib/ai/mail-chat';
+import { canUseAiChat, aiChatMailboxOwner } from '@/lib/ai/chat-access';
+import { runMailChat, mailboxFreshness, mailboxProfile, pickModel, AI_CHAT_MODEL, AI_CHAT_MODELS, AI_CHAT_MONTHLY_KRW, MAX_CONTEXT_TOKENS, krwOf } from '@/lib/ai/mail-chat';
 import { KST_OFFSET_MS } from '@/lib/mail/period';
 import { InboundMail } from '@/models/InboundMail';
 import { accountIdsForOwner } from '@/lib/mail/scope';
@@ -100,15 +100,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: true, conversation: { id: String(c._id), title: c.title, display: c.display || [], updatedAt: c.updatedAt } });
   }
 
-  const [list, spend, fresh] = await Promise.all([
+  const ids = await accountIdsForOwner(owner);
+  const [list, spend, fresh, box] = await Promise.all([
     AiChat.find({ user }, { title: 1, updatedAt: 1, 'turns.usd': 1 }).sort({ updatedAt: -1 }).limit(40).lean(),
     monthSpend(),
-    accountIdsForOwner(owner).then(mailboxFreshness).catch(() => null),
+    mailboxFreshness(ids).catch(() => null),
+    // 주소는 실제 등록된 계정으로 — 대표님은 david@ · rnd@ (11/23)
+    mailboxProfile(owner, ids),
   ]);
   // 청구는 아이디와 상관없이 한 키로 나간다 — 전체와 내 것을 같이 보여준다
   const { all } = spend;
   const mine = spend.rows.find((m: any) => m._id === user) || { usd: 0, questions: 0 };
-  const box = aiChatMailbox(owner);
   return NextResponse.json({
     success: true,
     user,

@@ -23,6 +23,7 @@ import { resolveAccount, toImapConfig } from '@/lib/mail/accounts';
 import { fetchAttachment } from '@/lib/mail/imap';
 import { InboundMail } from '@/models/InboundMail';
 import { MailSyncState } from '@/models/MailSyncState';
+import { MailAccount } from '@/models/MailAccount';
 import { accountIdsForOwner } from '@/lib/mail/scope';
 import { NOISE_CLASSES } from '@/lib/mail/classify';
 import { countSince, replyWindowFilter, REPLY_WINDOW_DAYS, KST_OFFSET_MS } from '@/lib/mail/period';
@@ -456,6 +457,25 @@ export async function mailboxFreshness(ids: string[]): Promise<MailboxFreshness>
   };
 }
 
+/**
+ * 이 메일함 범위의 주소들 — 대표 계정 먼저. 한 사람이 메일 주소를 여럿 등록하면 비서도 모두 읽는다
+ * (11/23 대표님 아이디에 rnd@ 추가 → david@ · rnd@). 화면 문구와 지시문이 실제 범위와 어긋나지 않게 DB 에서 센다.
+ */
+export async function mailboxAddresses(ids: string[]): Promise<string[]> {
+  const real = ids.filter((id) => mongoose.isValidObjectId(id));
+  if (!real.length) return [];
+  const accs: any[] = await MailAccount.find({ _id: { $in: real }, isActive: { $ne: false } }, { smtpUser: 1, isDefault: 1, createdAt: 1 })
+    .sort({ isDefault: -1, createdAt: 1 }).lean();
+  return Array.from(new Set(accs.map((a) => String(a.smtpUser || '').trim().toLowerCase()).filter(Boolean)));
+}
+
+/** 메일함 표 + 실제 등록된 주소 (없으면 표의 주소 그대로) */
+export async function mailboxProfile(owner: string, ids: string[]): Promise<AiChatMailbox> {
+  const box = aiChatMailbox(owner);
+  const addrs = await mailboxAddresses(ids).catch(() => [] as string[]);
+  return addrs.length ? { ...box, address: addrs.join(', ') } : box;
+}
+
 function systemFor(p: AiChatMailbox, fresh?: MailboxFreshness | null, now = new Date()) {
   const d = new Date(now.getTime() + KST_OFFSET_MS);
   const wd = '일월화수목금토'[d.getUTCDay()];
@@ -516,7 +536,7 @@ export async function runMailChat(opts: {
   const usage: ChatUsage = { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, usd: 0, lastInputTokens: 0 };
   let answer = '';
   let stop = '';
-  const system = systemFor(aiChatMailbox(opts.owner), await mailboxFreshness(ids).catch(() => null));
+  const system = systemFor(await mailboxProfile(opts.owner, ids), await mailboxFreshness(ids).catch(() => null));
 
   const request = (lastRound: boolean) => {
     const fallback = fallbackOff ? '' : FALLBACK[model];

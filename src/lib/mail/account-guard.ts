@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { ECOUNT_IMAP_HINT } from '@/models/MailSettings';
 
 /**
  * 메일 계정 등록·수정의 안전장치 (아이디별 메일 분리와 한 묶음 — lib/mail/scope.ts).
@@ -35,5 +36,18 @@ export async function verifySmtpLogin(o: { host: string; port: number; secure: b
     auth: { user: o.user, pass: o.pass },
     forceAuth: true,
   } as any);
-  await t.verify();
+  try {
+    await t.verify();
+  } catch (e: any) {
+    // 이카운트는 비밀번호가 틀릴 때뿐 아니라 [메일 클라이언트 사용 안 함]·[해외 로그인 차단] 상태에서도 535 로 막는다.
+    // 계정 추가·수정 창에 무엇을 확인할지 바로 적어 준다 (11/23 rnd@ — 메일 클라이언트 사용을 켜자 바로 통과했다)
+    const text = `${e?.code || ''} ${e?.responseCode || ''} ${e?.message || ''}`;
+    if (/535|EAUTH|invalid login|authentication failed/i.test(text)) {
+      const err: any = new Error(`${e?.message || '로그인 거절'} — ${ECOUNT_IMAP_HINT}`);
+      err.code = e?.code;
+      err.responseCode = e?.responseCode;
+      throw err;
+    }
+    throw e;
+  }
 }

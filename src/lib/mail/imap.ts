@@ -76,7 +76,9 @@ function friendlyImapError(e: any, settings: ImapConfig): Error {
   const raw = String(e?.responseText || e?.message || e);
 
   if (e?.authenticationFailed || /authentication failed/i.test(raw)) {
-    return new Error(`아이디 또는 비밀번호가 맞지 않습니다. ${ECOUNT_IMAP_HINT}`);
+    // 이카운트는 비밀번호가 틀릴 때뿐 아니라 [메일 클라이언트 사용 안 함]·[해외 로그인 차단] 상태에서도 같은 인증 실패를 준다
+    // — "비밀번호가 틀렸다" 고만 쓰면 엉뚱한 곳을 고치게 된다 (11/23 전무님·rnd@ 건)
+    return new Error(`메일 서버가 로그인을 거절했습니다 (비밀번호 또는 이카운트 설정). ${ECOUNT_IMAP_HINT}`);
   }
   if (/ENOTFOUND|EAI_AGAIN/i.test(raw)) {
     return new Error(`수신 서버 주소를 찾을 수 없습니다 (${host}). 주소를 다시 확인하세요.`);
