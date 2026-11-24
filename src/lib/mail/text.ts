@@ -32,9 +32,65 @@
  */
 const INVISIBLE = /[​‌‍﻿]/g;
 
+/**
+ * 글자판에 새어 나온 HTML 코드를 원래 글자로 (2026-11-24).
+ *
+ * 메일에는 글자판(text/plain)과 HTML판이 같이 오는데, 일부 국내 그룹웨어(해우지엘에스 메일 등)는
+ * 글자판을 엉터리로 만들어 보낸다 — "&lt;sylee5113@haewoo.com&gt;", "&nbsp;", 심지어 깨진 <p ...> 태그까지.
+ * 웹메일은 HTML판을 그려서 멀쩡해 보이지만, 글자판을 보여주는 CRM 에는 코드가 그대로 보였다.
+ */
+const NAMED: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#39': "'", middot: '·', hellip: '…', ndash: '–', mdash: '—', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', copy: '©', reg: '®', trade: '™', bull: '•' };
+export function decodeEntities(s: string): string {
+  return String(s || '').replace(/&(#x[0-9a-f]+|#\d+|[a-z]+\d*);/gi, (m, k: string) => {
+    const key = k.toLowerCase();
+    if (key.startsWith('#x')) { const n = parseInt(key.slice(2), 16); return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m; }
+    if (key.startsWith('#')) { const n = parseInt(key.slice(1), 10); return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m; }
+    return NAMED[key] ?? m;
+  });
+}
+
+/** 글자판에 HTML 이 새어 나왔나 — 코드(&lt; 등)가 여럿이거나 태그가 섞여 있으면 */
+export function looksLikeHtmlLeak(s: string): boolean {
+  const t = String(s || '');
+  const entities = (t.match(/&(?:nbsp|lt|gt|amp|quot|#\d+);/gi) || []).length;
+  const tags = (t.match(/<\/?(?:p|div|span|br|table|tr|td|font|b|strong)\b[^>]*>/gi) || []).length;
+  return entities >= 3 || tags >= 2;
+}
+
+/**
+ * HTML → 글자판 (보낼 때 함께 넣는 text/plain · HTML만 온 메일 읽기 공용).
+ * 예전 발송 코드는 태그만 지우고 &nbsp; 같은 코드를 그대로 둬서, 글자판을 보여주는 메일 프로그램에서는
+ * 받는 사람에게 코드가 보였다 (11/24 발견 — CRM 시험 발송 메일 글자판에 &nbsp; 10개).
+ */
+export function htmlToPlainText(html?: string | null): string {
+  if (!html) return '';
+  return decodeEntities(
+    String(html)
+      .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)>/gi, '\n')
+      .replace(/<[^>]+>/g, ''),
+  )
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** 새어 나온 코드·태그를 걷어 글자만 남긴다 (HTML판이 없을 때의 차선책) */
+export function cleanLeakedText(s: string): string {
+  if (!looksLikeHtmlLeak(s) && !/&(?:nbsp|lt|gt|amp|quot|#\d+);/i.test(String(s || ''))) return String(s || '');
+  return decodeEntities(
+    String(s || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+      .replace(/<\/?(?:p|div|span|br|table|tbody|thead|tr|td|th|font|b|strong|i|u|em|a|li|ul|ol|h[1-6])\b[^>]*>/gi, ''),
+  );
+}
+
 export function tidyMailText(input: string | null | undefined): string {
   if (!input) return '';
-  const raw = String(input)
+  const raw = cleanLeakedText(String(input))
     .replace(/\r\n?/g, '\n')
     .replace(/ /g, ' ')
     .replace(INVISIBLE, '')

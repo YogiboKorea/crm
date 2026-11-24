@@ -3,6 +3,7 @@ import { MailAccount } from '@/models/MailAccount';
 import { canUseAccount, NOT_YOURS, type MailScope } from './scope';
 import { resolveOutreachAccount } from './accounts';
 import { buildSignatureBlock } from '@/lib/template-vars';
+import { htmlToPlainText } from './text';
 import { normalizeRecipients } from './compose-new';
 
 /**
@@ -164,7 +165,7 @@ export async function composeReply(scope: MailScope, input: ReplyInput): Promise
   const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">${inner}${sigHtml}</div>`;
   // 평문 대체본 — HTML 을 못 읽는 클라이언트용. 태그를 걷어내고 줄바꿈만 남긴다.
   const plain = bodyIsHtml
-    ? source.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n').replace(/<[^>]+>/g, '').trim()
+    ? htmlToPlainText(source)   // 글자판 — &nbsp; 같은 코드까지 풀어서 (lib/mail/text.ts)
     : source;
 
   // ── 스레드 헤더 ──

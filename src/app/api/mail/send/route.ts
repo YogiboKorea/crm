@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { htmlToPlainText } from '@/lib/mail/text';
 import { resolveOutreachAccount } from '@/lib/mail/accounts';
 import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
 import dbConnect from '@/lib/mongodb';
@@ -167,7 +168,7 @@ export async function POST(req: Request) {
     if (bodyIsHtml) {
       const bodyHtml = renderedBody.includes('<') ? renderedBody : renderedBody.replace(/\n/g, '<br>');
       htmlPayload = `<div style="font-family:${fontFamily};font-size:${fontSize}px;line-height:1.65;color:#111827">${bodyHtml}${sigHtml}</div>`;
-      textPayload = renderedBody.replace(/<[^>]+>/g, '') + sigText;
+      textPayload = htmlToPlainText(renderedBody) + sigText;   // 글자판 — &nbsp; 같은 코드까지 풀어서 (lib/mail/text.ts)
     } else {
       textPayload = renderedBody + sigText;
     }

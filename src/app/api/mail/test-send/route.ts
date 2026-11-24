@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { htmlToPlainText } from '@/lib/mail/text';
 import dbConnect from '@/lib/mongodb';
 import { Lead } from '@/models/Lead';
 import { EmailTemplate } from '@/models/EmailTemplate';
@@ -70,7 +71,7 @@ export async function POST(req: Request) {
     if (tpl.bodyIsHtml) {
       const bodyHtml = rendered.includes('<') ? rendered : rendered.replace(/\n/g, '<br>');
       html = `<div style="font-family:Pretendard, -apple-system, BlinkMacSystemFont, sans-serif;font-size:15px;line-height:1.65;color:#111827">${bodyHtml}</div>`;
-      text = rendered.replace(/<[^>]+>/g, '');
+      text = htmlToPlainText(rendered);   // 글자판 — &nbsp; 같은 코드까지 풀어서
     } else {
       text = rendered;
     }

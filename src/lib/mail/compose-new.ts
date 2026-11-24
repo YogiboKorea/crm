@@ -1,6 +1,7 @@
 import { Lead } from '@/models/Lead';
 import { resolveOutreachAccount } from './accounts';
 import { buildSignatureBlock } from '@/lib/template-vars';
+import { htmlToPlainText } from './text';
 import type { MailScope } from './scope';
 
 /**
@@ -158,7 +159,7 @@ export async function composeNewMail(scope: MailScope, input: NewMailInput): Pro
   // 서명도 본문 칸 안에 — 본문과 같은 글꼴·크기(14px)로 나간다 (2026-11-23)
   const html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6">${inner}${sigHtml}</div>`;
   const plain = bodyIsHtml
-    ? source.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n').replace(/<[^>]+>/g, '').trim()
+    ? htmlToPlainText(source)   // 글자판 — &nbsp; 같은 코드까지 풀어서 (lib/mail/text.ts)
     : source;
 
   // 받는 사람·참조 주소가 등록된 업체면 알려 준다 — 보낸 뒤 그 업체 대화 이력에 붙이고, 미리보기에도 이름을 보여준다.

@@ -1,4 +1,5 @@
 import { OUTBOUND_LOCKED, OUTBOUND_LOCK_MESSAGE, canSendTo, TEST_RECIPIENTS } from './outbound-lock';
+import { htmlToPlainText } from '@/lib/mail/text';
 import { EmailTemplate } from '@/models/EmailTemplate';
 import { EmailSchedule } from '@/models/EmailSchedule';
 import { Lead } from '@/models/Lead';
@@ -160,7 +161,7 @@ export async function processScheduleItem(input: any): Promise<ScheduleItemResul
   if (tpl.bodyIsHtml) {
     const bodyHtml = renderedBody.includes('<') ? renderedBody : renderedBody.replace(/\n/g, '<br>');
     htmlPayload = `<div style="font-family:${fontFamily};font-size:${fontSize}px;line-height:1.65;color:#111827">${bodyHtml}</div>`;
-    textPayload = renderedBody.replace(/<[^>]+>/g, '');
+    textPayload = htmlToPlainText(renderedBody);   // 글자판 — &nbsp; 같은 코드까지 풀어서
   } else {
     textPayload = renderedBody;
   }

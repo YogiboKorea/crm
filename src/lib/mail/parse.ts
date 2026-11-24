@@ -6,23 +6,24 @@
  */
 import { simpleParser } from 'mailparser';
 import { stripQuotedForDisplay } from './quoted';
+import { looksLikeHtmlLeak, cleanLeakedText, htmlToPlainText } from './text';
 
-/** HTML 만 있는 메일을 위한 최소 텍스트 추출 */
-function htmlToText(html?: string): string {
-  if (!html) return '';
-  return html
-    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+/** HTML 만 있는 메일을 위한 텍스트 추출 (보낼 때 글자판 만드는 것과 같은 함수) */
+const htmlToText = (html?: string): string => htmlToPlainText(html);
+
+/**
+ * 보여줄 글자 본문 고르기 — 보통은 글자판(text/plain)을 쓴다.
+ * 글자판에 HTML 코드가 새어 나온 메일(&lt;…&gt;, &nbsp;, 깨진 <p> 태그 — 일부 국내 그룹웨어)은
+ * HTML판에서 다시 뽑는다. HTML판이 없으면 코드만 풀어 쓴다 (2026-11-24, lib/mail/text.ts).
+ */
+function pickText(plain: string, html?: string): string {
+  const p = (plain || '').trim();
+  if (!p) return htmlToText(html);
+  if (looksLikeHtmlLeak(p)) {
+    const fromHtml = html ? htmlToText(html) : '';
+    return fromHtml || cleanLeakedText(p).trim();
+  }
+  return p;
 }
 
 /**
@@ -101,7 +102,7 @@ export async function parseMessage(
 ): Promise<ParsedMail> {
   const p: any = await simpleParser(source as any, { skipImageLinks: true } as any);
 
-  const text = (p.text || '').trim() || htmlToText(p.html);
+  const text = pickText(p.text || '', p.html);
   const from = addr(p.from);
   const headerGet = (k: string): string => {
     const v = p.headers?.get(k);
