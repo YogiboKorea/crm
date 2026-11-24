@@ -306,6 +306,15 @@ function candidatePaths(baseUrl: string): string[] {
   }
 }
 
+/** 이메일 도메인이 회사 사이트 도메인과 같은가 (하위 도메인 포함 — shop.abc.com ↔ abc.com) */
+function sameSiteDomain(email: string, website: string): boolean {
+  const ed = String(email || '').split('@')[1]?.toLowerCase().replace(/^www\./, '') || '';
+  let sd = '';
+  try { sd = new URL(normalizeUrl(website) || '').hostname.toLowerCase().replace(/^www\./, ''); } catch { return false; }
+  if (!ed || !sd) return false;
+  return ed === sd || ed.endsWith(`.${sd}`) || sd.endsWith(`.${ed}`);
+}
+
 // 리드 하나 크롤
 async function crawlLead(lead: any, timeoutMs = 10000): Promise<{ emails: string[]; error?: string }> {
   const site = normalizeUrl(lead.WebsiteContact);
@@ -457,9 +466,13 @@ export async function POST(req: Request) {
         crawledEmails: emails,
         crawledAt: now,
       };
-      // Email 이 비어있고 후보가 있으면 최우선 후보 자동 승격
-      if (promoteToEmail && emails.length > 0 && (!lead.Email || lead.Email.trim() === '')) {
-        update.Email = emails[0];
+      // Email 이 비어있으면 **회사 사이트와 같은 도메인**의 후보만 자동 승격한다.
+      // 사이트 칸에 기사·전시회·디렉터리 페이지가 들어 있으면 그 페이지 주인의 주소(언론사·정부·전시 주최사·
+      // 쇼핑몰 앱 회사, 'ejemplo@mail.com' 같은 예시 주소)가 잡혀 그대로 승격됐다 — 11/24 새 업체 72곳 중 15곳.
+      // 다른 도메인 주소는 crawledEmails 후보로만 남겨 사람이 고르게 한다.
+      const best = emails.find((e) => sameSiteDomain(e, lead.WebsiteContact));
+      if (promoteToEmail && best && (!lead.Email || lead.Email.trim() === '')) {
+        update.Email = best;
         promotedCount++;
       }
       ops.push({
