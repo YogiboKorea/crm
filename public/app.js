@@ -688,7 +688,8 @@ var _mailCountsCache = null;
 async function loadMailCounts(force) {
   const now = Date.now();
   if (!force && _mailCountsCache && now - _mailCountsCache.ts < 5 * 60 * 1000) {
-    applyMailCountBadges(_mailCountsCache.counts);
+    applyMailCountBadges(_mailCountsCache.badge || _mailCountsCache.counts);
+    loadExtraMailboxBadges(false);
     return _mailCountsCache;
   }
   try {
@@ -699,7 +700,17 @@ async function loadMailCounts(force) {
     const data = await safeJsonFetch(`/api/mail/counts?accountId=${encodeURIComponent(acc)}`);
     if (data && data.success) {
       _mailCountsCache = { counts: data.counts, ts: now };
-      applyMailCountBadges(data.counts);
+      // 화면(오늘 온 메일 등)은 지금 보는 메일함 숫자, 사이드바 숫자는 늘 대표 계정 것 —
+      // [rnd 메일함]을 보는 동안 [받은 메일함]·[회신 필요] 숫자까지 rnd 것으로 바뀌면 헷갈린다 (2026-11-25)
+      let badge = data.counts;
+      const def = defaultMailboxAccountId();
+      if (def && acc !== def) {
+        const d2 = await safeJsonFetch(`/api/mail/counts?accountId=${encodeURIComponent(def)}`).catch(() => null);
+        if (d2 && d2.success) badge = d2.counts;
+      }
+      _mailCountsCache.badge = badge;
+      applyMailCountBadges(badge);
+      loadExtraMailboxBadges(force);
       return _mailCountsCache;
     }
   } catch (e) {
@@ -4668,9 +4679,39 @@ function renderExtraMailboxNav(info) {
     return `<button class="nav-item nav-extra-mailbox" data-view="tool-inbox" data-mailbox-account="${escapeAttr(a.accountId)}" type="button"
       title="${escapeAttr(addr)} 메일함 — 이 계정으로 받은 메일 (위의 받은 메일함은 대표 계정 것)">
       <span class="nav-icon"><img src="/icons/nav/inbox.png" alt="" /></span><span class="nav-label">${escapeHtml(name)} 메일함</span>
+      <span class="nav-badge" data-nav-badge="box-${escapeAttr(a.accountId)}" title="최근 2개월 받은 메일 (광고 제외) — 받은 메일함 숫자와 같은 기준"></span>
     </button>`;
   }).join('');
   syncExtraMailboxActive();
+  loadExtraMailboxBadges(false);
+}
+
+/**
+ * 계정별 메일함 숫자 — [받은 메일함] 숫자와 같은 기준(최근 2개월 · 광고 제외), 그 계정 것만 (2026-11-25 요청).
+ * 5분마다 사이드바 숫자를 새로 읽을 때(loadMailCounts) 같이 읽는다.
+ */
+var _extraBoxCounts = {};
+async function loadExtraMailboxBadges(force) {
+  const items = [...document.querySelectorAll('#navExtraMailboxes [data-mailbox-account]')];
+  await Promise.all(items.map(async (item) => {
+    const id = item.dataset.mailboxAccount;
+    const el = item.querySelector('.nav-badge');
+    if (!id || !el) return;
+    let hit = _extraBoxCounts[id];
+    if (force || !hit || Date.now() - hit.ts > 5 * 60 * 1000) {
+      try {
+        const d = await safeJsonFetch(`/api/mail/counts?accountId=${encodeURIComponent(id)}`);
+        if (d && d.success) hit = _extraBoxCounts[id] = { n: Number(d.counts && d.counts.inbox) || 0, ts: Date.now() };
+      } catch (e) { /* 숫자가 없다고 메뉴가 죽으면 안 된다 */ }
+    }
+    if (hit) { el.textContent = hit.n.toLocaleString(); el.dataset.count = String(hit.n); }
+  }));
+}
+
+/** 대표 계정 id — 사이드바 [받은 메일함]·[회신 필요]·[기한 관리] 숫자는 늘 이 계정 기준 */
+function defaultMailboxAccountId() {
+  const d = ((_mailAccountsCache && _mailAccountsCache.accounts) || []).find((a) => a.isDefault);
+  return d ? d.accountId : '';
 }
 /** 지금 계정별 메일함을 보고 있으면 그 계정 id — 받은 메일함과 같은 화면이라 어느 계정인지로 가른다 */
 function extraMailboxPicked() {
@@ -12487,6 +12528,7 @@ var UPDATE_LOG = [
           '받은 메일함은 <b>대표 계정</b>(대표님은 david@) 메일만 보여 줍니다. 그래서 같은 아이디에 붙인 다른 메일(rnd@ 등)을 볼 길이 없었습니다.',
           '이제 대표가 아닌 메일 계정이 있으면 사이드바 메일함 묶음 맨 아래(시차·환율 아래)에 <b>[rnd 메일함]</b>처럼 하나씩 생기고, 누르면 그 계정으로 받은 메일이 열립니다.',
           '다른 메뉴를 누르면 다시 대표 계정 기준으로 돌아갑니다 — 회신 필요·기한 관리 숫자는 늘 대표 계정 것입니다.',
+          '<b>[rnd 메일함] 옆에도 숫자</b>가 뜹니다 — [받은 메일함] 숫자와 같은 기준(최근 2개월 받은 메일 · 광고 제외)으로 그 계정 것만 셉니다.',
         ],
       },
       {
