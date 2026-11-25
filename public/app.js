@@ -840,6 +840,24 @@ function bindEvents() {
       const targetView = navItem.dataset.view;
       const targetStatus = navItem.dataset.statusFilter;
       state.view = targetView;
+      // 계정별 메일함(renderExtraMailboxNav) — 그 계정의 받은 메일함을 연다.
+      // 다른 메뉴를 누르면 대표 계정으로 돌아간다 — 회신 필요·기한 숫자는 늘 대표 계정 기준.
+      if (typeof _inboxState !== 'undefined') {
+        const boxAcc = navItem.dataset.mailboxAccount || '';
+        const wasPicked = _inboxState.accountPicked;
+        if (boxAcc) {
+          Object.assign(_inboxState, { accountId: boxAcc, accountPicked: true, page: 1, group: '', q: '', classification: '', linked: '', trashed: false, today: false, sent: false, lastView: 'tool-inbox' });
+        } else if (wasPicked) {
+          _inboxState.accountPicked = false;
+          Object.assign(_inboxState, { page: 1, group: '', trashed: false, today: false });
+        }
+        if (boxAcc || wasPicked) {
+          // 폴더·숫자는 계정마다 다르다 — 고른 계정 기준으로 다시 받는다
+          _mailGroupsCache = null;
+          _mailCountsCache = null;
+          loadMailCounts(true);
+        }
+      }
       // 모든 뷰 진입 시 필터 초기화 — 이전 뷰에서 남은 country/status/priority 가
       // 다음 뷰의 데이터까지 좁히는 문제 방지
       resetAllFilters();
@@ -1514,6 +1532,7 @@ async function _renderInner(seq) {
     }
     item.classList.toggle("active", isActive);
   });
+  syncExtraMailboxActive();
   renderPipeline();
   renderStats(leads);
   updateActionButtons();
@@ -4626,10 +4645,46 @@ async function loadInboxAccounts(force) {
     const r = await safeJsonFetch('/api/mail/accounts');
     if (r && r.success) {
       _mailAccountsCache = r;
+      renderExtraMailboxNav(r);
       return r;
     }
   } catch (e) { console.warn('mail-accounts', e); }
   return null;
+}
+
+/**
+ * 계정별 메일함 — 사이드바 메일함 묶음 맨 아래에 "rnd 메일함" 처럼 하나씩 (2026-11-25 대표님 요청).
+ * 받은 메일함은 대표 계정 것만 보여 준다(계정 탭은 9/11 에 뺐다). 대표님 아이디에 rnd@ 를 붙이자
+ * 그 메일을 볼 길이 없었다 → 대표가 아닌 계정마다 칸을 하나 두고, 누르면 그 계정의 받은 메일함을 연다.
+ * 다른 메뉴를 누르면 대표 계정으로 돌아간다 (전역 클릭 처리의 data-mailbox-account).
+ */
+function renderExtraMailboxNav(info) {
+  const box = document.getElementById('navExtraMailboxes');
+  if (!box) return;
+  const accs = ((info && info.accounts) || []).filter((a) => !a.isDefault && a.isActive !== false);
+  box.innerHTML = accs.map((a) => {
+    const addr = String(a.address || a.label || '');
+    const name = addr.includes('@') ? addr.split('@')[0] : (a.label || addr);
+    return `<button class="nav-item nav-extra-mailbox" data-view="tool-inbox" data-mailbox-account="${escapeAttr(a.accountId)}" type="button"
+      title="${escapeAttr(addr)} 메일함 — 이 계정으로 받은 메일 (위의 받은 메일함은 대표 계정 것)">
+      <span class="nav-icon"><img src="/icons/nav/inbox.png" alt="" /></span><span class="nav-label">${escapeHtml(name)} 메일함</span>
+    </button>`;
+  }).join('');
+  syncExtraMailboxActive();
+}
+/** 지금 계정별 메일함을 보고 있으면 그 계정 id — 받은 메일함과 같은 화면이라 어느 계정인지로 가른다 */
+function extraMailboxPicked() {
+  if (typeof _inboxState === 'undefined' || state.view !== 'tool-inbox' || !_inboxState.accountPicked) return '';
+  const ids = [...document.querySelectorAll('[data-mailbox-account]')].map((e) => e.dataset.mailboxAccount);
+  return ids.includes(_inboxState.accountId) ? _inboxState.accountId : '';
+}
+/** 받은 메일함 ↔ 계정별 메일함 선택 표시 — 보고 있는 쪽에만 */
+function syncExtraMailboxActive() {
+  const picked = extraMailboxPicked();
+  document.querySelectorAll('.nav-item[data-view="tool-inbox"]').forEach((item) => {
+    const acc = item.dataset.mailboxAccount || '';
+    item.classList.toggle('active', state.view === 'tool-inbox' && (acc ? acc === picked : !picked));
+  });
 }
 
 // 메일 분류 7가지.
@@ -5241,7 +5296,7 @@ async function renderInboxPage(opts) {
         </div>
       </div>
       ${accounts.length > 1
-        ? `<span style="font-size:11px;color:var(--text-tertiary);white-space:nowrap">아래 탭에서 전환 ↓</span>`
+        ? `<span style="font-size:11px;color:var(--text-tertiary);white-space:nowrap">← 다른 계정은 왼쪽 메뉴 [○○ 메일함]</span>`
         : ''}
       <!-- [✏ 새 메일 쓰기] 는 사이드바 받은 메일함 위 [✏ 메일 쓰기] 하나로 옮겼다 (2026-10-20, 대표님 요청 "하나로 빼 달라") -->
     </div>`;
@@ -12424,6 +12479,26 @@ async function loadMailAccounts(force) {
  */
 var UPDATE_LOG = [
   {
+    date: '2026-11-25',
+    items: [
+      {
+        kind: 'new', icon: '📥', title: '계정별 메일함 — 사이드바에 "rnd 메일함" 처럼 따로',
+        how: [
+          '받은 메일함은 <b>대표 계정</b>(대표님은 david@) 메일만 보여 줍니다. 그래서 같은 아이디에 붙인 다른 메일(rnd@ 등)을 볼 길이 없었습니다.',
+          '이제 대표가 아닌 메일 계정이 있으면 사이드바 메일함 묶음 맨 아래(시차·환율 아래)에 <b>[rnd 메일함]</b>처럼 하나씩 생기고, 누르면 그 계정으로 받은 메일이 열립니다.',
+          '다른 메뉴를 누르면 다시 대표 계정 기준으로 돌아갑니다 — 회신 필요·기한 관리 숫자는 늘 대표 계정 것입니다.',
+        ],
+      },
+      {
+        kind: 'better', icon: '🔑', title: '로그인 — 아이디 칸에 메일 주소를 넣어도 들어가게',
+        how: [
+          'CRM 아이디는 <b>david · hoon</b> 처럼 메일 주소의 앞부분입니다. 이제 <b>david@yogico.kr</b> 처럼 메일 주소 전체를 넣어도 같은 아이디로 들어갑니다 (회사 메일 주소일 때만). 대문자·앞뒤 공백도 괜찮습니다.',
+          '비밀번호는 CRM 비밀번호입니다 — 메일(이카운트) 비밀번호와는 따로입니다.',
+        ],
+      },
+    ],
+  },
+  {
     date: '2026-11-24',
     items: [
       {
@@ -16267,6 +16342,7 @@ function ecountLinkSettingsHtml() {
 async function renderMailAccountsTool() {
   els.content.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text-tertiary)">로드 중...</div>`;
   const list = await loadMailAccounts(true);
+  loadInboxAccounts(true);   // 사이드바 [○○ 메일함] 도 지금 계정 목록대로
   // 불러오는 사이 다른 화면으로 옮겼으면 그 화면을 덮어쓰지 않는다
   // (AI 메일 비서 → [메일 계정 관리] → 바로 다시 AI 메일 비서로 오면 계정 화면이 채팅을 덮었다, 2026-11-23)
   if (state.view !== 'tool-mail-accounts') return;

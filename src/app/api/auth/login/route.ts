@@ -26,17 +26,31 @@ async function createSession(username: string) {
 
 export async function POST(req: Request) {
   try {
-    const { username, password } = await req.json();
+    const body = await req.json();
+    const username = String(body?.username || '').trim();
+    const password = String(body?.password || '');
     const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
 
     await dbConnect();
-    
+
     // 1) DB에서 먼저 확인 (가장 우선)
-    const user = await AdminUser.findOne({ username });
-    
+    // 아이디 칸에 메일 주소를 넣어도 들어가게 — "david@yogico.kr" → david (2026-11-25, 대표님이 메일 주소로 넣고 막히셨다).
+    // 회사 도메인(@yogico.kr)일 때만 앞부분을 아이디로 본다. 대소문자·앞뒤 공백도 너그럽게.
+    const candidates = Array.from(new Set([
+      username,
+      username.toLowerCase(),
+      ...(username.toLowerCase().match(/^([^@\s]+)@yogico\.kr$/)?.slice(1, 2) || []),
+    ].filter(Boolean)));
+    let user: any = null;
+    let loginName = username;
+    for (const c of candidates) {
+      user = await AdminUser.findOne({ username: c });
+      if (user) { loginName = c; break; }
+    }
+
     if (user) {
       if (user.passwordHash === passwordHash) {
-        return await createSession(username);
+        return await createSession(loginName);
       } else {
         return NextResponse.json({ success: false, error: '아이디 또는 비밀번호가 맞지 않습니다.' }, { status: 401 });
       }

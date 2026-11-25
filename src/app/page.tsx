@@ -79,6 +79,9 @@ export default function Home() {
             <button className="nav-item" data-view="tool-world-desk" type="button" title="시차·환율 — 도시 간 시차(서머타임 자동 반영) · 통화 환산 · 세계 시계">
               <span className="nav-icon"><img src="/icons/nav/world-desk.svg" alt="" /></span><span className="nav-label">시차·환율</span>
             </button>
+            {/* 계정별 메일함 — 대표 계정 말고 등록한 메일 계정이 더 있으면 "rnd 메일함" 처럼 여기에 하나씩 (2026-11-25 대표님 요청).
+                계정 목록을 받으면 app.js renderExtraMailboxNav 가 채운다. 계정이 하나뿐이면 비어 있다. */}
+            <div id="navExtraMailboxes"></div>
             {/* 브리핑·휴지통은 숨김 — 화면 수를 줄이기 위해서다.
                 기능과 데이터는 그대로 살아 있고 (renderBriefingPage / renderTrashPage),
                 주석만 풀면 즉시 돌아온다. 휴지통에 넣은 메일도 지워지지 않는다.
@@ -779,7 +782,7 @@ export default function Home() {
 
       {/* 파일이 바뀌면 주소도 바뀌게 한다 — 안 그러면 브라우저가 옛 app.js 를
           계속 쓰고, 고친 화면이 "안 뜬다"로 보인다. 배포마다 값을 갱신한다. */}
-      <Script src="/app.js?v=09eb43d9" strategy="afterInteractive" />
+      <Script src="/app.js?v=9cf19996" strategy="afterInteractive" />
     </>
   );
 }
