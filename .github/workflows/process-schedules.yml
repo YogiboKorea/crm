@@ -44,8 +44,34 @@ concurrency:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 9
     steps:
+      # ── 새 메일 받아 오기 (2026-11-26) ──
+      # Vercel Hobby 크론은 하루 1회라, CRM 을 아무도 안 켜 둔 동안(밤사이 등) 온 메일은
+      # 다음 날 아침에야 들어왔다. 여기서 10분마다 /api/cron/mail-sync 를 불러 새 메일만 가볍게 받는다.
+      # 예약 처리보다 **먼저** 돈다 — 방금 온 답장이 먼저 들어와야 그 곳에 재발송이 나가지 않는다.
+      # 주소는 CRON_URL 에서 /api/cron/ 앞부분을 그대로 쓴다 (새 비밀값 필요 없음).
+      # 실패해도 예약 처리는 그대로 돈다 (continue-on-error).
+      - name: 새 메일 받아 오기
+        continue-on-error: true
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_URL" ]; then exit 0; fi
+          BASE="${CRON_URL%%/api/cron/*}"
+          code=$(curl -sS -o /tmp/mail.json -w '%{http_code}' \
+                   --max-time 170 \
+                   -H "Authorization: Bearer $CRON_SECRET" \
+                   "$BASE/api/cron/mail-sync?source=external")
+          echo "HTTP $code"
+          cat /tmp/mail.json || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::warning::새 메일 받아 오기 실패 (HTTP $code)"
+            exit 1
+          fi
+
       - name: 예약 처리 호출
         env:
           CRON_URL: ${{ secrets.CRON_URL }}

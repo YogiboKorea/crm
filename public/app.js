@@ -341,18 +341,25 @@ async function init() {
  * 실제 수집은 서버 쿨다운 때문에 10분에 한 번 꼴이다.
  */
 var _mailSyncBusy = false;
-async function syncMailOnLogin() {
+/**
+ * opts.accountId — 그 계정만 바로 받아 온다 (사이드바에서 메일함을 열 때 · 2026-11-26).
+ * 서버 쿨다운이 2분이라 휴대폰 알림을 보고 CRM 을 열면 방금 온 메일이 들어온다.
+ */
+async function syncMailOnLogin(opts) {
   if (_mailSyncBusy) return;   // 앞의 수집이 아직 도는 중 — 겹쳐 붙지 않는다
   _mailSyncBusy = true;
+  const accountId = (opts && opts.accountId) || '';
   try {
     const r = await safeJsonFetch('/api/mail/sync-on-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify(accountId ? { accountId } : {}),
     });
     if (!r || !r.success || !r.ran) return;   // 쿨다운이거나 계정 없음 — 조용히 끝낸다
 
-    console.log(`[mail] 로그인 수집 — 새 메일 ${r.inserted}통 · 리드 연결 ${r.matched} · 답장받음 ${r.movedToReplied}`);
+    console.log(`[mail] ${accountId ? '메일함 열 때' : '로그인'} 수집 — 새 메일 ${r.inserted}통 · 리드 연결 ${r.matched} · 답장받음 ${r.movedToReplied}`);
+    // [메일 가져오기] 옆 "🕘 받아 온 시각" 을 새로 — 새 메일이 없어도 방금 확인했다는 걸 보여 준다
+    loadInboxAccounts(true).then(paintInboxSyncAt).catch(() => {});
 
     // 새로 들어온 게 있을 때만 화면을 건드린다
     if (!r.inserted && !r.movedToReplied) return;
@@ -744,6 +751,7 @@ function startNavBadgePolling() {
   _navBadgeTimer = setInterval(() => {
     refresh();
     if (document.visibilityState === 'visible') { syncMailOnLogin(); kickDueSchedules(); }
+    if (state.view === 'tool-inbox') loadInboxAccounts(true).then(paintInboxSyncAt).catch(() => {});
   }, 5 * 60 * 1000);
   setTimeout(kickDueSchedules, 15 * 1000);   // 로그인 직후 한 번 — 밀린 예약이 있으면 바로 나간다
   // 브라우저 창이 다시 포커스되면 즉시 갱신 (다른 창에서 액션 반영)
@@ -867,6 +875,11 @@ function bindEvents() {
           _mailGroupsCache = null;
           _mailCountsCache = null;
           loadMailCounts(true);
+        }
+        // 메일함을 열면 그 메일함의 새 메일을 바로 받아 온다 (2분 안에 받아 왔으면 건너뜀 · 화면은 기다리지 않음)
+        if (targetView === 'tool-inbox') {
+          const quickAcc = boxAcc || defaultMailboxAccountId();
+          if (quickAcc) syncMailOnLogin({ accountId: quickAcc });
         }
       }
       // 모든 뷰 진입 시 필터 초기화 — 이전 뷰에서 남은 country/status/priority 가
@@ -5491,8 +5504,12 @@ async function renderInboxPage(opts) {
       <span style="width:1px;height:20px;background:var(--border-default)"></span>
       ${filterChip('리드 연결됨', 'linked', '1')}
       ${filterChip('미연결', 'linked', '0')}
-      <button class="button secondary" id="inboxIngestBtn" type="button" style="margin-left:auto">📥 메일 가져오기</button>
-      <button class="button secondary" id="inboxBackfillBtn" type="button" title="이카운트 메일함에서 최근 2달 메일을 전부 가져와 분류합니다 (새로 등록한 메일함은 처음에 한 번 눌러 주세요)">📥 2달 전체</button>
+      <span style="margin-left:auto;display:inline-flex;align-items:center;gap:8px">
+        <span id="inboxSyncAt" title="이 메일함의 새 메일을 메일 서버에서 마지막으로 받아 온 시각 — CRM 을 닫아 둬도 10~20분마다, 메일함을 열 때도 바로 받아 옵니다"
+          style="font-size:11.5px;color:var(--text-tertiary);white-space:nowrap">${escapeHtml(inboxSyncAtText())}</span>
+        <button class="button secondary" id="inboxIngestBtn" type="button">📥 메일 가져오기</button>
+        <button class="button secondary" id="inboxBackfillBtn" type="button" title="이카운트 메일함에서 최근 2달 메일을 전부 가져와 분류합니다 (새로 등록한 메일함은 처음에 한 번 눌러 주세요)">📥 2달 전체</button>
+      </span>
       <!-- [🧠 AI 분석] 은 뺐다 — 한 번에 N통을 유료 분석하는 버튼이라 비용이 예측되지 않는다.
            분석 결과(한글 번역·요약·기한)를 *보는* 기능은 그대로다. 분석 자체는 개발자 쪽에서
            일괄로 돌려 DB 에 넣는다. 되살리려면 아래 주석을 풀면 된다 (핸들러는 살아 있다).
@@ -12520,6 +12537,20 @@ async function loadMailAccounts(force) {
  */
 var UPDATE_LOG = [
   {
+    date: '2026-11-26',
+    items: [
+      {
+        kind: 'better', icon: '📥', title: '새 메일이 더 빨리 들어옵니다 — CRM 을 닫아 둬도',
+        how: [
+          '지금까지는 CRM 을 열어 둔 동안만 새 메일을 받아 왔고, 닫아 둔 동안(밤사이 등) 온 메일은 다음 날 아침 7시 반쯤 한꺼번에 들어왔습니다.',
+          '이제 CRM 을 닫아 둬도 <b>10~20분마다</b> 모든 메일함(david@ · rnd@ · hoon@ 등)의 새 메일을 받아 옵니다.',
+          '사이드바에서 <b>[받은 메일함]·[rnd 메일함]</b>을 누르면 그 메일함을 바로 한 번 더 확인합니다 — 휴대폰 알림을 보고 열었을 때 방금 온 메일이 들어오게.',
+          '[📥 메일 가져오기] 옆에 <b>🕘 n분 전 받아 옴</b>이 보입니다 — 언제 마지막으로 확인했는지.',
+        ],
+      },
+    ],
+  },
+  {
     date: '2026-11-25',
     items: [
       {
@@ -14490,7 +14521,7 @@ function renderUserGuidePage() {
           ['메일 문구를 바꾸고 싶어요.',
            '[📝 메일 양식] 에서 [✏ 수정] 으로 고쳐 저장하면 다음 발송부터 적용됩니다. 이번 한 번만 다르게 보내려면 발송 화면에서 직접 고치면 됩니다.'],
           ['받은 메일이 안 보입니다.',
-           '앱을 열 때, 그리고 열어 둔 동안 10분마다 자동으로 가져옵니다. 방금 온 메일을 당장 보려면 받은 메일함의 <b>[📥 메일 가져오기]</b> 를 누르세요.'],
+           'CRM 을 닫아 둬도 10~20분마다 자동으로 가져오고, 사이드바에서 메일함을 누르면 그 메일함을 바로 가져옵니다. [📥 메일 가져오기] 옆 <b>🕘 받아 온 시각</b>으로 언제 확인했는지 볼 수 있습니다. 그래도 없으면 — 우리 쪽 주소(david@ 등)에서 보낸 메일은 받은 메일함에서 빠지고, 이카운트에서 스팸함·휴지통으로 옮겨진 메일은 가져오지 않습니다.'],
           ['받은 메일함 숫자가 이상합니다.',
            '[📬 메일 계정 관리] 의 대표 계정 기준으로 셉니다. 대표 계정을 바꾸면 그 계정 메일함으로 바뀝니다. 광고·자동발송과 우리가 보낸 메일은 할 일 숫자에서 빠집니다.'],
           ['AI 검증·AI 분석은 돈이 드나요?',
@@ -16547,6 +16578,19 @@ function mailAccountPrimaryPanelHtml(list) {
  */
 function mailSyncTimeText(at) {
   return new Date(at).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+/** 받은 메일함 [메일 가져오기] 옆 "🕘 3분 전 받아 옴" — 지금 보는 메일함 계정 기준 (2026-11-26) */
+function inboxSyncAtText() {
+  const id = currentMailboxAccountId();
+  const acc = ((_mailAccountsCache && _mailAccountsCache.accounts) || []).find((a) => a.accountId === id);
+  if (!acc || !acc.lastSyncAt) return '';
+  const mins = Math.floor((Date.now() - new Date(acc.lastSyncAt).getTime()) / 60000);
+  const rel = mins < 1 ? '방금' : mins < 60 ? `${mins}분 전` : mailSyncTimeText(acc.lastSyncAt);
+  return `🕘 ${rel} 받아 옴`;
+}
+function paintInboxSyncAt() {
+  const el = document.getElementById('inboxSyncAt');
+  if (el) el.textContent = inboxSyncAtText();
 }
 function mailAccountSyncHtml(acc) {
   if (!acc || !acc.lastSyncAt) return '';

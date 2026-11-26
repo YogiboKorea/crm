@@ -154,6 +154,12 @@ export interface IngestOptions {
    * 비우면 크론 같은 시스템 실행 — 모든 사람의 계정을 모은다.
    */
   user?: string | null;
+  /**
+   * 보낸메일함 대조(웹메일·휴대폰에서 직접 답한 건 찾기) 때 훑을 최근 통수.
+   * 미지정 = 기본(400통 · reconcile.ts SENT_SCAN), 0 = 대조하지 않음.
+   * 10분마다 도는 가벼운 수집(/api/cron/mail-sync)은 최근 것만 훑는다 — 10분 사이 보낸 메일은 몇 통이다.
+   */
+  sentScan?: number;
 }
 
 /**
@@ -897,8 +903,8 @@ export async function runIngest(opts: IngestOptions = {}): Promise<IngestResult>
         // ── 보낸메일함 대조 ──
         // 이카운트 웹메일이나 휴대폰에서 직접 답한 건을 찾아 '회신 필요' 를 내린다.
         // 이게 없으면 이미 답한 메일이 계속 회신 필요로 남아 숫자가 실제와 어긋난다.
-        try {
-          const rec = await syncSentReplies(scoped, { accountId });
+        if (opts.sentScan !== 0) try {
+          const rec = await syncSentReplies(scoped, opts.sentScan ? { accountId, limit: opts.sentScan } : { accountId });
           result.reconciled = {
             scanned: (result.reconciled?.scanned || 0) + rec.scanned,
             matched: (result.reconciled?.matched || 0) + rec.matched,

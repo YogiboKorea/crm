@@ -4,6 +4,7 @@ import { runIngest } from '@/lib/mail/ingest';
 import { MailSyncState } from '@/models/MailSyncState';
 import { listMailAccounts } from '@/lib/mail/accounts';
 import { getSessionUser, UNAUTHORIZED } from '@/lib/mail/scope';
+import { lastInboxSync } from '@/lib/mail/sync-status';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -35,6 +36,9 @@ const COOLDOWN_MIN = Number(process.env.LOGIN_SYNC_COOLDOWN_MIN) || 10;
 /** 로그인 수집은 가볍게 — 밀린 것은 크론이나 [메일 가져오기]가 마저 가져온다 */
 const LOGIN_FETCH_LIMIT = 30;
 
+/** 메일함을 열 때 그 계정만 받아 오는 경우의 쿨다운 (분) — 연달아 눌러도 메일 서버에 계속 붙지 않게 */
+const QUICK_COOLDOWN_MIN = 2;
+
 export async function POST(req: Request) {
   // 로그인한 사람의 계정만 당겨온다 (lib/mail/scope.ts)
   const user = await getSessionUser();
@@ -44,9 +48,11 @@ export async function POST(req: Request) {
     await dbConnect();
 
     let force = false;
+    let target = '';
     try {
       const body = await req.json();
       force = body?.force === true;
+      target = typeof body?.accountId === 'string' ? body.accountId : '';
     } catch { /* 본문 없이도 동작 */ }
 
     // 자기 계정이 없으면 할 일이 없다 (설정 전 상태).
@@ -54,6 +60,26 @@ export async function POST(req: Request) {
     const myAccounts = await listMailAccounts(user);
     if (!myAccounts.length) {
       return NextResponse.json({ success: true, skipped: 'no-account', ran: false });
+    }
+
+    // ── 메일함을 열 때 그 메일함만 바로 (2026-11-26) ──
+    // 사이드바 [받은 메일함]·[rnd 메일함] 을 누르면 그 계정만 받아 온다. 휴대폰 알림을 보고 CRM 을 열었는데
+    // "아직 없다" 가 되지 않게 쿨다운을 QUICK_COOLDOWN_MIN 분으로 짧게 둔다 (한 계정만이라 몇 초).
+    if (target) {
+      const acc = myAccounts.find((a: any) => String(a._id) === target);
+      if (!acc) return NextResponse.json({ success: true, ran: false, skipped: 'not-yours' });
+      const last = await lastInboxSync([target]);
+      const ago = last ? (Date.now() - last.getTime()) / 60000 : Infinity;
+      if (!force && ago < QUICK_COOLDOWN_MIN) {
+        return NextResponse.json({ success: true, ran: false, skipped: 'cooldown', lastSyncAt: last, minutesAgo: Math.round(ago) });
+      }
+      // 보낸메일함 대조는 빼고 받은 메일만 — 대조는 10분 수집·아침 크론이 한다
+      const r = await runIngest({ accountId: target, limit: LOGIN_FETCH_LIMIT, user, sentScan: 0 });
+      return NextResponse.json({
+        success: true, ran: true, accountId: target,
+        fetched: r.fetched, inserted: r.inserted, matched: r.matched, movedToReplied: r.movedToReplied,
+        errors: r.errors, durationMs: r.durationMs,
+      });
     }
 
     // 쿨다운도 자기 계정 기준 — 다른 사람이 방금 수집했다고 내 메일함을 건너뛰면 안 된다
