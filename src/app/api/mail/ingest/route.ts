@@ -50,6 +50,8 @@ export async function POST(req: Request) {
       // 남의 계정 id 를 넣으면 runIngest 가 계정 없음으로 끝낸다 (user 범위로 찾으므로).
       accountId: body?.accountId,
       user,
+      // 받은 메일함 [🔄 새 메일 가져오기] 는 보낸메일함을 최근 50통만 대조한다 — 400통이면 버튼이 수십 초 걸린다
+      sentScan: Number.isInteger(body?.sentScan) && body.sentScan >= 0 ? Math.min(body.sentScan, 400) : undefined,
     });
 
     return NextResponse.json({
